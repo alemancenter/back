@@ -1,0 +1,11 @@
+{
+  "title": "Alemancenter API Overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {"type":"stat","title":"Requests Total","targets":[{"expr":"alemancenter_http_requests_total"}],"gridPos":{"x":0,"y":0,"w":6,"h":4}},
+    {"type":"stat","title":"5xx Errors","targets":[{"expr":"alemancenter_http_errors_total"}],"gridPos":{"x":6,"y":0,"w":6,"h":4}},
+    {"type":"stat","title":"Avg Latency ms","targets":[{"expr":"alemancenter_http_latency_average_ms"}],"gridPos":{"x":12,"y":0,"w":6,"h":4}},
+    {"type":"timeseries","title":"Route Latency Max","targets":[{"expr":"alemancenter_http_route_latency_max_ms"}],"gridPos":{"x":0,"y":5,"w":24,"h":8}}
+  ]
+}

@@ -1,0 +1,60 @@
+# Binaries
+bin/
+tmp/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Build output
+*.test
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+
+# Environment files
+.env
+.env.local
+.env.*
+.env.*.local
+!.env.example
+
+# Storage (uploaded files and logs)
+storage/uploads/*
+storage/logs/*
+!storage/uploads/.gitkeep
+!storage/logs/.gitkeep
+
+# GeoIP database
+storage/*.mmdb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+vendor/
+go.work
+go.work.sum
+
+# Air (hot-reload temp files)
+tmp/
+build-errors.log
+
+# Compiled binaries at root
+/fiber-api
+/fiber-api.exe
+/tmp_test_bin
+
+# Archives and generated reports
+*.zip
+*.csv

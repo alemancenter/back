@@ -1,0 +1,11 @@
+ALTER TABLE content_ai_decisions
+  MODIFY COLUMN country_code VARCHAR(20) NOT NULL DEFAULT 'jo',
+  MODIFY COLUMN content_id VARCHAR(80) NOT NULL,
+  MODIFY COLUMN report_json LONGTEXT NULL;
+
+ALTER TABLE content_ai_fix_previews
+  MODIFY COLUMN country_code VARCHAR(20) NOT NULL DEFAULT 'jo',
+  MODIFY COLUMN content_id VARCHAR(80) NOT NULL,
+  MODIFY COLUMN original_content LONGTEXT NULL,
+  MODIFY COLUMN fixed_content LONGTEXT NULL,
+  MODIFY COLUMN fix_summary TEXT NULL;

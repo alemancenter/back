@@ -1,0 +1,23 @@
+[Unit]
+Description=Alemancenter Go Fiber API — api.alemancenter.com (port 8082)
+After=network.target mysql.service redis.service
+Wants=mysql.service redis.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/vhosts/alemancenter.com/fiber
+ExecStart=/var/www/vhosts/alemancenter.com/fiber/fiber-api
+EnvironmentFile=/var/www/vhosts/alemancenter.com/fiber/.env
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=alemancenter-api
+
+# Limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -398,8 +399,67 @@ func evaluateAdsenseItem(title, content, meta string, filesCount int, published 
 	return adsenseReadinessItem{ID: id, Type: contentType, Title: title, Status: map[bool]string{true: "published", false: "unpublished"}[published], Score: score, Level: level, WordCount: words, CharCount: len(text), FilesCount: filesCount, ShouldIndex: shouldIndex, ShouldShowAds: shouldShowAds, Issues: issues, URL: fmt.Sprintf("/%s/%s/%d", countryCode, urlType, id)}
 }
 
-// AdsenseReadiness returns a lightweight dashboard report that helps prioritize
-// AdSense fixes without manually opening thousands of old articles/posts.
+type adsenseReadinessRow struct {
+	Item      adsenseReadinessItem
+	CreatedAt time.Time
+}
+
+type adsenseFileCountRow struct {
+	ID    uint
+	Count int64
+}
+
+func buildAdsenseFileCountMaps(ctx context.Context, db *gorm.DB) (map[uint]int, map[uint]int) {
+	articleCounts := make(map[uint]int)
+	postCounts := make(map[uint]int)
+
+	var articleRows []adsenseFileCountRow
+	if err := db.WithContext(ctx).
+		Table("files").
+		Select("article_id AS id, COUNT(*) AS count").
+		Where("article_id IS NOT NULL").
+		Group("article_id").
+		Scan(&articleRows).Error; err == nil {
+		for _, row := range articleRows {
+			articleCounts[row.ID] = int(row.Count)
+		}
+	}
+
+	var postRows []adsenseFileCountRow
+	if err := db.WithContext(ctx).
+		Table("files").
+		Select("post_id AS id, COUNT(*) AS count").
+		Where("post_id IS NOT NULL").
+		Group("post_id").
+		Scan(&postRows).Error; err == nil {
+		for _, row := range postRows {
+			postCounts[row.ID] = int(row.Count)
+		}
+	}
+
+	return articleCounts, postCounts
+}
+
+func updateAdsenseSummary(summary *adsenseReadinessSummary, item adsenseReadinessItem) {
+	summary.Total++
+	switch item.Level {
+	case "ready":
+		summary.Ready++
+	case "review":
+		summary.Review++
+	default:
+		summary.Weak++
+	}
+	if !item.ShouldIndex {
+		summary.NoIndex++
+	}
+	if item.ShouldShowAds {
+		summary.AdsEligible++
+	}
+}
+
+// AdsenseReadiness returns a complete dashboard report that helps prioritize
+// AdSense fixes across all articles and posts, not only the first page.
 func (h *Handler) AdsenseReadiness(c *fiber.Ctx) error {
 	countryID, _ := c.Locals("country_id").(database.CountryID)
 	countryCode := c.Query("country", database.CountryCode(countryID))
@@ -407,67 +467,103 @@ func (h *Handler) AdsenseReadiness(c *fiber.Ctx) error {
 		countryCode = "jo"
 	}
 	db := database.GetManager().GetByCode(countryCode)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
+
 	pag := utils.GetPagination(c)
 	contentType := strings.ToLower(strings.TrimSpace(c.Query("type", "all")))
+	if contentType != "all" && contentType != "article" && contentType != "post" {
+		contentType = "all"
+	}
 	levelFilter := strings.ToLower(strings.TrimSpace(c.Query("level")))
-	items := make([]adsenseReadinessItem, 0, pag.PerPage*2)
+	if levelFilter == "all" {
+		levelFilter = ""
+	}
+	search := strings.TrimSpace(c.Query("q"))
+
+	articleFileCounts, postFileCounts := buildAdsenseFileCountMaps(ctx, db)
+	rows := make([]adsenseReadinessRow, 0, 256)
+	globalSummary := adsenseReadinessSummary{}
 
 	if contentType == "all" || contentType == "article" {
 		var articles []models.Article
-		q := db.WithContext(ctx).Preload("Files").Order("created_at DESC").Limit(pag.PerPage).Offset(pag.Offset)
-		if search := strings.TrimSpace(c.Query("q")); search != "" {
+		q := db.WithContext(ctx).
+			Select("id", "title", "content", "meta_description", "status", "created_at").
+			Order("created_at DESC")
+		if search != "" {
 			q = q.Where("title LIKE ?", "%"+search+"%")
 		}
-		_ = q.Find(&articles).Error
+		if err := q.Find(&articles).Error; err != nil {
+			return utils.InternalError(c, "تعذر تحميل المقالات لفحص جاهزية AdSense")
+		}
 		for _, a := range articles {
 			meta := ""
 			if a.MetaDescription != nil {
 				meta = *a.MetaDescription
 			}
-			item := evaluateAdsenseItem(a.Title, a.Content, meta, len(a.Files), a.Status == 1, "article", a.ID, countryCode)
+			item := evaluateAdsenseItem(a.Title, a.Content, meta, articleFileCounts[a.ID], a.Status == 1, "article", a.ID, countryCode)
+			updateAdsenseSummary(&globalSummary, item)
 			if levelFilter == "" || item.Level == levelFilter {
-				items = append(items, item)
+				rows = append(rows, adsenseReadinessRow{Item: item, CreatedAt: a.CreatedAt})
 			}
 		}
 	}
 
 	if contentType == "all" || contentType == "post" {
 		var posts []models.Post
-		q := db.WithContext(ctx).Preload("Files").Order("created_at DESC").Limit(pag.PerPage).Offset(pag.Offset)
-		if search := strings.TrimSpace(c.Query("q")); search != "" {
+		q := db.WithContext(ctx).
+			Select("id", "title", "content", "meta_description", "is_active", "created_at").
+			Order("created_at DESC")
+		if search != "" {
 			q = q.Where("title LIKE ?", "%"+search+"%")
 		}
-		_ = q.Find(&posts).Error
+		if err := q.Find(&posts).Error; err != nil {
+			return utils.InternalError(c, "تعذر تحميل المنشورات لفحص جاهزية AdSense")
+		}
 		for _, p := range posts {
 			meta := ""
 			if p.MetaDescription != nil {
 				meta = *p.MetaDescription
 			}
-			item := evaluateAdsenseItem(p.Title, p.Content, meta, len(p.Files), p.IsActive, "post", p.ID, countryCode)
+			item := evaluateAdsenseItem(p.Title, p.Content, meta, postFileCounts[p.ID], p.IsActive, "post", p.ID, countryCode)
+			updateAdsenseSummary(&globalSummary, item)
 			if levelFilter == "" || item.Level == levelFilter {
-				items = append(items, item)
+				rows = append(rows, adsenseReadinessRow{Item: item, CreatedAt: p.CreatedAt})
 			}
 		}
 	}
 
-	summary := adsenseReadinessSummary{Total: int64(len(items))}
-	for _, item := range items {
-		switch item.Level {
-		case "ready":
-			summary.Ready++
-		case "review":
-			summary.Review++
-		default:
-			summary.Weak++
-		}
-		if !item.ShouldIndex {
-			summary.NoIndex++
-		}
-		if item.ShouldShowAds {
-			summary.AdsEligible++
-		}
+	sort.SliceStable(rows, func(i, j int) bool {
+		return rows[i].CreatedAt.After(rows[j].CreatedAt)
+	})
+
+	filteredTotal := int64(len(rows))
+	start := pag.Offset
+	if start > len(rows) {
+		start = len(rows)
 	}
-	return utils.Success(c, "success", fiber.Map{"summary": summary, "items": items, "meta": fiber.Map{"page": pag.Page, "per_page": pag.PerPage}})
+	end := start + pag.PerPage
+	if end > len(rows) {
+		end = len(rows)
+	}
+
+	items := make([]adsenseReadinessItem, 0, end-start)
+	for _, row := range rows[start:end] {
+		items = append(items, row.Item)
+	}
+
+	meta := pag.BuildMeta(filteredTotal)
+	return utils.Success(c, "success", fiber.Map{
+		"summary": globalSummary,
+		"items":   items,
+		"meta": fiber.Map{
+			"current_page":   meta.CurrentPage,
+			"per_page":       meta.PerPage,
+			"total":          meta.Total,
+			"last_page":      meta.LastPage,
+			"from":           meta.From,
+			"to":             meta.To,
+			"filtered_total": filteredTotal,
+		},
+	})
 }

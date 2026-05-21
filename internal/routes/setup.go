@@ -42,7 +42,9 @@ func Setup(app *fiber.App) *Handlers {
 		middleware.RateLimitRule{Prefix: "/api/dashboard/files", Max: 60, Window: time.Minute},
 		middleware.RateLimitRule{Prefix: "/backend-api/dashboard/files", Max: 60, Window: time.Minute},
 	))
-	app.Use(fiberCompress.New())
+	app.Use(fiberCompress.New(fiberCompress.Config{
+		Level: fiberCompress.LevelBestSpeed,
+	}))
 	app.Use(etag.New())
 	app.Use(middleware.ResponseCache(2 * time.Minute))
 

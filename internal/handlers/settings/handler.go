@@ -73,13 +73,13 @@ var envKeyMap = map[string]string{
 	"google_client_secret": "GOOGLE_CLIENT_SECRET",
 	"google_redirect_uri":  "GOOGLE_REDIRECT_URI",
 	// Bounce mailbox settings
-	"mail_bounce_address":       "MAIL_BOUNCE_ADDRESS",
-	"bounce_processor_enabled":  "BOUNCE_PROCESSOR_ENABLED",
-	"bounce_imap_host":          "BOUNCE_IMAP_HOST",
-	"bounce_imap_port":          "BOUNCE_IMAP_PORT",
-	"bounce_imap_username":      "BOUNCE_IMAP_USERNAME",
-	"bounce_imap_password":      "BOUNCE_IMAP_PASSWORD",
-	"bounce_imap_tls":           "BOUNCE_IMAP_TLS",
+	"mail_bounce_address":      "MAIL_BOUNCE_ADDRESS",
+	"bounce_processor_enabled": "BOUNCE_PROCESSOR_ENABLED",
+	"bounce_imap_host":         "BOUNCE_IMAP_HOST",
+	"bounce_imap_port":         "BOUNCE_IMAP_PORT",
+	"bounce_imap_username":     "BOUNCE_IMAP_USERNAME",
+	"bounce_imap_password":     "BOUNCE_IMAP_PASSWORD",
+	"bounce_imap_tls":          "BOUNCE_IMAP_TLS",
 }
 
 // applyEnvAndConfigUpdates writes changed env-backed settings to .env and syncs in-memory configs.
@@ -585,7 +585,7 @@ func (h *Handler) Contact(c *fiber.Ctx) error {
 				"App\\Notifications\\ContactMessageReceived",
 				"رسالة تواصل جديدة",
 				fmt.Sprintf("رسالة جديدة من %s: %s", req.Name, req.Subject),
-				"/dashboard/contact-messages",
+				"/dashboard/messages?tab=contact",
 				[]string{"manage messages", "manage notifications"},
 			)
 		}()

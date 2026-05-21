@@ -47,12 +47,6 @@ func setupApp(t *testing.T) (*fiber.App, *MockFileRepository, string) {
 	t.Setenv("APP_URL", "http://localhost")
 	t.Setenv("FRONTEND_URL", "http://localhost:3000")
 
-	originalArticleGradeNameLookup := articleGradeNameLookup
-	articleGradeNameLookup = func(countryID database.CountryID, articleID uint) string {
-		return ""
-	}
-	t.Cleanup(func() { articleGradeNameLookup = originalArticleGradeNameLookup })
-
 	// Create a temp directory for uploads
 	tempDir := t.TempDir()
 

@@ -16,14 +16,13 @@ import (
 type MockPostRepository struct {
 	repositories.PostRepository // embed to satisfy interface
 
-	ListPaginatedFunc  func(countryID database.CountryID, filter *models.PostFilter, limit, offset int) ([]models.Post, int64, error)
-	FindByIDFunc       func(countryID database.CountryID, id uint64) (*models.Post, error)
-	ExistsBySlugFunc   func(countryID database.CountryID, slug string, excludeID uint64) bool
-	IncrementViewFunc  func(countryID database.CountryID, id uint64) error
-	CreateFunc         func(countryID database.CountryID, post *models.Post) error
-	UpdateFunc         func(countryID database.CountryID, post *models.Post) error
-	DeleteFunc         func(countryID database.CountryID, id uint64) error
-	UpdateKeywordsFunc func(countryID database.CountryID, postID uint64, keywordsStr string) error
+	ListPaginatedFunc func(countryID database.CountryID, filter *models.PostFilter, limit, offset int) ([]models.Post, int64, error)
+	FindByIDFunc      func(countryID database.CountryID, id uint64) (*models.Post, error)
+	ExistsBySlugFunc  func(countryID database.CountryID, slug string, excludeID uint64) bool
+	IncrementViewFunc func(countryID database.CountryID, id uint64) error
+	CreateFunc        func(countryID database.CountryID, post *models.Post) error
+	UpdateFunc        func(countryID database.CountryID, post *models.Post) error
+	DeleteFunc        func(countryID database.CountryID, id uint64) error
 }
 
 func (m *MockPostRepository) ListPaginated(countryID database.CountryID, filter *models.PostFilter, limit, offset int) ([]models.Post, int64, error) {
@@ -71,13 +70,6 @@ func (m *MockPostRepository) Update(countryID database.CountryID, post *models.P
 func (m *MockPostRepository) Delete(countryID database.CountryID, id uint64) error {
 	if m.DeleteFunc != nil {
 		return m.DeleteFunc(countryID, id)
-	}
-	return nil
-}
-
-func (m *MockPostRepository) UpdateKeywords(countryID database.CountryID, postID uint64, keywordsStr string) error {
-	if m.UpdateKeywordsFunc != nil {
-		return m.UpdateKeywordsFunc(countryID, postID, keywordsStr)
 	}
 	return nil
 }

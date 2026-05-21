@@ -44,6 +44,106 @@ type PolicyAuditFinding struct {
 func (PolicyAuditFinding) TableName() string { return "policy_audit_findings" }
 
 const (
+	ContentAIJobStatusQueued     = "queued"
+	ContentAIJobStatusRunning    = "running"
+	ContentAIJobStatusCancelling = "cancelling"
+	ContentAIJobStatusCancelled  = "cancelled"
+	ContentAIJobStatusCompleted  = "completed"
+	ContentAIJobStatusFailed     = "failed"
+
+	ContentAIJobItemStatusPending   = "pending"
+	ContentAIJobItemStatusRunning   = "running"
+	ContentAIJobItemStatusCompleted = "completed"
+	ContentAIJobItemStatusFailed    = "failed"
+	ContentAIJobItemStatusCancelled = "cancelled"
+)
+
+// ContentAIJob stores long-running content quality batch jobs durably.
+// Jobs are preview-first: they can create AI decisions and fix previews,
+// but they never apply generated content without human approval.
+type ContentAIJob struct {
+	ID              string     `gorm:"primaryKey;type:varchar(80)" json:"id"`
+	Status          string     `gorm:"type:varchar(30);not null;index" json:"status"`
+	Mode            string     `gorm:"type:varchar(40);not null;index" json:"mode"`
+	ModelStrategy   string     `gorm:"type:varchar(40);not null;index" json:"model_strategy"`
+	CountryCode     string     `gorm:"type:varchar(10);not null;default:'jo';index" json:"country_code"`
+	ContentType     string     `gorm:"type:varchar(30);not null;index" json:"content_type"`
+	Level           string     `gorm:"type:varchar(30);not null;index" json:"level"`
+	Query           string     `gorm:"type:varchar(500)" json:"q,omitempty"`
+	Source          string     `gorm:"type:varchar(40);not null;default:'adsense_readiness';index" json:"source"`
+	Preset          string     `gorm:"type:varchar(60);not null;default:'weak_first';index" json:"preset"`
+	Limit           int        `gorm:"not null;default:50" json:"limit"`
+	Concurrency     int        `gorm:"not null;default:2" json:"concurrency"`
+	TotalItems      int        `gorm:"not null;default:0" json:"total_items"`
+	ProcessedItems  int        `gorm:"not null;default:0" json:"processed_items"`
+	SuccessfulItems int        `gorm:"not null;default:0" json:"successful_items"`
+	FailedItems     int        `gorm:"not null;default:0" json:"failed_items"`
+	PendingItems    int        `gorm:"not null;default:0" json:"pending_items"`
+	Progress        int        `gorm:"not null;default:0" json:"progress"`
+	CancelRequested bool       `gorm:"not null;default:false" json:"cancel_requested"`
+	Error           string     `gorm:"type:text" json:"error,omitempty"`
+	CreatedByUserID *uint      `gorm:"index" json:"created_by_user_id,omitempty"`
+	CreatedAt       time.Time  `gorm:"index" json:"created_at"`
+	StartedAt       *time.Time `gorm:"index" json:"started_at,omitempty"`
+	FinishedAt      *time.Time `gorm:"index" json:"finished_at,omitempty"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+
+	Items []ContentAIJobItem `gorm:"foreignKey:JobID;references:ID;constraint:OnDelete:CASCADE" json:"items,omitempty"`
+}
+
+func (ContentAIJob) TableName() string { return "content_ai_jobs" }
+
+// ContentAIJobItem stores the durable status for one content item in a batch job.
+type ContentAIJobItem struct {
+	ID           uint       `gorm:"primaryKey" json:"id"`
+	JobID        string     `gorm:"type:varchar(80);not null;uniqueIndex:idx_content_ai_job_item_order,priority:1;index" json:"job_id"`
+	ItemIndex    int        `gorm:"not null;uniqueIndex:idx_content_ai_job_item_order,priority:2" json:"item_index"`
+	ContentType  string     `gorm:"type:varchar(30);not null;index:idx_content_ai_job_item_content,priority:1" json:"content_type"`
+	ContentID    uint       `gorm:"not null;index:idx_content_ai_job_item_content,priority:2" json:"content_id"`
+	CountryCode  string     `gorm:"type:varchar(10);not null;default:'jo';index" json:"country_code"`
+	Title        string     `gorm:"type:text" json:"title"`
+	URL          string     `gorm:"type:varchar(1000)" json:"url"`
+	Status       string     `gorm:"type:varchar(30);not null;index" json:"status"`
+	ScoreBefore  int        `gorm:"not null;default:0" json:"score_before"`
+	ScoreAfter   int        `gorm:"not null;default:0" json:"score_after,omitempty"`
+	DecisionID   *uint      `gorm:"index" json:"decision_id,omitempty"`
+	FixPreviewID *uint      `gorm:"index" json:"fix_preview_id,omitempty"`
+	Message      string     `gorm:"type:text" json:"message,omitempty"`
+	Error        string     `gorm:"type:text" json:"error,omitempty"`
+	StartedAt    *time.Time `gorm:"index" json:"started_at,omitempty"`
+	FinishedAt   *time.Time `gorm:"index" json:"finished_at,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+func (ContentAIJobItem) TableName() string { return "content_ai_job_items" }
+
+// ContentAIModelRun is prepared for cost and reliability tracking per model call.
+// The router can populate it in the next phase without changing the public API.
+type ContentAIModelRun struct {
+	ID               uint      `gorm:"primaryKey" json:"id"`
+	JobID            string    `gorm:"type:varchar(80);index" json:"job_id,omitempty"`
+	JobItemID        *uint     `gorm:"index" json:"job_item_id,omitempty"`
+	ContentType      string    `gorm:"type:varchar(30);index" json:"content_type,omitempty"`
+	ContentID        string    `gorm:"type:varchar(80);index" json:"content_id,omitempty"`
+	CountryCode      string    `gorm:"type:varchar(10);index" json:"country_code,omitempty"`
+	TaskType         string    `gorm:"type:varchar(60);not null;index" json:"task_type"`
+	ModelStrategy    string    `gorm:"type:varchar(40);index" json:"model_strategy,omitempty"`
+	Provider         string    `gorm:"type:varchar(60);index" json:"provider,omitempty"`
+	Model            string    `gorm:"type:varchar(180);not null;index" json:"model"`
+	Role             string    `gorm:"type:varchar(40);index" json:"role,omitempty"`
+	InputTokens      int       `gorm:"not null;default:0" json:"input_tokens"`
+	OutputTokens     int       `gorm:"not null;default:0" json:"output_tokens"`
+	EstimatedCostUSD float64   `gorm:"type:decimal(12,6);not null;default:0" json:"estimated_cost_usd"`
+	DurationMS       int64     `gorm:"not null;default:0" json:"duration_ms"`
+	Status           string    `gorm:"type:varchar(30);not null;index" json:"status"`
+	Error            string    `gorm:"type:text" json:"error,omitempty"`
+	CreatedAt        time.Time `gorm:"index" json:"created_at"`
+}
+
+func (ContentAIModelRun) TableName() string { return "content_ai_model_runs" }
+
+const (
 	AIDecisionApproved      = "approved"
 	AIDecisionNeedsFix      = "needs_fix"
 	AIDecisionRestrictedAds = "restricted_ads"

@@ -124,8 +124,8 @@ func (r *messageRepository) GetMessage(msgID uint64, userID uint) (*models.Messa
 
 func (r *messageRepository) MarkAsRead(msgID uint64, userID uint) error {
 	return database.DB().Exec(
-		"UPDATE messages SET `read` = 1 WHERE id = ? AND sender_id != ?",
-		msgID, userID,
+		"UPDATE messages SET `read` = 1 WHERE id = ? AND sender_id != ? AND conversation_id IN (SELECT id FROM conversations WHERE user1_id = ? OR user2_id = ?)",
+		msgID, userID, userID, userID,
 	).Error
 }
 

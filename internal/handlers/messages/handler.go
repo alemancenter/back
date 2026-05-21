@@ -116,7 +116,7 @@ func (h *Handler) Drafts(c *fiber.Ctx) error {
 
 type SendMessageRequest struct {
 	RecipientID uint   `json:"recipient_id" validate:"required"`
-	Subject     string `json:"subject"`
+	Subject     string `json:"subject" validate:"required,min=1,max=255"`
 	Body        string `json:"body" validate:"required,min=1"`
 }
 
@@ -149,9 +149,13 @@ func (h *Handler) Send(c *fiber.Ctx) error {
 		return utils.ValidationError(c, errs)
 	}
 
+	if req.RecipientID == user.ID {
+		return utils.BadRequest(c, "لا يمكن إرسال رسالة إلى نفس المستخدم")
+	}
+
 	msg, err := h.svc.SendMessage(user.ID, req.RecipientID, req.Subject, req.Body)
 	if err != nil {
-		return utils.InternalError(c, "فشل إرسال الرسالة")
+		return utils.BadRequest(c, "فشل إرسال الرسالة أو المستلم غير صحيح")
 	}
 
 	// Notify the recipient
@@ -161,9 +165,9 @@ func (h *Handler) Send(c *fiber.Ctx) error {
 			subject = "رسالة جديدة"
 		}
 		notifData, _ := json.Marshal(map[string]string{
-			"title":      fmt.Sprintf("رسالة من %s", user.Name),
+			"title":      fmt.Sprintf("رسالة جديدة من %s", user.Name),
 			"message":    subject,
-			"action_url": "/dashboard/messages",
+			"action_url": "/dashboard/messages?tab=inbox",
 		})
 		_, _ = h.notification.Create(
 			"App\\Notifications\\NewMessage",
@@ -176,9 +180,9 @@ func (h *Handler) Send(c *fiber.Ctx) error {
 }
 
 type SaveDraftRequest struct {
-	RecipientID uint   `json:"recipient_id"`
+	RecipientID uint   `json:"recipient_id" validate:"required"`
 	Subject     string `json:"subject"`
-	Body        string `json:"body" validate:"required"`
+	Body        string `json:"body"`
 }
 
 // Draft saves a draft message.
@@ -205,10 +209,16 @@ func (h *Handler) Draft(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return utils.BadRequest(c, "بيانات غير صحيحة")
 	}
+	if errs := utils.Validate(req); errs != nil {
+		return utils.ValidationError(c, errs)
+	}
+	if req.RecipientID == user.ID {
+		return utils.BadRequest(c, "لا يمكن حفظ مسودة إلى نفس المستخدم")
+	}
 
 	msg, err := h.svc.SaveDraft(user.ID, req.RecipientID, req.Subject, req.Body)
 	if err != nil {
-		return utils.InternalError(c, "فشل حفظ المسودة")
+		return utils.BadRequest(c, "فشل حفظ المسودة أو المستلم غير صحيح")
 	}
 
 	return utils.Created(c, "تم حفظ المسودة بنجاح", msg)

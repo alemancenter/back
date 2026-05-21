@@ -11,6 +11,7 @@ type FileRepository interface {
 	FindByID(countryID database.CountryID, id uint64) (*models.File, error)
 	GetFileWithParent(countryID database.CountryID, id uint64) (*models.File, interface{}, string, error)
 	IncrementView(countryID database.CountryID, id uint64) error
+	IncrementDownload(countryID database.CountryID, id uint64) error
 	Create(countryID database.CountryID, file *models.File) error
 	Update(countryID database.CountryID, file *models.File) error
 	Delete(countryID database.CountryID, file *models.File) error
@@ -85,13 +86,38 @@ func (r *fileRepository) GetFileWithParent(countryID database.CountryID, id uint
 
 func (r *fileRepository) IncrementView(countryID database.CountryID, id uint64) error {
 	db := r.GetDB(countryID)
-	return db.Model(&models.File{}).Where("id = ?", id).
-		UpdateColumn("view_count", gorm.Expr("view_count + 1")).Error
+	return incrementExistingFileCounterColumns(db, id, []string{"view_count", "views_count"})
+}
+
+func (r *fileRepository) IncrementDownload(countryID database.CountryID, id uint64) error {
+	db := r.GetDB(countryID)
+	return incrementExistingFileCounterColumns(db, id, []string{"download_count"})
+}
+
+func incrementExistingFileCounterColumns(db *gorm.DB, id uint64, columns []string) error {
+	if db == nil {
+		return nil
+	}
+	updated := false
+	for _, col := range columns {
+		if !db.Migrator().HasColumn(&models.File{}, col) {
+			continue
+		}
+		if err := db.Exec("UPDATE files SET "+col+" = LEAST(COALESCE("+col+", 0) + 1, 2147483647) WHERE id = ?", id).Error; err != nil {
+			return err
+		}
+		updated = true
+	}
+	if !updated {
+		// Old installations may not have counters yet. Keep the request successful; the SQL migration can add them.
+		return nil
+	}
+	return nil
 }
 
 func (r *fileRepository) Create(countryID database.CountryID, file *models.File) error {
 	db := r.GetDB(countryID)
-	return db.Omit("ViewCount").Create(file).Error
+	return db.Omit("ViewCount", "ViewsCount", "DownloadCount").Create(file).Error
 }
 
 func (r *fileRepository) Update(countryID database.CountryID, file *models.File) error {

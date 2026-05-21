@@ -6,7 +6,7 @@ import (
 	"unicode"
 
 	"github.com/alemancenter/fiber-api/internal/database"
-	_ "github.com/alemancenter/fiber-api/internal/models"
+	"github.com/alemancenter/fiber-api/internal/models"
 	"github.com/alemancenter/fiber-api/internal/services"
 	"github.com/alemancenter/fiber-api/internal/utils"
 	"github.com/gofiber/fiber/v2"
@@ -67,6 +67,67 @@ func New(svc *services.FileService) *Handler {
 	return &Handler{svc: svc}
 }
 
+type dashboardFileResponse struct {
+	ID            uint            `json:"id"`
+	ArticleID     *uint           `json:"article_id,omitempty"`
+	PostID        *uint           `json:"post_id,omitempty"`
+	FilePath      string          `json:"file_path"`
+	FileType      string          `json:"file_type"`
+	FileCategory  *string         `json:"file_category,omitempty"`
+	FileName      string          `json:"file_name"`
+	FileSize      int64           `json:"file_size"`
+	MimeType      string          `json:"mime_type"`
+	ViewCount     int             `json:"view_count"`
+	ViewsCount    int             `json:"views_count"`
+	Views         int             `json:"views"`
+	DownloadCount int             `json:"download_count"`
+	CreatedAt     interface{}     `json:"created_at"`
+	UpdatedAt     interface{}     `json:"updated_at"`
+	Article       *models.Article `json:"article,omitempty"`
+	Post          *models.Post    `json:"post,omitempty"`
+}
+
+func newDashboardFileResponse(file models.File) dashboardFileResponse {
+	views := file.ViewCount
+	if file.ViewsCount > views {
+		views = file.ViewsCount
+	}
+	if views < 0 {
+		views = 0
+	}
+	downloads := file.DownloadCount
+	if downloads < 0 {
+		downloads = 0
+	}
+	return dashboardFileResponse{
+		ID:            file.ID,
+		ArticleID:     file.ArticleID,
+		PostID:        file.PostID,
+		FilePath:      file.FilePath,
+		FileType:      file.FileType,
+		FileCategory:  file.FileCategory,
+		FileName:      file.FileName,
+		FileSize:      file.FileSize,
+		MimeType:      file.MimeType,
+		ViewCount:     views,
+		ViewsCount:    views,
+		Views:         views,
+		DownloadCount: downloads,
+		CreatedAt:     file.CreatedAt,
+		UpdatedAt:     file.UpdatedAt,
+		Article:       file.Article,
+		Post:          file.Post,
+	}
+}
+
+func newDashboardFileResponses(files []models.File) []dashboardFileResponse {
+	items := make([]dashboardFileResponse, 0, len(files))
+	for _, file := range files {
+		items = append(items, newDashboardFileResponse(file))
+	}
+	return items
+}
+
 // Info returns file metadata with its parent article or post.
 // @Summary Get File Info
 // @Description Returns metadata about a file along with its parent article or post
@@ -121,7 +182,18 @@ func (h *Handler) IncrementView(c *fiber.Ctx) error {
 		return utils.InternalError(c)
 	}
 
-	return utils.Success(c, "success", nil)
+	file, err := h.svc.FindByID(countryID, id)
+	if err != nil || file == nil {
+		return utils.Success(c, "success", fiber.Map{"id": id})
+	}
+	resp := newDashboardFileResponse(*file)
+	return utils.Success(c, "تم تسجيل مشاهدة الملف", fiber.Map{
+		"id":             resp.ID,
+		"view_count":     resp.ViewCount,
+		"views_count":    resp.ViewsCount,
+		"views":          resp.Views,
+		"download_count": resp.DownloadCount,
+	})
 }
 
 // UploadImage handles public image upload
@@ -211,7 +283,7 @@ func (h *Handler) DashboardList(c *fiber.Ctx) error {
 		return utils.InternalError(c)
 	}
 
-	return utils.Paginated(c, "success", fileList, pag.BuildMeta(total))
+	return utils.Paginated(c, "success", newDashboardFileResponses(fileList), pag.BuildMeta(total))
 }
 
 // DashboardShow returns a single file (flat, no parent join)
@@ -241,7 +313,7 @@ func (h *Handler) DashboardShow(c *fiber.Ctx) error {
 		}
 		return utils.InternalError(c)
 	}
-	return utils.Success(c, "success", file)
+	return utils.Success(c, "success", newDashboardFileResponse(*file))
 }
 
 // DashboardUpload uploads a file and creates a record
@@ -335,7 +407,7 @@ func (h *Handler) DashboardUpload(c *fiber.Ctx) error {
 		return utils.InternalError(c, "فشل حفظ بيانات الملف")
 	}
 
-	return utils.Created(c, "تم رفع الملف بنجاح", file)
+	return utils.Created(c, "تم رفع الملف بنجاح", newDashboardFileResponse(*file))
 }
 
 // DashboardUpdate updates file metadata
@@ -375,7 +447,7 @@ func (h *Handler) DashboardUpdate(c *fiber.Ctx) error {
 		return utils.InternalError(c, "فشل تحديث الملف")
 	}
 
-	return utils.Success(c, "تم تحديث الملف بنجاح", file)
+	return utils.Success(c, "تم تحديث الملف بنجاح", newDashboardFileResponse(*file))
 }
 
 // DashboardDelete deletes a file
@@ -442,6 +514,10 @@ func (h *Handler) DashboardDownload(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.InternalError(c, "مسار الملف غير صالح")
 	}
+
+	go func() {
+		_ = h.svc.IncrementDownloadCount(countryID, id)
+	}()
 
 	c.Set("Content-Disposition", "attachment; filename=\""+file.FileName+"\"")
 	c.Set("Content-Type", file.MimeType)

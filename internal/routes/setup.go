@@ -25,6 +25,14 @@ func Setup(app *fiber.App) *Handlers {
 	app.Use(middleware.RequestLogger())
 	app.Use(middleware.AuthRateLimit())
 	app.Use(middleware.PrefixRateLimit(
+		// Batch job progress is intentionally polled by the dashboard while long AI jobs run.
+		// Keep GET polling permissive, while POST job creation remains limited.
+		middleware.RateLimitRule{Prefix: "/api/dashboard/content-audit/ai/batch-jobs", Methods: []string{fiber.MethodGet}, Max: 900, Window: 5 * time.Minute},
+		middleware.RateLimitRule{Prefix: "/backend-api/dashboard/content-audit/ai/batch-jobs", Methods: []string{fiber.MethodGet}, Max: 900, Window: 5 * time.Minute},
+		middleware.RateLimitRule{Prefix: "/api/dashboard/content-audit/ai/batch-jobs/", Methods: []string{fiber.MethodPost}, Max: 120, Window: 5 * time.Minute},
+		middleware.RateLimitRule{Prefix: "/backend-api/dashboard/content-audit/ai/batch-jobs/", Methods: []string{fiber.MethodPost}, Max: 120, Window: 5 * time.Minute},
+		middleware.RateLimitRule{Prefix: "/api/dashboard/content-audit/ai/batch-jobs", Methods: []string{fiber.MethodPost}, Max: 20, Window: 5 * time.Minute},
+		middleware.RateLimitRule{Prefix: "/backend-api/dashboard/content-audit/ai/batch-jobs", Methods: []string{fiber.MethodPost}, Max: 20, Window: 5 * time.Minute},
 		middleware.RateLimitRule{Prefix: "/api/dashboard/content-audit/ai/", Max: 60, Window: 5 * time.Minute},
 		middleware.RateLimitRule{Prefix: "/backend-api/dashboard/content-audit/ai/", Max: 60, Window: 5 * time.Minute},
 		middleware.RateLimitRule{Prefix: "/api/ai/status/", Max: 300, Window: 5 * time.Minute},

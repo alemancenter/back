@@ -54,6 +54,26 @@ func NewPostService(repo repositories.PostRepository, cache CacheService) PostSe
 	return &postService{repo: repo, cache: cache}
 }
 
+func applyPendingPostViews(countryID database.CountryID, posts []models.Post) []models.Post {
+	if len(posts) == 0 {
+		return posts
+	}
+	ids := make([]uint64, 0, len(posts))
+	for _, post := range posts {
+		ids = append(ids, uint64(post.ID))
+	}
+	pending := ViewCounter.PendingViews(countryID, "posts", ids)
+	if len(pending) == 0 {
+		return posts
+	}
+	for i := range posts {
+		if extra := pending[uint64(posts[i].ID)]; extra > 0 {
+			posts[i].Views += int(extra)
+		}
+	}
+	return posts
+}
+
 func (s *postService) List(countryID database.CountryID, filter *models.PostFilter, limit, offset int) ([]models.Post, int64, error) {
 	cacheKey := utils.CacheKey("posts:list", countryID, limit, offset, filter)
 
@@ -63,7 +83,7 @@ func (s *postService) List(countryID database.CountryID, filter *models.PostFilt
 	}
 
 	if s.cache != nil && s.cache.Get(cacheKey, &cached) {
-		return cached.Posts, cached.Total, nil
+		return applyPendingPostViews(countryID, cached.Posts), cached.Total, nil
 	}
 
 	posts, total, err := s.repo.ListPaginated(countryID, filter, limit, offset)
@@ -81,7 +101,7 @@ func (s *postService) List(countryID database.CountryID, filter *models.PostFilt
 		}, 5*time.Minute)
 	}
 
-	return posts, total, nil
+	return applyPendingPostViews(countryID, posts), total, nil
 }
 
 func (s *postService) GetByID(countryID database.CountryID, id uint64) (*models.Post, error) {

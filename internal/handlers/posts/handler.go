@@ -88,7 +88,7 @@ func (h *Handler) List(c *fiber.Ctx) error {
 		return utils.InternalError(c)
 	}
 
-	return utils.Paginated(c, "success", postList, pag.BuildMeta(total))
+	return utils.Paginated(c, "success", newDashboardPostResponses(postList), pag.BuildMeta(total))
 }
 
 // Show returns a single post
@@ -167,6 +167,33 @@ func (h *Handler) IncrementView(c *fiber.Ctx) error {
 // @Param request body services.CreatePostRequest true "Post data"
 // @Success 201 {object} utils.APIResponse{data=models.Post}
 // @Failure 400 {object} utils.APIResponse
+
+type dashboardPostResponse struct {
+	models.Post
+	ViewsCount int `json:"views_count"`
+	ViewCount  int `json:"view_count"`
+}
+
+func newDashboardPostResponse(post models.Post) dashboardPostResponse {
+	views := post.Views
+	if views < 0 {
+		views = 0
+	}
+	return dashboardPostResponse{
+		Post:       post,
+		ViewsCount: views,
+		ViewCount:  views,
+	}
+}
+
+func newDashboardPostResponses(posts []models.Post) []dashboardPostResponse {
+	items := make([]dashboardPostResponse, 0, len(posts))
+	for _, post := range posts {
+		items = append(items, newDashboardPostResponse(post))
+	}
+	return items
+}
+
 // @Failure 422 {object} utils.APIResponse
 // @Failure 500 {object} utils.APIResponse
 // DashboardList returns all posts for admins (including drafts/inactive).
@@ -202,7 +229,7 @@ func (h *Handler) DashboardList(c *fiber.Ctx) error {
 		return utils.InternalError(c)
 	}
 
-	return utils.Paginated(c, "success", postList, pag.BuildMeta(total))
+	return utils.Paginated(c, "success", newDashboardPostResponses(postList), pag.BuildMeta(total))
 }
 
 // @Router /dashboard/posts [post]

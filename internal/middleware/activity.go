@@ -16,7 +16,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// noTrackPrefixes lists high-traffic public endpoints excluded from visitor tracking.
+// noTrackPrefixes lists high-traffic/internal endpoints excluded from visitor tracking.
+// Dashboard/API polling and AI batch endpoints are intentionally excluded to keep
+// visitor analytics focused on real public traffic and to reduce DB write pressure.
 var noTrackPrefixes = []string{
 	"/api/front/settings",
 	"/api/home",
@@ -25,9 +27,32 @@ var noTrackPrefixes = []string{
 	"/api/categories",
 	"/api/school-classes",
 	"/api/filter",
+	"/api/dashboard",
+	"/api/auth",
+	"/api/download",
+	"/api/notifications",
+	"/backend-api/dashboard",
+	"/backend-api/auth",
+	"/backend-api/notifications",
+	"/backend-api/content-audit",
 }
 
 func isNoTrack(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return true
+	}
+
+	// Do not track static/runtime assets or internal health checks as visitors.
+	if strings.HasPrefix(path, "/_next/") ||
+		strings.HasPrefix(path, "/assets/") ||
+		strings.HasPrefix(path, "/fonts/") ||
+		strings.HasPrefix(path, "/favicon") ||
+		strings.HasPrefix(path, "/health") ||
+		strings.HasPrefix(path, "/ping") {
+		return true
+	}
+
 	for _, prefix := range noTrackPrefixes {
 		if path == prefix || strings.HasPrefix(path, prefix+"/") {
 			return true

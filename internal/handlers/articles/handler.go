@@ -82,7 +82,7 @@ func (h *Handler) List(c *fiber.Ctx) error {
 		return utils.InternalError(c)
 	}
 
-	return utils.Paginated(c, "success", articles, pag.BuildMeta(total))
+	return utils.Paginated(c, "success", newDashboardArticleResponses(articles), pag.BuildMeta(total))
 }
 
 // Show returns a single article
@@ -142,7 +142,7 @@ func (h *Handler) ByClass(c *fiber.Ctx) error {
 		return utils.InternalError(c)
 	}
 
-	return utils.Paginated(c, "success", articles, pag.BuildMeta(total))
+	return utils.Paginated(c, "success", newDashboardArticleResponses(articles), pag.BuildMeta(total))
 }
 
 // ByKeyword returns articles filtered by keyword
@@ -170,7 +170,7 @@ func (h *Handler) ByKeyword(c *fiber.Ctx) error {
 		return utils.InternalError(c)
 	}
 
-	return utils.Paginated(c, "success", articles, pag.BuildMeta(total))
+	return utils.Paginated(c, "success", newDashboardArticleResponses(articles), pag.BuildMeta(total))
 }
 
 // GetDownloadToken returns a short-lived signed token for a file download.
@@ -267,6 +267,34 @@ func (h *Handler) DownloadFile(c *fiber.Ctx) error {
 
 // ------- Dashboard Article Handlers -------
 
+type dashboardArticleResponse struct {
+	models.Article
+	Views      int `json:"views"`
+	ViewsCount int `json:"views_count"`
+	ViewCount  int `json:"view_count"`
+}
+
+func newDashboardArticleResponse(article models.Article) dashboardArticleResponse {
+	views := article.VisitCount
+	if views < 0 {
+		views = 0
+	}
+	return dashboardArticleResponse{
+		Article:    article,
+		Views:      views,
+		ViewsCount: views,
+		ViewCount:  views,
+	}
+}
+
+func newDashboardArticleResponses(articles []models.Article) []dashboardArticleResponse {
+	items := make([]dashboardArticleResponse, 0, len(articles))
+	for _, article := range articles {
+		items = append(items, newDashboardArticleResponse(article))
+	}
+	return items
+}
+
 // DashboardList returns all articles for dashboard management
 // @Summary List Articles (Dashboard)
 // @Description Returns a paginated list of all articles for dashboard management
@@ -306,7 +334,7 @@ func (h *Handler) DashboardList(c *fiber.Ctx) error {
 		return utils.InternalError(c)
 	}
 
-	return utils.Paginated(c, "success", articles, pag.BuildMeta(total))
+	return utils.Paginated(c, "success", newDashboardArticleResponses(articles), pag.BuildMeta(total))
 }
 
 // DashboardCreateData returns metadata needed by the create article form.

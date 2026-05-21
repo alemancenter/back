@@ -86,18 +86,21 @@ func (Keyword) TableName() string { return "keywords" }
 
 // File represents an attached document/file
 type File struct {
-	ID           uint      `gorm:"primaryKey" json:"id"`
-	ArticleID    *uint     `gorm:"index" json:"article_id,omitempty"`
-	PostID       *uint     `gorm:"index" json:"post_id,omitempty"`
-	FilePath     string    `gorm:"type:varchar(500);not null" json:"file_path"`
-	FileType     string    `gorm:"type:varchar(50)" json:"file_type"`
-	FileCategory *string   `gorm:"type:varchar(100)" json:"file_category,omitempty"`
-	FileName     string    `gorm:"type:varchar(255)" json:"file_name"`
-	FileSize     int64     `json:"file_size"`
-	MimeType     string    `gorm:"type:varchar(100)" json:"mime_type"`
-	ViewCount    int       `gorm:"column:views_count;default:0" json:"view_count"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID           uint    `gorm:"primaryKey" json:"id"`
+	ArticleID    *uint   `gorm:"index" json:"article_id,omitempty"`
+	PostID       *uint   `gorm:"index" json:"post_id,omitempty"`
+	FilePath     string  `gorm:"type:varchar(500);not null" json:"file_path"`
+	FileType     string  `gorm:"type:varchar(50)" json:"file_type"`
+	FileCategory *string `gorm:"type:varchar(100)" json:"file_category,omitempty"`
+	FileName     string  `gorm:"type:varchar(255)" json:"file_name"`
+	FileSize     int64   `json:"file_size"`
+	MimeType     string  `gorm:"type:varchar(100)" json:"mime_type"`
+	// ViewCount is the modern file view counter column. Some legacy databases still use views_count.
+	ViewCount     int       `gorm:"column:view_count;default:0" json:"view_count"`
+	ViewsCount    int       `gorm:"column:views_count;default:0" json:"views_count"`
+	DownloadCount int       `gorm:"column:download_count;default:0" json:"download_count"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 
 	Article *Article `gorm:"foreignKey:ArticleID" json:"article,omitempty"`
 	Post    *Post    `gorm:"foreignKey:PostID" json:"post,omitempty"`
@@ -178,14 +181,14 @@ func (Setting) TableName() string { return "settings" }
 
 // Notification represents a user notification
 type Notification struct {
-	ID             string     `gorm:"type:char(36);primaryKey" json:"id"`
-	Type           string     `gorm:"type:varchar(255);not null" json:"type"`
-	NotifiableType string     `gorm:"type:varchar(255);not null" json:"-"`
-	NotifiableID   uint       `gorm:"not null" json:"notifiable_id"`
+	ID             string          `gorm:"type:char(36);primaryKey" json:"id"`
+	Type           string          `gorm:"type:varchar(255);not null" json:"type"`
+	NotifiableType string          `gorm:"type:varchar(255);not null" json:"-"`
+	NotifiableID   uint            `gorm:"not null" json:"notifiable_id"`
 	Data           json.RawMessage `gorm:"type:json" json:"data"`
-	ReadAt         *time.Time `json:"read_at,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ReadAt         *time.Time      `json:"read_at,omitempty"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
 }
 
 func (Notification) TableName() string { return "notifications" }

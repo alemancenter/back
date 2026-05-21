@@ -200,6 +200,7 @@ func (h *Handler) CreateFixPreview(c *fiber.Ctx) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 360*time.Second)
 	defer cancel()
+	ctx = auditservice.WithAIModelStrategy(ctx, req.ModelStrategy)
 	preview, err := h.svc.CreateFixPreview(ctx, req.DecisionID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

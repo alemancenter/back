@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/alemancenter/fiber-api/internal/database"
+	"github.com/alemancenter/fiber-api/internal/models"
 	"github.com/alemancenter/fiber-api/pkg/logger"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -25,8 +26,7 @@ var ViewCounter = &viewCounterService{}
 
 func (s *viewCounterService) increment(countryID database.CountryID, entityType string, id uint64) error {
 	ctx := context.Background()
-	countryCode := database.CountryCode(countryID)
-	key := fmt.Sprintf("views:sync:%s:%s", countryCode, entityType)
+	key := viewSyncKey(countryID, entityType)
 	field := strconv.FormatUint(id, 10)
 
 	_, err := database.Redis().Default().HIncrBy(ctx, key, field, 1).Result()
@@ -42,11 +42,100 @@ func (s *viewCounterService) IncrementArticleView(countryID database.CountryID, 
 }
 
 func (s *viewCounterService) IncrementFileView(countryID database.CountryID, id uint64) error {
-	return s.increment(countryID, "files", id)
+	// File counters are needed immediately in dashboard and older installations use views_count.
+	// Write directly to DB instead of relying only on the Redis sync worker.
+	return incrementFileCounterColumns(countryID, id, []string{"view_count", "views_count"}, 1)
+}
+
+func IncrementFileDownload(countryID database.CountryID, id uint64) error {
+	return incrementFileCounterColumns(countryID, id, []string{"download_count"}, 1)
+}
+
+func incrementFileCounterColumns(countryID database.CountryID, id uint64, columns []string, amount int64) error {
+	db := database.DBForCountry(countryID)
+	if db == nil {
+		return nil
+	}
+	updated := false
+	for _, col := range columns {
+		if !db.Migrator().HasColumn(&models.File{}, col) {
+			continue
+		}
+		if err := db.Exec("UPDATE files SET "+col+" = LEAST(COALESCE("+col+", 0) + ?, 2147483647) WHERE id = ?", amount, id).Error; err != nil {
+			return err
+		}
+		updated = true
+	}
+	if !updated {
+		logger.Warn("No file counter columns available", zap.Uint64("id", id))
+	}
+	return nil
 }
 
 func (s *viewCounterService) IncrementPostView(countryID database.CountryID, id uint64) error {
 	return s.increment(countryID, "posts", id)
+}
+
+func viewSyncKey(countryID database.CountryID, entityType string) string {
+	countryCode := database.CountryCode(countryID)
+	return fmt.Sprintf("views:sync:%s:%s", countryCode, entityType)
+}
+
+func (s *viewCounterService) PendingViews(countryID database.CountryID, entityType string, ids []uint64) map[uint64]int64 {
+	result := make(map[uint64]int64, len(ids))
+	if len(ids) == 0 {
+		return result
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 750*time.Millisecond)
+	defer cancel()
+
+	redisClient := database.Redis().Default()
+	key := viewSyncKey(countryID, entityType)
+	fields := make([]string, 0, len(ids))
+	for _, id := range ids {
+		fields = append(fields, strconv.FormatUint(id, 10))
+	}
+
+	values, err := redisClient.HMGet(ctx, key, fields...).Result()
+	if err != nil {
+		logger.Warn("Failed to read pending view counts from Redis", zap.Error(err), zap.String("key", key))
+		return result
+	}
+
+	for i, raw := range values {
+		if raw == nil {
+			continue
+		}
+		count, err := strconv.ParseInt(fmt.Sprint(raw), 10, 64)
+		if err != nil || count <= 0 {
+			continue
+		}
+		result[ids[i]] = count
+	}
+	return result
+}
+
+func (s *viewCounterService) PendingTotalViews(countryID database.CountryID, entityType string) int64 {
+	ctx, cancel := context.WithTimeout(context.Background(), 750*time.Millisecond)
+	defer cancel()
+
+	redisClient := database.Redis().Default()
+	key := viewSyncKey(countryID, entityType)
+	views, err := redisClient.HGetAll(ctx, key).Result()
+	if err != nil {
+		logger.Warn("Failed to read pending total view counts from Redis", zap.Error(err), zap.String("key", key))
+		return 0
+	}
+
+	var total int64
+	for _, countStr := range views {
+		count, err := strconv.ParseInt(countStr, 10, 64)
+		if err == nil && count > 0 {
+			total += count
+		}
+	}
+	return total
 }
 
 // StartViewSyncWorker starts a background worker that syncs Redis views to MySQL.
@@ -122,7 +211,7 @@ func syncViewsToDB() {
 			case "articles":
 				updateErr = db.Exec("UPDATE articles SET visit_count = LEAST(visit_count + ?, 2147483647) WHERE id = ?", count, id).Error
 			case "files":
-				updateErr = db.Exec("UPDATE files SET view_count = LEAST(view_count + ?, 2147483647) WHERE id = ?", count, id).Error
+				updateErr = incrementFileCounterColumns(countryID, id, []string{"view_count", "views_count"}, count)
 			case "posts":
 				updateErr = db.Exec("UPDATE posts SET views = LEAST(views + ?, 2147483647) WHERE id = ?", count, id).Error
 			}

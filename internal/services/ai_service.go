@@ -14,6 +14,9 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/alemancenter/fiber-api/internal/database"
+	"github.com/alemancenter/fiber-api/internal/models"
 )
 
 const (
@@ -81,13 +84,17 @@ type AIService interface {
 }
 
 type ContentIntelligenceRequest struct {
-	Task        string `json:"task"`
-	ContentType string `json:"content_type"`
-	Title       string `json:"title"`
-	Content     string `json:"content"`
-	PlainText   string `json:"plain_text"`
-	URL         string `json:"url"`
-	Language    string `json:"language"`
+	Task          string `json:"task"`
+	ModelStrategy string `json:"model_strategy,omitempty"`
+	ContentType   string `json:"content_type"`
+	ContentID     string `json:"content_id,omitempty"`
+	CountryCode   string `json:"country_code,omitempty"`
+	Title         string `json:"title"`
+	Content       string `json:"content"`
+	PlainText     string `json:"plain_text"`
+	URL           string `json:"url"`
+	Language      string `json:"language"`
+	JobID         string `json:"job_id,omitempty"`
 }
 
 type ContentIntelligenceIssue struct {
@@ -125,6 +132,8 @@ type ContentIntelligenceResponse struct {
 	PromptVersion    string                          `json:"prompt_version"`
 	Tokens           int                             `json:"tokens"`
 	ProcessingTimeMS int64                           `json:"processing_time_ms"`
+	ModelStrategy    string                          `json:"model_strategy,omitempty"`
+	ModelRole        string                          `json:"model_role,omitempty"`
 }
 
 type aiService struct {
@@ -132,6 +141,7 @@ type aiService struct {
 	baseURL        string
 	model          string
 	fallbackModels []string
+	modelRouter    aiModelRouter
 	httpClient     *http.Client
 }
 
@@ -150,12 +160,14 @@ func NewAIService(apiKey string) AIService {
 		fallbackModels = append([]string(nil), defaultAIFallbackModels...)
 	}
 	fallbackModels = uniqueFallbackModels(model, fallbackModels)
+	modelRouter := newAIModelRouter(model, fallbackModels)
 
 	return &aiService{
 		apiKey:         strings.TrimSpace(apiKey),
 		baseURL:        baseURL,
 		model:          model,
 		fallbackModels: fallbackModels,
+		modelRouter:    modelRouter,
 		httpClient: &http.Client{
 			Timeout: AIRequestTimeout + 5*time.Second,
 		},
@@ -234,6 +246,7 @@ func (s *aiService) RunContentIntelligence(ctx context.Context, req ContentIntel
 	if req.Task == "" {
 		req.Task = "audit_content"
 	}
+	req.ModelStrategy = normalizeAIModelStrategy(req.ModelStrategy)
 	if req.ContentType != "post" {
 		req.ContentType = "article"
 	}
@@ -244,13 +257,129 @@ func (s *aiService) RunContentIntelligence(ctx context.Context, req ContentIntel
 	return s.runContentIntelligenceWithFallback(ctx, req, 0)
 }
 
+type aiCompletionUsage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
+func parseAIUsage(bodyBytes []byte) aiCompletionUsage {
+	var data struct {
+		Usage aiCompletionUsage `json:"usage"`
+	}
+	if err := json.Unmarshal(bodyBytes, &data); err != nil {
+		return aiCompletionUsage{}
+	}
+	return data.Usage
+}
+
+func estimateAITokens(text string) int {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return 0
+	}
+	// Conservative cross-language estimate. Arabic text is often tokenized denser
+	// than latin text, so keep a minimum of one token per two runes for short text.
+	runes := len([]rune(text))
+	byChars := (len(text) + 3) / 4
+	byRunes := (runes + 1) / 2
+	if byRunes > byChars {
+		return byRunes
+	}
+	return byChars
+}
+
+func aiModelCostPerMillion(model string) (float64, float64) {
+	m := strings.ToLower(model)
+	switch {
+	case strings.Contains(m, "lfm2-24b"):
+		return 0.03, 0.12
+	case strings.Contains(m, "gpt-oss-20b"):
+		return 0.05, 0.20
+	case strings.Contains(m, "gemma-3n"):
+		return 0.06, 0.12
+	case strings.Contains(m, "qwen3.5-9b") || strings.Contains(m, "qwen3-9b"):
+		return 0.10, 0.15
+	case strings.Contains(m, "rnj-1"):
+		return 0.15, 0.15
+	case strings.Contains(m, "gpt-oss-120b"):
+		return 0.15, 0.60
+	case strings.Contains(m, "gemma-4-31b"):
+		return 0.20, 0.50
+	case strings.Contains(m, "qwen3-235b"):
+		return 0.20, 0.60
+	case strings.Contains(m, "minimax"):
+		return 0.30, 1.20
+	case strings.Contains(m, "kimi-k2.5") || strings.Contains(m, "kimi/kimi-k2.5"):
+		return 0.50, 2.80
+	case strings.Contains(m, "qwen3.5-397b") || strings.Contains(m, "397b"):
+		return 0.60, 3.60
+	case strings.Contains(m, "llama-3.3-70b"):
+		return 0.88, 0.88
+	case strings.Contains(m, "glm-5.1"):
+		return 1.40, 4.40
+	case strings.Contains(m, "glm-5"):
+		return 1.00, 3.20
+	case strings.Contains(m, "deepseek"):
+		return 2.10, 4.40
+	default:
+		return 0, 0
+	}
+}
+
+func estimateAIModelCostUSD(model string, inputTokens, outputTokens int) float64 {
+	inputPerMillion, outputPerMillion := aiModelCostPerMillion(model)
+	if inputPerMillion == 0 && outputPerMillion == 0 {
+		return 0
+	}
+	return (float64(inputTokens)/1000000.0)*inputPerMillion + (float64(outputTokens)/1000000.0)*outputPerMillion
+}
+
+func recordContentAIModelRun(req ContentIntelligenceRequest, modelName, role, status, errMessage string, inputTokens, outputTokens int, durationMS int64) {
+	if database.DB() == nil {
+		return
+	}
+	if inputTokens <= 0 {
+		inputTokens = estimateAITokens(req.Title + "\n" + req.PlainText + "\n" + req.Content)
+	}
+	cost := estimateAIModelCostUSD(modelName, inputTokens, outputTokens)
+	run := models.ContentAIModelRun{
+		JobID:            strings.TrimSpace(req.JobID),
+		ContentType:      strings.TrimSpace(req.ContentType),
+		ContentID:        strings.TrimSpace(req.ContentID),
+		CountryCode:      strings.TrimSpace(req.CountryCode),
+		TaskType:         strings.TrimSpace(req.Task),
+		ModelStrategy:    strings.TrimSpace(req.ModelStrategy),
+		Provider:         "together_ai",
+		Model:            modelName,
+		Role:             role,
+		InputTokens:      inputTokens,
+		OutputTokens:     outputTokens,
+		EstimatedCostUSD: cost,
+		DurationMS:       durationMS,
+		Status:           status,
+		Error:            truncate(errMessage, 1000),
+	}
+	if run.TaskType == "" {
+		run.TaskType = "audit_content"
+	}
+	if run.ModelStrategy == "" {
+		run.ModelStrategy = "balanced"
+	}
+	if err := database.DB().Create(&run).Error; err != nil {
+		log.Printf("Content AI model run logging failed | model=%s | err=%v", modelName, err)
+	}
+}
+
 func (s *aiService) runContentIntelligenceWithFallback(ctx context.Context, req ContentIntelligenceRequest, attempt int) (*ContentIntelligenceResponse, error) {
 	started := time.Now()
-	currentModel, err := s.resolveModel(attempt)
+	currentModel, modelRole, err := s.resolveContentIntelligenceModel(req, attempt)
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("Content AI | strategy=%s | role=%s | model=%s | attempt=%d | task=%s | title=%q", req.ModelStrategy, modelRole, currentModel, attempt, req.Task, truncate(req.Title, 70))
 	systemPrompt, userPrompt := buildContentIntelligencePrompts(req)
+	estimatedInputTokens := estimateAITokens(systemPrompt + "\n" + userPrompt)
 	payload := map[string]interface{}{
 		"model": currentModel,
 		"messages": []map[string]string{
@@ -306,7 +435,9 @@ func (s *aiService) runContentIntelligenceWithFallback(ctx context.Context, req 
 	httpReq.Header.Set("Accept", "application/json")
 	resp, err := s.httpClient.Do(httpReq)
 	if err != nil {
-		if attempt < len(s.fallbackModels) {
+		durationMS := time.Since(started).Milliseconds()
+		recordContentAIModelRun(req, currentModel, modelRole, "failed", MapError(err).Error(), estimatedInputTokens, 0, durationMS)
+		if s.hasContentIntelligenceFallback(req, attempt) {
 			return s.runContentIntelligenceWithFallback(ctx, req, attempt+1)
 		}
 		return nil, fmt.Errorf("%w: %v", ErrAIProviderFailed, MapError(err))
@@ -314,36 +445,61 @@ func (s *aiService) runContentIntelligenceWithFallback(ctx context.Context, req 
 	defer resp.Body.Close()
 	responseBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
+		durationMS := time.Since(started).Milliseconds()
+		recordContentAIModelRun(req, currentModel, modelRole, "failed", MapError(err).Error(), estimatedInputTokens, 0, durationMS)
 		return nil, MapError(err)
 	}
+	usage := parseAIUsage(responseBytes)
+	inputTokens := usage.PromptTokens
+	if inputTokens <= 0 {
+		inputTokens = estimatedInputTokens
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		if attempt < len(s.fallbackModels) {
-			return s.runContentIntelligenceWithFallback(ctx, req, attempt+1)
-		}
 		apiErr := extractAPIError(responseBytes)
 		if apiErr == "" {
 			apiErr = string(responseBytes)
+		}
+		durationMS := time.Since(started).Milliseconds()
+		recordContentAIModelRun(req, currentModel, modelRole, "failed", fmt.Sprintf("status %d — %s", resp.StatusCode, apiErr), inputTokens, usage.CompletionTokens, durationMS)
+		if s.hasContentIntelligenceFallback(req, attempt) {
+			return s.runContentIntelligenceWithFallback(ctx, req, attempt+1)
 		}
 		return nil, fmt.Errorf("%w: status %d — %s", ErrAIProviderFailed, resp.StatusCode, apiErr)
 	}
 	rawContent, err := parseAIRawContent(responseBytes)
 	if err != nil {
-		if attempt < len(s.fallbackModels) {
+		durationMS := time.Since(started).Milliseconds()
+		recordContentAIModelRun(req, currentModel, modelRole, "failed", err.Error(), inputTokens, usage.CompletionTokens, durationMS)
+		if s.hasContentIntelligenceFallback(req, attempt) {
 			return s.runContentIntelligenceWithFallback(ctx, req, attempt+1)
 		}
 		return nil, err
 	}
 	var out ContentIntelligenceResponse
 	if err := json.Unmarshal([]byte(cleanJSONPayload(rawContent)), &out); err != nil {
-		if attempt < len(s.fallbackModels) {
+		outputTokens := usage.CompletionTokens
+		if outputTokens <= 0 {
+			outputTokens = estimateAITokens(rawContent)
+		}
+		durationMS := time.Since(started).Milliseconds()
+		recordContentAIModelRun(req, currentModel, modelRole, "failed", err.Error(), inputTokens, outputTokens, durationMS)
+		if s.hasContentIntelligenceFallback(req, attempt) {
 			return s.runContentIntelligenceWithFallback(ctx, req, attempt+1)
 		}
 		return nil, err
 	}
 	out.Provider = "together_ai"
 	out.Model = currentModel
-	out.PromptVersion = "content-intelligence-v1"
+	out.ModelStrategy = req.ModelStrategy
+	out.ModelRole = modelRole
+	out.PromptVersion = "content-intelligence-v1:" + req.ModelStrategy + ":" + modelRole
 	out.ProcessingTimeMS = time.Since(started).Milliseconds()
+	outputTokens := usage.CompletionTokens
+	if outputTokens <= 0 {
+		outputTokens = estimateAITokens(rawContent)
+	}
+	out.Tokens = inputTokens + outputTokens
+	recordContentAIModelRun(req, currentModel, modelRole, "success", "", inputTokens, outputTokens, out.ProcessingTimeMS)
 	if out.Decision == "" {
 		out.Decision = "needs_fix"
 	}
@@ -398,6 +554,103 @@ func cleanJSONPayload(raw string) string {
 	raw = strings.TrimPrefix(raw, "```")
 	raw = strings.TrimSuffix(raw, "```")
 	return strings.TrimSpace(raw)
+}
+
+// aiModelRouter selects model sequences by task and strategy so large content jobs
+// do not depend on a single expensive or overloaded model. Every route falls back
+// to the configured default model to keep deployments safe when provider model IDs
+// differ between accounts.
+type aiModelRouter struct {
+	defaultModel string
+	fallbacks    []string
+	routes       map[string][]string
+}
+
+func newAIModelRouter(defaultModel string, fallbackModels []string) aiModelRouter {
+	defaultModel = strings.TrimSpace(defaultModel)
+	fallbackModels = uniqueFallbackModels(defaultModel, fallbackModels)
+	base := append([]string{defaultModel}, fallbackModels...)
+	return aiModelRouter{
+		defaultModel: defaultModel,
+		fallbacks:    fallbackModels,
+		routes: map[string][]string{
+			"audit_content:economy":      modelRouteFromEnv("AI_MODELS_AUDIT_ECONOMY", append(parseModelList("togethercomputer/LFM2-24B-A2B,openai/gpt-oss-20b"), base...)),
+			"audit_content:balanced":     modelRouteFromEnv("AI_MODELS_AUDIT_BALANCED", append(parseModelList("openai/gpt-oss-20b,Qwen/Qwen3.5-9B,google/gemma-3n-E4B-it"), base...)),
+			"audit_content:quality":      modelRouteFromEnv("AI_MODELS_AUDIT_QUALITY", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-FP8-Throughput,openai/gpt-oss-120b,Qwen/Qwen3.5-9B"), base...)),
+			"audit_content:final_review": modelRouteFromEnv("AI_MODELS_AUDIT_FINAL", append(parseModelList("openai/gpt-oss-120b,Kimi/Kimi-K2.5,Qwen/Qwen3-235B-A22B-Instruct-2507-FP8-Throughput,Qwen/Qwen3.5-9B"), base...)),
+			"fix_content:economy":        modelRouteFromEnv("AI_MODELS_FIX_ECONOMY", append(parseModelList("Qwen/Qwen3.5-9B,openai/gpt-oss-20b"), base...)),
+			"fix_content:balanced":       modelRouteFromEnv("AI_MODELS_FIX_BALANCED", append(parseModelList("Qwen/Qwen3.5-9B,google/gemma-4-31b-it-fp8,openai/gpt-oss-120b"), base...)),
+			"fix_content:quality":        modelRouteFromEnv("AI_MODELS_FIX_QUALITY", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-FP8-Throughput,openai/gpt-oss-120b,Qwen/Qwen3.5-9B"), base...)),
+			"fix_content:final_review":   modelRouteFromEnv("AI_MODELS_FIX_FINAL", append(parseModelList("openai/gpt-oss-120b,Kimi/Kimi-K2.5,Qwen/Qwen3-235B-A22B-Instruct-2507-FP8-Throughput,Qwen/Qwen3.5-9B"), base...)),
+		},
+	}
+}
+
+func modelRouteFromEnv(envKey string, defaults []string) []string {
+	if configured := parseModelList(os.Getenv(envKey)); len(configured) > 0 {
+		return uniqueModelSequence(configured)
+	}
+	return uniqueModelSequence(defaults)
+}
+
+func uniqueModelSequence(models []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(models))
+	for _, model := range models {
+		model = strings.TrimSpace(model)
+		if model == "" || seen[model] {
+			continue
+		}
+		seen[model] = true
+		out = append(out, model)
+	}
+	return out
+}
+
+func normalizeAIModelStrategy(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch value {
+	case "economy", "balanced", "quality", "final_review":
+		return value
+	case "multi_stage_quality":
+		return "balanced"
+	case "premium", "high_quality":
+		return "quality"
+	case "critical", "final":
+		return "final_review"
+	default:
+		return "balanced"
+	}
+}
+
+func (s *aiService) contentIntelligenceModels(req ContentIntelligenceRequest) []string {
+	strategy := normalizeAIModelStrategy(req.ModelStrategy)
+	task := strings.TrimSpace(req.Task)
+	if task == "" {
+		task = "audit_content"
+	}
+	key := task + ":" + strategy
+	if models := s.modelRouter.routes[key]; len(models) > 0 {
+		return models
+	}
+	fallback := append([]string{s.modelRouter.defaultModel}, s.modelRouter.fallbacks...)
+	return uniqueModelSequence(fallback)
+}
+
+func (s *aiService) resolveContentIntelligenceModel(req ContentIntelligenceRequest, attempt int) (string, string, error) {
+	models := s.contentIntelligenceModels(req)
+	if attempt >= 0 && attempt < len(models) {
+		role := "primary"
+		if attempt > 0 {
+			role = fmt.Sprintf("fallback_%d", attempt)
+		}
+		return models[attempt], role, nil
+	}
+	return "", "", errors.New("all AI models unavailable for content intelligence route")
+}
+
+func (s *aiService) hasContentIntelligenceFallback(req ContentIntelligenceRequest, attempt int) bool {
+	return attempt+1 < len(s.contentIntelligenceModels(req))
 }
 
 func (s *aiService) GenerateArticleContent(title string) (string, error) {

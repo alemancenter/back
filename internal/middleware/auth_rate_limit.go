@@ -73,9 +73,10 @@ func AuthRateLimit() fiber.Handler {
 
 // RateLimitRule defines a Redis-backed per-IP rule for selected route prefixes.
 type RateLimitRule struct {
-	Prefix string
-	Max    int
-	Window time.Duration
+	Prefix  string
+	Methods []string
+	Max     int
+	Window  time.Duration
 }
 
 // PrefixRateLimit applies low-overhead Redis rate limiting to expensive or abuse-prone routes.
@@ -84,11 +85,25 @@ func PrefixRateLimit(rules ...RateLimitRule) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		path := c.Path()
 		var matched *RateLimitRule
+		method := c.Method()
 		for i := range rules {
-			if rules[i].Prefix != "" && len(path) >= len(rules[i].Prefix) && path[:len(rules[i].Prefix)] == rules[i].Prefix {
-				matched = &rules[i]
-				break
+			if rules[i].Prefix == "" || len(path) < len(rules[i].Prefix) || path[:len(rules[i].Prefix)] != rules[i].Prefix {
+				continue
 			}
+			if len(rules[i].Methods) > 0 {
+				allowedMethod := false
+				for _, ruleMethod := range rules[i].Methods {
+					if ruleMethod == method {
+						allowedMethod = true
+						break
+					}
+				}
+				if !allowedMethod {
+					continue
+				}
+			}
+			matched = &rules[i]
+			break
 		}
 		if matched == nil {
 			return c.Next()
@@ -97,7 +112,7 @@ func PrefixRateLimit(rules ...RateLimitRule) fiber.Handler {
 		clientIP := utils.GetClientIP(c)
 		rdb := database.GetRedis()
 		ctx := context.Background()
-		key := rdb.Key("prefix_rl", clientIP, matched.Prefix)
+		key := rdb.Key("prefix_rl", clientIP, method, matched.Prefix)
 
 		count, err := rdb.IncrBy(ctx, key, 1)
 		if err != nil {

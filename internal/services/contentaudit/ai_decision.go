@@ -20,6 +20,46 @@ import (
 	"gorm.io/gorm"
 )
 
+
+func contentAuditCountryQueryValue(code string) string {
+	switch strings.ToLower(strings.TrimSpace(code)) {
+	case "jo", "", "1":
+		return "1"
+	case "sa", "2":
+		return "2"
+	case "eg", "3":
+		return "3"
+	case "ps", "4":
+		return "4"
+	default:
+		return "1"
+	}
+}
+
+func contentAuditEditURL(contentType string, id uint, countryCode string) string {
+	country := contentAuditCountryQueryValue(countryCode)
+	switch strings.ToLower(strings.TrimSpace(contentType)) {
+	case "article":
+		return fmt.Sprintf("/dashboard/articles/edit/%d?country=%s", id, country)
+	case "post":
+		return fmt.Sprintf("/dashboard/posts/edit/%d?country=%s", id, country)
+	default:
+		return "/dashboard/content-review"
+	}
+}
+
+func shortNotificationTitle(title string, max int) string {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return "بدون عنوان"
+	}
+	runes := []rune(title)
+	if len(runes) <= max {
+		return title
+	}
+	return string(runes[:max]) + "…"
+}
+
 var ErrUnsupportedContentType = errors.New("unsupported content type")
 var ErrFixAlreadyClosed = errors.New("fix preview is already applied or rejected")
 var ErrAIAnalysisInProgress = errors.New("AI analysis is already running for this content")
@@ -27,6 +67,65 @@ var ErrAIAnalysisInProgress = errors.New("AI analysis is already running for thi
 var fixPreviewLocks sync.Map
 
 const contentIntelligencePromptVersion = "content-intelligence-v1"
+
+type contentAIContextKey string
+
+const (
+	contentAIModelStrategyKey contentAIContextKey = "content_ai_model_strategy"
+	contentAIJobIDKey         contentAIContextKey = "content_ai_job_id"
+)
+
+func WithAIJobContext(ctx context.Context, jobID string) context.Context {
+	jobID = strings.TrimSpace(jobID)
+	if jobID == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, contentAIJobIDKey, jobID)
+}
+
+func aiJobIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if value, ok := ctx.Value(contentAIJobIDKey).(string); ok {
+		return strings.TrimSpace(value)
+	}
+	return ""
+}
+
+func WithAIModelStrategy(ctx context.Context, strategy string) context.Context {
+	strategy = normalizeAIModelStrategyName(strategy)
+	if strategy == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, contentAIModelStrategyKey, strategy)
+}
+
+func aiModelStrategyFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if value, ok := ctx.Value(contentAIModelStrategyKey).(string); ok {
+		return normalizeAIModelStrategyName(value)
+	}
+	return ""
+}
+
+func normalizeAIModelStrategyName(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch value {
+	case "economy", "balanced", "quality", "final_review":
+		return value
+	case "multi_stage_quality":
+		return "balanced"
+	case "premium", "high_quality":
+		return "quality"
+	case "critical", "final":
+		return "final_review"
+	default:
+		return ""
+	}
+}
 
 func acquireContentAILock(ctx context.Context, key string, ttl time.Duration) (func(), bool) {
 	key = database.Redis().Key("content_ai_lock", key)
@@ -42,18 +141,20 @@ func acquireContentAILock(ctx context.Context, key string, ttl time.Duration) (f
 }
 
 type AIAnalyzeRequest struct {
-	RunID       *uint  `json:"run_id,omitempty"`
-	FindingID   *uint  `json:"finding_id,omitempty"`
-	ContentType string `json:"content_type"`
-	ContentID   string `json:"content_id"`
-	CountryCode string `json:"country_code"`
-	Title       string `json:"title"`
-	Content     string `json:"content"`
-	URL         string `json:"url"`
+	RunID         *uint  `json:"run_id,omitempty"`
+	FindingID     *uint  `json:"finding_id,omitempty"`
+	ContentType   string `json:"content_type"`
+	ContentID     string `json:"content_id"`
+	CountryCode   string `json:"country_code"`
+	Title         string `json:"title"`
+	Content       string `json:"content"`
+	URL           string `json:"url"`
+	ModelStrategy string `json:"model_strategy,omitempty"`
 }
 
 type AIFixRequest struct {
-	DecisionID uint64 `json:"decision_id"`
+	DecisionID    uint64 `json:"decision_id"`
+	ModelStrategy string `json:"model_strategy,omitempty"`
 }
 type ApplyFixRequest struct {
 	FixPreviewID uint64 `json:"fix_preview_id"`
@@ -126,9 +227,13 @@ func (s *Service) AnalyzeWithAI(ctx context.Context, req AIAnalyzeRequest, userI
 	defer unlock()
 	plain := normalizePlainText(content.Content)
 	report := buildDecisionReport(content)
+	modelStrategy := normalizeAIModelStrategyName(req.ModelStrategy)
+	if modelStrategy == "" {
+		modelStrategy = aiModelStrategyFromContext(ctx)
+	}
 
 	if s.ai != nil && strings.TrimSpace(plain) != "" {
-		if aiResp, err := s.ai.RunContentIntelligence(ctx, coreai.ContentIntelligenceRequest{Task: "audit_content", ContentType: content.Type, Title: content.Title, Content: content.Content, PlainText: plain, URL: firstNonEmptyLocal(req.URL, content.URL), Language: "ar"}); err == nil {
+		if aiResp, err := s.ai.RunContentIntelligence(ctx, coreai.ContentIntelligenceRequest{Task: "audit_content", ModelStrategy: modelStrategy, ContentType: content.Type, ContentID: fmt.Sprintf("%d", content.ID), CountryCode: content.CountryCode, Title: content.Title, Content: content.Content, PlainText: plain, URL: firstNonEmptyLocal(req.URL, content.URL), Language: "ar", JobID: aiJobIDFromContext(ctx)}); err == nil {
 			report = reportFromAI(aiResp, report)
 		}
 	}
@@ -199,11 +304,12 @@ func (s *Service) CreateFixPreview(ctx context.Context, decisionID uint64) (*mod
 	}
 
 	originalPlain := normalizePlainText(content.Content)
+	modelStrategy := aiModelStrategyFromContext(ctx)
 	fixedTitle, fixedContent, summary := localFixContent(content.Title, content.Content, decision.Issues, content.Type)
 
 	if s.ai != nil {
 		// First try the dedicated content-intelligence fixing task. It should return a real fixed HTML draft.
-		if aiResp, err := s.ai.RunContentIntelligence(ctx, coreai.ContentIntelligenceRequest{Task: "fix_content", ContentType: content.Type, Title: content.Title, Content: content.Content, PlainText: originalPlain, URL: content.URL, Language: "ar"}); err == nil {
+		if aiResp, err := s.ai.RunContentIntelligence(ctx, coreai.ContentIntelligenceRequest{Task: "fix_content", ModelStrategy: modelStrategy, ContentType: content.Type, ContentID: fmt.Sprintf("%d", content.ID), CountryCode: content.CountryCode, Title: content.Title, Content: content.Content, PlainText: originalPlain, URL: content.URL, Language: "ar", JobID: aiJobIDFromContext(ctx)}); err == nil {
 			candidateTitle := firstNonEmptyLocal(strings.TrimSpace(aiResp.FixedTitle), fixedTitle)
 			candidateContent := strings.TrimSpace(aiResp.FixedContent)
 			candidateSummary := firstNonEmptyLocal(strings.TrimSpace(aiResp.FixSummary), "تم إنشاء نسخة محسّنة بالذكاء الاصطناعي وفق سياسات AdSense ومعايير SEO.")
@@ -280,10 +386,10 @@ func (s *Service) ApplyFix(ctx context.Context, previewID uint64, userID *uint, 
 			return nil, err
 		}
 		authorID = item.AuthorID
-		notifType = `App\Notifications\ArticleFixed`
-		notifTitle = "تم تطبيق تصحيح AI على مقالة"
-		notifMsg = fmt.Sprintf("تم تحديث المقالة بنسخة محسّنة بالذكاء الاصطناعي: %s", item.Title)
-		notifURL = fmt.Sprintf("/dashboard/lesson/articles/edit/%d", item.ID)
+		notifType = `App\Notifications\ArticleUpdatedByAI`
+		notifTitle = fmt.Sprintf("تم تحديث المقالة: %s", shortNotificationTitle(item.Title, 70))
+		notifMsg = fmt.Sprintf("تم اعتماد تحسين الذكاء الاصطناعي وتحديث المقالة: %s", item.Title)
+		notifURL = contentAuditEditURL("article", item.ID, preview.CountryCode)
 	case "post":
 		var item models.Post
 		if err := db.First(&item, id).Error; err != nil {
@@ -295,10 +401,10 @@ func (s *Service) ApplyFix(ctx context.Context, previewID uint64, userID *uint, 
 			return nil, err
 		}
 		authorID = item.AuthorID
-		notifType = `App\Notifications\PostFixed`
-		notifTitle = "تم تطبيق تصحيح على منشور"
-		notifMsg = fmt.Sprintf("تم تحديث المنشور بنسخة محسّنة بالذكاء الاصطناعي: %s", item.Title)
-		notifURL = fmt.Sprintf("/dashboard/posts/edit/%d", item.ID)
+		notifType = `App\Notifications\PostUpdatedByAI`
+		notifTitle = fmt.Sprintf("تم تحديث المنشور: %s", shortNotificationTitle(item.Title, 70))
+		notifMsg = fmt.Sprintf("تم اعتماد تحسين الذكاء الاصطناعي وتحديث المنشور: %s", item.Title)
+		notifURL = contentAuditEditURL("post", item.ID, preview.CountryCode)
 	default:
 		return nil, ErrUnsupportedContentType
 	}

@@ -425,12 +425,48 @@ func containsStr(slice []string, s string) bool {
 
 // Database Operations
 
+func applyPendingFileViews(countryID database.CountryID, files []models.File) []models.File {
+	if len(files) == 0 {
+		return files
+	}
+	ids := make([]uint64, 0, len(files))
+	for _, file := range files {
+		ids = append(ids, uint64(file.ID))
+	}
+	pending := ViewCounter.PendingViews(countryID, "files", ids)
+	if len(pending) == 0 {
+		return files
+	}
+	for i := range files {
+		if extra := pending[uint64(files[i].ID)]; extra > 0 {
+			files[i].ViewCount += int(extra)
+		}
+	}
+	return files
+}
+
 func (s *FileService) List(countryID database.CountryID, fileType string, articleID string, limit, offset int) ([]models.File, int64, error) {
-	return s.repo.ListPaginated(countryID, fileType, articleID, limit, offset)
+	files, total, err := s.repo.ListPaginated(countryID, fileType, articleID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	return applyPendingFileViews(countryID, files), total, nil
 }
 
 func (s *FileService) FindByID(countryID database.CountryID, id uint64) (*models.File, error) {
-	return s.repo.FindByID(countryID, id)
+	file, err := s.repo.FindByID(countryID, id)
+	if err != nil || file == nil {
+		return file, err
+	}
+	if file.ViewsCount > file.ViewCount {
+		file.ViewCount = file.ViewsCount
+	}
+	pending := ViewCounter.PendingViews(countryID, "files", []uint64{id})
+	if extra := pending[id]; extra > 0 {
+		file.ViewCount += int(extra)
+		file.ViewsCount = file.ViewCount
+	}
+	return file, nil
 }
 
 // FileInfoResponse is the structured payload returned by GetFileWithParent.
@@ -447,6 +483,12 @@ func (s *FileService) GetFileWithParent(countryID database.CountryID, id uint64)
 	if err != nil {
 		return nil, MapError(err)
 	}
+	if file != nil {
+		if file.ViewsCount > file.ViewCount {
+			file.ViewCount = file.ViewsCount
+		}
+		file.ViewsCount = file.ViewCount
+	}
 
 	return &FileInfoResponse{
 		File: file,
@@ -456,7 +498,11 @@ func (s *FileService) GetFileWithParent(countryID database.CountryID, id uint64)
 }
 
 func (s *FileService) IncrementViewCount(countryID database.CountryID, id uint64) error {
-	return ViewCounter.IncrementFileView(countryID, id)
+	return s.repo.IncrementView(countryID, id)
+}
+
+func (s *FileService) IncrementDownloadCount(countryID database.CountryID, id uint64) error {
+	return s.repo.IncrementDownload(countryID, id)
 }
 
 func (s *FileService) CreateRecord(countryID database.CountryID, uploaded *UploadedFile, articleID *uint, postID *uint, fileName *string, fileCategory *string) (*models.File, error) {

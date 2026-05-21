@@ -1,6 +1,9 @@
 package services
 
 import (
+	"strings"
+
+	"github.com/alemancenter/fiber-api/internal/database"
 	"github.com/alemancenter/fiber-api/internal/models"
 	"github.com/alemancenter/fiber-api/internal/repositories"
 )
@@ -66,7 +69,32 @@ func (s *messageService) ListDrafts(userID uint, offset, limit int) ([]models.Me
 	return msgs, total, MapError(err)
 }
 
+func ensureMessageRecipientExists(recipientID uint) error {
+	var user models.User
+	return database.DB().Select("id").First(&user, recipientID).Error
+}
+
+func normalizeMessageSubject(subject string) string {
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		return "بدون عنوان"
+	}
+	return subject
+}
+
+func normalizeMessageBody(body string) string {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return " "
+	}
+	return body
+}
+
 func (s *messageService) SendMessage(senderID uint, recipientID uint, subject, body string) (*models.Message, error) {
+	if err := ensureMessageRecipientExists(recipientID); err != nil {
+		return nil, MapError(err)
+	}
+
 	conv, err := s.repo.FindOrCreateConversation(senderID, recipientID)
 	if err != nil {
 		return nil, MapError(err)
@@ -75,8 +103,8 @@ func (s *messageService) SendMessage(senderID uint, recipientID uint, subject, b
 	msg := &models.Message{
 		ConversationID: conv.ID,
 		SenderID:       senderID,
-		Subject:        subject,
-		Body:           body,
+		Subject:        normalizeMessageSubject(subject),
+		Body:           normalizeMessageBody(body),
 		IsDraft:        false,
 	}
 
@@ -85,22 +113,24 @@ func (s *messageService) SendMessage(senderID uint, recipientID uint, subject, b
 }
 
 func (s *messageService) SaveDraft(senderID uint, recipientID uint, subject, body string) (*models.Message, error) {
+	if err := ensureMessageRecipientExists(recipientID); err != nil {
+		return nil, MapError(err)
+	}
+
+	conv, err := s.repo.FindOrCreateConversation(senderID, recipientID)
+	if err != nil {
+		return nil, MapError(err)
+	}
+
 	msg := &models.Message{
-		SenderID: senderID,
-		Subject:  subject,
-		Body:     body,
-		IsDraft:  true,
+		ConversationID: conv.ID,
+		SenderID:       senderID,
+		Subject:        normalizeMessageSubject(subject),
+		Body:           normalizeMessageBody(body),
+		IsDraft:        true,
 	}
 
-	if recipientID > 0 {
-		conv, err := s.repo.FindOrCreateConversation(senderID, recipientID)
-		if err != nil {
-			return nil, MapError(err)
-		}
-		msg.ConversationID = conv.ID
-	}
-
-	err := s.repo.CreateMessage(msg)
+	err = s.repo.CreateMessage(msg)
 	return msg, MapError(err)
 }
 

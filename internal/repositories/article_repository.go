@@ -210,7 +210,23 @@ func (r *articleRepository) IncrementViewCount(countryID database.CountryID, art
 
 func (r *articleRepository) IncrementFileViewCount(countryID database.CountryID, fileID uint64) error {
 	db := r.GetDB(countryID)
-	return db.Model(&models.File{}).Where("id = ?", fileID).UpdateColumn("view_count", gorm.Expr("view_count + 1")).Error
+	if db == nil {
+		return nil
+	}
+	updated := false
+	for _, col := range []string{"view_count", "views_count"} {
+		if !db.Migrator().HasColumn(&models.File{}, col) {
+			continue
+		}
+		if err := db.Exec("UPDATE files SET "+col+" = LEAST(COALESCE("+col+", 0) + 1, 2147483647) WHERE id = ?", fileID).Error; err != nil {
+			return err
+		}
+		updated = true
+	}
+	if !updated {
+		return nil
+	}
+	return nil
 }
 
 func (r *articleRepository) GetClasses(countryID database.CountryID) ([]models.SchoolClass, error) {

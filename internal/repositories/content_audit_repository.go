@@ -173,11 +173,16 @@ func (r *contentAuditRepository) GetFixPreview(ctx context.Context, id uint64) (
 
 func (r *contentAuditRepository) LatestFixPreviewByDecision(ctx context.Context, decisionID uint64) (*models.ContentAIFixPreview, error) {
 	var preview models.ContentAIFixPreview
-	if err := database.DB().WithContext(ctx).
+	result := database.DB().WithContext(ctx).
 		Where("decision_id = ? AND status = ?", decisionID, models.AIFixStatusPreviewed).
 		Order("created_at DESC, id DESC").
-		First(&preview).Error; err != nil {
-		return nil, err
+		Limit(1).
+		Find(&preview)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return nil, gorm.ErrRecordNotFound
 	}
 	return &preview, nil
 }

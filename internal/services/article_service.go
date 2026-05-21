@@ -1,7 +1,6 @@
 package services
 
 import (
-	"context"
 	"fmt"
 	"strconv"
 	"sync"
@@ -77,6 +76,26 @@ func NewArticleService(repo repositories.ArticleRepository, fileSvc *FileService
 	}
 }
 
+func applyPendingArticleViews(countryID database.CountryID, articles []models.Article) []models.Article {
+	if len(articles) == 0 {
+		return articles
+	}
+	ids := make([]uint64, 0, len(articles))
+	for _, article := range articles {
+		ids = append(ids, uint64(article.ID))
+	}
+	pending := ViewCounter.PendingViews(countryID, "articles", ids)
+	if len(pending) == 0 {
+		return articles
+	}
+	for i := range articles {
+		if extra := pending[uint64(articles[i].ID)]; extra > 0 {
+			articles[i].VisitCount += int(extra)
+		}
+	}
+	return articles
+}
+
 func (s *articleService) List(countryID database.CountryID, pag utils.Pagination, filter *models.ArticleFilter) ([]models.Article, int64, error) {
 	cacheKey := utils.CacheKey("articles:list", countryID, pag.Page, pag.PerPage, filter)
 
@@ -86,7 +105,7 @@ func (s *articleService) List(countryID database.CountryID, pag utils.Pagination
 	}
 
 	if s.cache != nil && s.cache.Get(cacheKey, &cached) {
-		return cached.Articles, cached.Total, nil
+		return applyPendingArticleViews(countryID, cached.Articles), cached.Total, nil
 	}
 
 	articles, total, err := s.repo.List(countryID, pag, filter)
@@ -104,7 +123,7 @@ func (s *articleService) List(countryID database.CountryID, pag utils.Pagination
 		}, 5*time.Minute)
 	}
 
-	return articles, total, nil
+	return applyPendingArticleViews(countryID, articles), total, nil
 }
 
 func (s *articleService) GetByID(countryID database.CountryID, id uint64) (*models.Article, error) {
@@ -141,9 +160,9 @@ func (s *articleService) GetFileForDownload(countryID database.CountryID, id uin
 		absPath = file.FilePath
 	}
 
-	// Increment view count async
+	// Count a real download immediately. Page views are tracked separately by /files/:id/increment-view.
 	go func() {
-		_ = ViewCounter.IncrementFileView(countryID, id)
+		_ = IncrementFileDownload(countryID, id)
 	}()
 
 	return file, absPath, nil
@@ -182,7 +201,7 @@ func (s *articleService) GetFileBySignedToken(token string) (*models.File, strin
 	}
 
 	go func() {
-		_ = ViewCounter.IncrementFileView(countryID, claims.FileID)
+		_ = IncrementFileDownload(countryID, claims.FileID)
 	}()
 
 	return file, absPath, nil
@@ -401,20 +420,17 @@ func (s *articleService) SetArticleStatus(countryID database.CountryID, id uint6
 }
 
 func (s *articleService) GetDashboardStats(countryID database.CountryID) (*ArticleDashboardStats, error) {
-	ctx := context.Background()
-	key := fmt.Sprintf("article_stats:%d", countryID)
-	return GetOrSet(ctx, key, time.Hour, func() (*ArticleDashboardStats, error) {
-		total, published, drafts, views, err := s.repo.GetStats(countryID)
-		if err != nil {
-			return nil, MapError(err)
-		}
-		return &ArticleDashboardStats{
-			Total:     total,
-			Published: published,
-			Drafts:    drafts,
-			Views:     views,
-		}, nil
-	})
+	total, published, drafts, views, err := s.repo.GetStats(countryID)
+	if err != nil {
+		return nil, MapError(err)
+	}
+	views += ViewCounter.PendingTotalViews(countryID, "articles")
+	return &ArticleDashboardStats{
+		Total:     total,
+		Published: published,
+		Drafts:    drafts,
+		Views:     views,
+	}, nil
 }
 
 func articleClassID(article *models.Article) uint {

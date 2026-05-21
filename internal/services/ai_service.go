@@ -35,7 +35,10 @@ var (
 	ErrAIGenerationTimeout = errors.New("ai generation timed out")
 	ErrAIProviderFailed    = errors.New("ai provider failed")
 
-	defaultAIFallbackModels = []string{}
+	defaultAIFallbackModels = []string{
+		"openai/gpt-oss-20b",
+		"google/gemma-3n-E4B-it",
+	}
 )
 
 type searchIntent string

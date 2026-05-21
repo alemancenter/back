@@ -505,10 +505,21 @@ func (s *FileService) IncrementDownloadCount(countryID database.CountryID, id ui
 	return s.repo.IncrementDownload(countryID, id)
 }
 
+func normalizeStoredExtension(ext string) string {
+	ext = strings.ToLower(strings.TrimSpace(ext))
+	if ext == "" {
+		return ""
+	}
+	if !strings.HasPrefix(ext, ".") {
+		ext = "." + ext
+	}
+	return ext
+}
+
 func (s *FileService) CreateRecord(countryID database.CountryID, uploaded *UploadedFile, articleID *uint, postID *uint, fileName *string, fileCategory *string) (*models.File, error) {
 	file := &models.File{
 		FilePath:  uploaded.Path,
-		FileType:  strings.TrimPrefix(uploaded.Ext, "."),
+		FileType:  normalizeStoredExtension(uploaded.Ext),
 		FileName:  uploaded.Name,
 		FileSize:  uploaded.Size,
 		MimeType:  uploaded.MimeType,

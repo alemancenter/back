@@ -51,6 +51,16 @@ func UpdateGoogleConfig(googleCfg GoogleConfig) {
 	}
 }
 
+func isGoTestBinary() bool {
+	return strings.HasSuffix(os.Args[0], ".test") || strings.Contains(os.Args[0], ".test")
+}
+
+func setConfigDefaultIfEmpty(v *viper.Viper, key string, value string) {
+	if strings.TrimSpace(v.GetString(key)) == "" {
+		v.Set(key, value)
+	}
+}
+
 type Config struct {
 	App       AppConfig
 	JWT       JWTConfig
@@ -253,6 +263,15 @@ func Load() *Config {
 		v.SetDefault("LOG_MAX_AGE", 30)
 
 		_ = v.ReadInConfig()
+
+		if isGoTestBinary() || strings.EqualFold(v.GetString("APP_ENV"), "test") {
+			setConfigDefaultIfEmpty(v, "JWT_SECRET", "test_secret_key_12345678901234567890")
+			setConfigDefaultIfEmpty(v, "DB_HOST_JO", "127.0.0.1")
+			setConfigDefaultIfEmpty(v, "DB_NAME_JO", "test_db")
+			setConfigDefaultIfEmpty(v, "DB_USER_JO", "test")
+			setConfigDefaultIfEmpty(v, "APP_URL", "http://localhost:8080")
+			setConfigDefaultIfEmpty(v, "FRONTEND_URL", "http://localhost:3000")
+		}
 
 		jwtSecret := v.GetString("JWT_SECRET")
 		if len(jwtSecret) < 32 {

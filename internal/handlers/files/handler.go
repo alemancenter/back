@@ -30,9 +30,16 @@ func slugify(s string) string {
 	return strings.Trim(b.String(), "-")
 }
 
+// articleGradeNameLookup is injectable so handler tests do not need a real country database.
+var articleGradeNameLookup = articleGradeNameFromDB
+
 // articleGradeName returns the grade_name of the school class that owns the article.
 // Returns "" if the article or class cannot be found.
 func articleGradeName(countryID database.CountryID, articleID uint) string {
+	return articleGradeNameLookup(countryID, articleID)
+}
+
+func articleGradeNameFromDB(countryID database.CountryID, articleID uint) string {
 	db := database.GetManager().Get(countryID)
 	if db == nil {
 		return ""

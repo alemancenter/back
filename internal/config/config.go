@@ -219,7 +219,7 @@ func Load() *Config {
 		v.SetDefault("APP_ENV", "production")
 		v.SetDefault("APP_DEBUG", false)
 		v.SetDefault("APP_HOST", "0.0.0.0")
-		v.SetDefault("APP_PORT", 8080)
+		v.SetDefault("APP_PORT", 8082)
 		v.SetDefault("APP_TIMEZONE", "UTC")
 		v.SetDefault("APP_LOCALE", "ar")
 		v.SetDefault("JWT_EXPIRE_HOURS", 24)
@@ -269,7 +269,7 @@ func Load() *Config {
 			setConfigDefaultIfEmpty(v, "DB_HOST_JO", "127.0.0.1")
 			setConfigDefaultIfEmpty(v, "DB_NAME_JO", "test_db")
 			setConfigDefaultIfEmpty(v, "DB_USER_JO", "test")
-			setConfigDefaultIfEmpty(v, "APP_URL", "http://localhost:8080")
+			setConfigDefaultIfEmpty(v, "APP_URL", "http://localhost:8082")
 			setConfigDefaultIfEmpty(v, "FRONTEND_URL", "http://localhost:3000")
 		}
 

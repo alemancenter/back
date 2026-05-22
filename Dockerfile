@@ -46,11 +46,11 @@ RUN mkdir -p storage/uploads storage/logs && \
 USER appuser
 
 # Expose port
-EXPOSE 8080
+EXPOSE 8082
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/api/ping || exit 1
+    CMD curl -f http://localhost:8082/api/ping || exit 1
 
 # Run server
 CMD ["./fiber-api"]

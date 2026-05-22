@@ -83,5 +83,5 @@ http://localhost:3001
 Prometheus scrape endpoint:
 
 ```text
-http://localhost:8080/metrics
+http://localhost:8082/metrics
 ```

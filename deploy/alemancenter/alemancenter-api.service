@@ -1,0 +1,25 @@
+[Unit]
+Description=Alemancenter Go Fiber API — api.alemancenter.com (internal 127.0.0.1:8080)
+After=network.target mariadb.service mysql.service redis.service
+Wants=redis.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/var/www/vhosts/api.alemancenter.com/httpdocs
+EnvironmentFile=/etc/alemancenter/api.env
+ExecStart=/var/www/vhosts/api.alemancenter.com/httpdocs/fiber-api
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=alemancenter-api
+
+# Security and limits
+LimitNOFILE=65536
+LimitNPROC=4096
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

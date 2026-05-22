@@ -14,7 +14,7 @@ func TestLoadConfig(t *testing.T) {
 	os.Setenv("DB_HOST_JO", "localhost")
 	os.Setenv("DB_NAME_JO", "jo")
 	os.Setenv("DB_USER_JO", "root")
-	os.Setenv("APP_URL", "http://localhost:8080")
+	os.Setenv("APP_URL", "http://localhost:8082")
 	os.Setenv("FRONTEND_URL", "http://localhost:3000")
 
 	// Ensure once is reset for testing if needed (though usually tests run in isolated processes)

@@ -17,7 +17,7 @@ Make sure `.env` contains:
 
 ```env
 FRONTEND_URL=http://localhost:3000
-APP_URL=http://127.0.0.1:8080
+APP_URL=http://127.0.0.1:8082
 MAIL_HOST=...
 MAIL_PORT=587
 MAIL_USERNAME=...

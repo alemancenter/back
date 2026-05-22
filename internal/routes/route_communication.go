@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"github.com/alemancenter/fiber-api/internal/middleware"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -41,7 +42,7 @@ func registerCommunicationRoutes(public, dash fiber.Router, h *Handlers) {
 	dashMessages.Delete("/:id", h.Messages.Delete)
 
 	// Contact form messages (submitted via the public contact form)
-	dashContactMessages := dash.Group("/contact-messages")
+	dashContactMessages := dash.Group("/contact-messages", middleware.Can("manage settings"))
 	dashContactMessages.Get("", h.ContactMessages.List)
 	dashContactMessages.Get("/:id", h.ContactMessages.Get)
 	dashContactMessages.Post("/:id/read", h.ContactMessages.MarkAsRead)

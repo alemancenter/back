@@ -72,6 +72,10 @@ var envKeyMap = map[string]string{
 	"google_client_id":     "GOOGLE_CLIENT_ID",
 	"google_client_secret": "GOOGLE_CLIENT_SECRET",
 	"google_redirect_uri":  "GOOGLE_REDIRECT_URI",
+	// Facebook OAuth
+	"facebook_app_id":       "FACEBOOK_APP_ID",
+	"facebook_app_secret":   "FACEBOOK_APP_SECRET",
+	"facebook_redirect_uri": "FACEBOOK_REDIRECT_URI",
 	// Bounce mailbox settings
 	"mail_bounce_address":      "MAIL_BOUNCE_ADDRESS",
 	"bounce_processor_enabled": "BOUNCE_PROCESSOR_ENABLED",
@@ -176,6 +180,19 @@ func applyEnvAndConfigUpdates(updates map[string]string) {
 		gCur.RedirectURI = v
 	}
 	config.UpdateGoogleConfig(gCur)
+
+	// Sync in-memory Facebook config.
+	fCur := config.Get().Facebook
+	if v, ok := updates["facebook_app_id"]; ok {
+		fCur.AppID = v
+	}
+	if v, ok := updates["facebook_app_secret"]; ok {
+		fCur.AppSecret = v
+	}
+	if v, ok := updates["facebook_redirect_uri"]; ok {
+		fCur.RedirectURI = v
+	}
+	config.UpdateFacebookConfig(fCur)
 }
 
 var (
@@ -266,6 +283,7 @@ func (h *Handler) GetAll(c *fiber.Ctx) error {
 	// the admin has saved them through the dashboard for the first time.
 	mailCfg := config.Get().Mail
 	googleCfg := config.Get().Google
+	facebookCfg := config.Get().Facebook
 	bounceCfg := mailCfg.Bounce
 	bounceEnabled := "false"
 	if bounceCfg.Enabled {
@@ -286,6 +304,10 @@ func (h *Handler) GetAll(c *fiber.Ctx) error {
 		"google_client_id":     googleCfg.ClientID,
 		"google_client_secret": googleCfg.ClientSecret,
 		"google_redirect_uri":  googleCfg.RedirectURI,
+		// Facebook OAuth
+		"facebook_app_id":       facebookCfg.AppID,
+		"facebook_app_secret":   facebookCfg.AppSecret,
+		"facebook_redirect_uri": facebookCfg.RedirectURI,
 		// Bounce mailbox
 		"mail_bounce_address":      mailCfg.BounceAddress,
 		"bounce_processor_enabled": bounceEnabled,

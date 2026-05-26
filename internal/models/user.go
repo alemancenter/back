@@ -14,6 +14,7 @@ type User struct {
 	EmailVerifiedAt        *time.Time `json:"email_verified_at,omitempty"`
 	Password               string     `gorm:"type:varchar(255);not null" json:"-"`
 	GoogleID               *string    `gorm:"type:varchar(255)" json:"google_id,omitempty"`
+	FacebookID             *string    `gorm:"type:varchar(255)" json:"facebook_id,omitempty"`
 	Phone                  *string    `gorm:"type:varchar(50)" json:"phone,omitempty"`
 	JobTitle               *string    `gorm:"type:varchar(255)" json:"job_title,omitempty"`
 	Gender                 *string    `gorm:"type:enum('male','female','other')" json:"gender,omitempty"`

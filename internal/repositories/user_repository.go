@@ -19,6 +19,7 @@ type UserRepository interface {
 	FindByID(id uint64) (*models.User, error)
 	FindByGoogleID(googleID string) (*models.User, error)
 	FindByEmailOrGoogleID(email string, googleID string) (*models.User, error)
+	FindByEmailOrFacebookID(email string, facebookID string) (*models.User, error)
 	Update(user *models.User) error
 	UpdateFields(id uint, fields map[string]interface{}) error
 	Delete(user *models.User) error
@@ -130,6 +131,17 @@ func (r *userRepository) FindByEmailOrGoogleID(email string, googleID string) (*
 	var user models.User
 	err := db.Preload("Roles.Permissions").Preload("Permissions").
 		Where("email = ? OR google_id = ?", email, googleID).First(&user).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *userRepository) FindByEmailOrFacebookID(email string, facebookID string) (*models.User, error) {
+	db := r.GetDB()
+	var user models.User
+	err := db.Preload("Roles.Permissions").Preload("Permissions").
+		Where("email = ? OR facebook_id = ?", email, facebookID).First(&user).Error
 	if err != nil {
 		return nil, err
 	}

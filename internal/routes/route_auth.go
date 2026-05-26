@@ -24,6 +24,9 @@ func registerAuthRoutes(api, dash fiber.Router, h *Handlers) {
 	authGroup.Get("/google/redirect", h.Auth.GoogleRedirect)
 	authGroup.Get("/google/callback", h.Auth.GoogleCallback)
 	authGroup.Post("/google/token", h.Auth.GoogleTokenLogin)
+	authGroup.Get("/facebook/redirect", h.Auth.FacebookRedirect)
+	authGroup.Get("/facebook/callback", h.Auth.FacebookCallback)
+	authGroup.Post("/facebook/token", h.Auth.FacebookTokenLogin)
 	authGroup.Post("/password/reset", h.Auth.ResetPassword)
 	authGroup.Get("/email/verify/:id/:hash", h.Auth.VerifyEmail)
 

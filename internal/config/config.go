@@ -51,6 +51,15 @@ func UpdateGoogleConfig(googleCfg GoogleConfig) {
 	}
 }
 
+// UpdateFacebookConfig replaces the in-memory Facebook OAuth configuration at runtime.
+func UpdateFacebookConfig(facebookCfg FacebookConfig) {
+	cfgMu.Lock()
+	defer cfgMu.Unlock()
+	if cfg != nil {
+		cfg.Facebook = facebookCfg
+	}
+}
+
 func isGoTestBinary() bool {
 	return strings.HasSuffix(os.Args[0], ".test") || strings.Contains(os.Args[0], ".test")
 }
@@ -69,6 +78,7 @@ type Config struct {
 	Redis     RedisConfig
 	Mail      MailConfig
 	Google    GoogleConfig
+	Facebook  FacebookConfig
 	FCM       FCMConfig
 	Storage   StorageConfig
 	Security  SecurityConfig
@@ -164,6 +174,12 @@ type GoogleConfig struct {
 	ClientID     string
 	ClientSecret string
 	RedirectURI  string
+}
+
+type FacebookConfig struct {
+	AppID       string
+	AppSecret   string
+	RedirectURI string
 }
 
 type FCMConfig struct {
@@ -406,6 +422,11 @@ func Load() *Config {
 				ClientID:     v.GetString("GOOGLE_CLIENT_ID"),
 				ClientSecret: v.GetString("GOOGLE_CLIENT_SECRET"),
 				RedirectURI:  v.GetString("GOOGLE_REDIRECT_URI"),
+			},
+			Facebook: FacebookConfig{
+				AppID:       v.GetString("FACEBOOK_APP_ID"),
+				AppSecret:   v.GetString("FACEBOOK_APP_SECRET"),
+				RedirectURI: v.GetString("FACEBOOK_REDIRECT_URI"),
 			},
 			FCM: FCMConfig{
 				Enabled:            v.GetBool("FCM_ENABLED"),

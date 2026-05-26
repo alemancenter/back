@@ -627,6 +627,59 @@ func (h *Handler) GoogleTokenLogin(c *fiber.Ctx) error {
 	return h.loginOrRegisterGoogleUser(c, userInfo)
 }
 
+// FacebookRedirect redirects to Facebook OAuth
+// GET /api/auth/facebook/redirect
+func (h *Handler) FacebookRedirect(c *fiber.Ctx) error {
+	oauthCfg := h.svc.GetFacebookOAuthConfig()
+	url := oauthCfg.AuthCodeURL("state")
+	return c.Redirect(url)
+}
+
+// FacebookCallback handles the Facebook OAuth callback
+// GET /api/auth/facebook/callback
+func (h *Handler) FacebookCallback(c *fiber.Ctx) error {
+	frontendURL := strings.TrimRight(h.cfg.Frontend.URL, "/")
+	callbackBase := frontendURL + "/auth/facebook/callback"
+
+	code := c.Query("code")
+	if code == "" {
+		return c.Redirect(callbackBase + "?error=missing_code")
+	}
+
+	userInfo, err := h.exchangeFacebookCode(code)
+	if err != nil {
+		return c.Redirect(callbackBase + "?error=facebook_auth_failed")
+	}
+
+	user, token, err := h.svc.LoginOrRegisterFacebookUser(userInfo)
+	if err != nil || user == nil {
+		return c.Redirect(callbackBase + "?error=login_failed")
+	}
+
+	return c.Redirect(callbackBase + "?token=" + token)
+}
+
+// FacebookTokenRequest contains the Facebook OAuth access token
+type FacebookTokenRequest struct {
+	Token string `json:"token" validate:"required"`
+}
+
+// FacebookTokenLogin handles mobile Facebook OAuth token
+// POST /api/auth/facebook/token
+func (h *Handler) FacebookTokenLogin(c *fiber.Ctx) error {
+	var req FacebookTokenRequest
+	if err := c.BodyParser(&req); err != nil {
+		return utils.BadRequest(c, "بيانات غير صحيحة")
+	}
+
+	userInfo, err := h.verifyFacebookToken(req.Token)
+	if err != nil {
+		return utils.Unauthorized(c, "رمز Facebook غير صالح")
+	}
+
+	return h.loginOrRegisterFacebookUser(c, userInfo)
+}
+
 // PushTokenRequest represents the push token registration payload
 type PushTokenRequest struct {
 	Token    string `json:"token" validate:"required"`
@@ -834,6 +887,57 @@ func formValue(c *fiber.Ctx, key string) (string, bool) {
 	}
 
 	return "", false
+}
+
+func (h *Handler) exchangeFacebookCode(code string) (*services.FacebookUserInfo, error) {
+	ctx := context.Background()
+	oauthCfg := h.svc.GetFacebookOAuthConfig()
+
+	token, err := oauthCfg.Exchange(ctx, code)
+	if err != nil {
+		return nil, err
+	}
+
+	return h.fetchFacebookUserInfo(token.AccessToken)
+}
+
+func (h *Handler) verifyFacebookToken(accessToken string) (*services.FacebookUserInfo, error) {
+	return h.fetchFacebookUserInfo(accessToken)
+}
+
+func (h *Handler) fetchFacebookUserInfo(accessToken string) (*services.FacebookUserInfo, error) {
+	url := "https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=" + accessToken
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, errors.New("invalid facebook token")
+	}
+
+	var userInfo services.FacebookUserInfo
+	if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
+		return nil, err
+	}
+
+	if userInfo.ID == "" {
+		return nil, errors.New("facebook user info missing id")
+	}
+
+	return &userInfo, nil
+}
+
+func (h *Handler) loginOrRegisterFacebookUser(c *fiber.Ctx, info *services.FacebookUserInfo) error {
+	user, token, err := h.svc.LoginOrRegisterFacebookUser(info)
+	if err != nil {
+		return utils.InternalError(c, "فشل معالجة حساب Facebook")
+	}
+
+	return utils.WithToken(c, "تم تسجيل الدخول بنجاح", buildUserResponse(user, h.cfg.Storage.URL), token)
 }
 
 func parseSocialLinks(raw *string) map[string]string {

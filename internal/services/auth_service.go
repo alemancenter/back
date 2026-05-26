@@ -19,6 +19,11 @@ import (
 	"gorm.io/gorm"
 )
 
+var facebookEndpoint = oauth2.Endpoint{
+	AuthURL:  "https://www.facebook.com/v19.0/dialog/oauth",
+	TokenURL: "https://graph.facebook.com/v19.0/oauth/access_token",
+}
+
 var (
 	ErrEmailAlreadyExists      = errors.New("البريد الإلكتروني مستخدم بالفعل")
 	ErrInvalidCredentials      = errors.New("بيانات الاعتماد غير صحيحة")
@@ -43,6 +48,17 @@ type GoogleUserInfo struct {
 	Name          string `json:"name"`
 	Picture       string `json:"picture"`
 	VerifiedEmail bool   `json:"verified_email"`
+}
+
+type FacebookUserInfo struct {
+	ID      string `json:"id"`
+	Email   string `json:"email"`
+	Name    string `json:"name"`
+	Picture struct {
+		Data struct {
+			URL string `json:"url"`
+		} `json:"data"`
+	} `json:"picture"`
 }
 
 type UpdateProfileInput struct {
@@ -73,6 +89,8 @@ type AuthService interface {
 	DeleteAccount(user *models.User, password string) error
 	GetGoogleOAuthConfig() *oauth2.Config
 	LoginOrRegisterGoogleUser(info *GoogleUserInfo) (*models.User, string, error)
+	GetFacebookOAuthConfig() *oauth2.Config
+	LoginOrRegisterFacebookUser(info *FacebookUserInfo) (*models.User, string, error)
 	UpsertPushToken(userID uint, token, platform string) error
 	DeletePushToken(userID uint, token string) error
 	CheckEmailAvailable(email string) (bool, error)
@@ -617,6 +635,62 @@ func (s *authService) LoginOrRegisterGoogleUser(info *GoogleUserInfo) (*models.U
 		// Sync Google photo if user has no local photo
 		if info.Picture != "" && (user.ProfilePhotoPath == nil || *user.ProfilePhotoPath == "") {
 			user.ProfilePhotoPath = &info.Picture
+			needsUpdate = true
+		}
+		if needsUpdate {
+			_ = s.repo.Update(user)
+		}
+	}
+
+	token, err := s.jwtSvc.GenerateToken(user.ID, user.Email)
+	if err != nil {
+		return nil, "", MapError(err)
+	}
+
+	return user, token, nil
+}
+
+func (s *authService) GetFacebookOAuthConfig() *oauth2.Config {
+	cfg := s.cfg.Facebook
+	return &oauth2.Config{
+		ClientID:     cfg.AppID,
+		ClientSecret: cfg.AppSecret,
+		RedirectURL:  cfg.RedirectURI,
+		Scopes:       []string{"public_profile", "email"},
+		Endpoint:     facebookEndpoint,
+	}
+}
+
+func (s *authService) LoginOrRegisterFacebookUser(info *FacebookUserInfo) (*models.User, string, error) {
+	user, err := s.repo.FindByEmailOrFacebookID(info.Email, info.ID)
+
+	if err == gorm.ErrRecordNotFound {
+		now := time.Now()
+		user = &models.User{
+			Name:            info.Name,
+			Email:           info.Email,
+			FacebookID:      &info.ID,
+			EmailVerifiedAt: &now,
+			Status:          "active",
+		}
+		if info.Picture.Data.URL != "" {
+			user.ProfilePhotoPath = &info.Picture.Data.URL
+		}
+		_ = user.HashPassword(s.jwtSvc.GenerateRandomString(32))
+		if err := s.repo.Create(user); err != nil {
+			return nil, "", MapError(err)
+		}
+		assignDefaultRole(user.ID)
+	} else if err != nil {
+		return nil, "", MapError(err)
+	} else {
+		needsUpdate := false
+		if user.FacebookID == nil || *user.FacebookID != info.ID {
+			user.FacebookID = &info.ID
+			needsUpdate = true
+		}
+		if info.Picture.Data.URL != "" && (user.ProfilePhotoPath == nil || *user.ProfilePhotoPath == "") {
+			user.ProfilePhotoPath = &info.Picture.Data.URL
 			needsUpdate = true
 		}
 		if needsUpdate {

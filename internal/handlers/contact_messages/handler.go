@@ -22,9 +22,14 @@ func getUser(c *fiber.Ctx) *models.User {
 	return user
 }
 
+func (h *Handler) requirePermission(c *fiber.Ctx) bool {
+	user := getUser(c)
+	return user != nil && (user.HasPermission("manage settings") || user.IsAdmin())
+}
+
 func (h *Handler) List(c *fiber.Ctx) error {
-	if getUser(c) == nil {
-		return utils.Unauthorized(c)
+	if !h.requirePermission(c) {
+		return utils.Forbidden(c)
 	}
 	pag := utils.GetPagination(c)
 	msgs, total, err := h.svc.List(pag.Offset, pag.PerPage)
@@ -35,8 +40,8 @@ func (h *Handler) List(c *fiber.Ctx) error {
 }
 
 func (h *Handler) Get(c *fiber.Ctx) error {
-	if getUser(c) == nil {
-		return utils.Unauthorized(c)
+	if !h.requirePermission(c) {
+		return utils.Forbidden(c)
 	}
 	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
@@ -55,8 +60,8 @@ func (h *Handler) Get(c *fiber.Ctx) error {
 }
 
 func (h *Handler) MarkAsRead(c *fiber.Ctx) error {
-	if getUser(c) == nil {
-		return utils.Unauthorized(c)
+	if !h.requirePermission(c) {
+		return utils.Forbidden(c)
 	}
 	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
@@ -69,8 +74,8 @@ func (h *Handler) MarkAsRead(c *fiber.Ctx) error {
 }
 
 func (h *Handler) Delete(c *fiber.Ctx) error {
-	if getUser(c) == nil {
-		return utils.Unauthorized(c)
+	if !h.requirePermission(c) {
+		return utils.Forbidden(c)
 	}
 	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {

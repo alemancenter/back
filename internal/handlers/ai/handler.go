@@ -23,8 +23,19 @@ func New(svc services.AIService) *Handler {
 }
 
 type GenerateRequest struct {
-	Title       string `json:"title"`
-	ContentType string `json:"content_type"` // "article" (default) or "post"
+	Title             string `json:"title"`
+	ContentType       string `json:"content_type"` // "article" (default) or "post"
+	CountryCode       string `json:"country_code,omitempty"`
+	Country           string `json:"country,omitempty"`
+	GradeLevel        string `json:"grade_level,omitempty"`
+	GradeName         string `json:"grade_name,omitempty"`
+	SubjectID         string `json:"subject_id,omitempty"`
+	SubjectName       string `json:"subject_name,omitempty"`
+	SemesterID        string `json:"semester_id,omitempty"`
+	SemesterName      string `json:"semester_name,omitempty"`
+	CategoryID        string `json:"category_id,omitempty"`
+	CategoryName      string `json:"category_name,omitempty"`
+	CurriculumContext string `json:"curriculum_context,omitempty"`
 }
 
 // Generate starts an async AI content generation job and returns a job ID immediately.
@@ -44,6 +55,19 @@ func (h *Handler) Generate(c *fiber.Ctx) error {
 		contentType = "article"
 	}
 
+	generationContext := services.SEOGenerationContext{
+		CountryCode:       firstNonEmpty(req.CountryCode, req.Country),
+		GradeLevel:        req.GradeLevel,
+		GradeName:         req.GradeName,
+		SubjectID:         req.SubjectID,
+		SubjectName:       req.SubjectName,
+		SemesterID:        req.SemesterID,
+		SemesterName:      req.SemesterName,
+		CategoryID:        req.CategoryID,
+		CategoryName:      req.CategoryName,
+		CurriculumContext: req.CurriculumContext,
+	}
+
 	jobID := uuid.New().String()
 	store := services.GetAIJobStore()
 	store.Create(jobID)
@@ -56,7 +80,7 @@ func (h *Handler) Generate(c *fiber.Ctx) error {
 			}
 		}()
 
-		article, err := h.svc.GenerateSEOArticle(title, contentType)
+		article, err := h.svc.GenerateSEOArticleWithContext(title, contentType, generationContext)
 		if err != nil {
 			log.Printf("AI generation failed | job=%s | title=%q | error=%v", jobID, title, err)
 			store.Fail(jobID, clientAIErrorMessage(err))
@@ -137,4 +161,13 @@ func clientAIErrorMessage(err error) string {
 	default:
 		return "تعذر توليد محتوى صالح لهذا العنوان. يرجى تعديل العنوان والمحاولة مرة أخرى."
 	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }

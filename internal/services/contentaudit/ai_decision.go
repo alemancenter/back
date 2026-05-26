@@ -20,7 +20,6 @@ import (
 	"gorm.io/gorm"
 )
 
-
 func contentAuditCountryQueryValue(code string) string {
 	switch strings.ToLower(strings.TrimSpace(code)) {
 	case "jo", "", "1":
@@ -166,12 +165,17 @@ type RejectFixRequest struct {
 }
 
 type loadedContent struct {
-	Type        string
-	ID          uint
-	CountryCode string
-	Title       string
-	Content     string
-	URL         string
+	Type              string
+	ID                uint
+	CountryCode       string
+	Title             string
+	Content           string
+	URL               string
+	GradeName         string
+	SubjectName       string
+	SemesterName      string
+	CategoryName      string
+	CurriculumContext string
 }
 
 type aiIssueDTO struct {
@@ -233,7 +237,7 @@ func (s *Service) AnalyzeWithAI(ctx context.Context, req AIAnalyzeRequest, userI
 	}
 
 	if s.ai != nil && strings.TrimSpace(plain) != "" {
-		if aiResp, err := s.ai.RunContentIntelligence(ctx, coreai.ContentIntelligenceRequest{Task: "audit_content", ModelStrategy: modelStrategy, ContentType: content.Type, ContentID: fmt.Sprintf("%d", content.ID), CountryCode: content.CountryCode, Title: content.Title, Content: content.Content, PlainText: plain, URL: firstNonEmptyLocal(req.URL, content.URL), Language: "ar", JobID: aiJobIDFromContext(ctx)}); err == nil {
+		if aiResp, err := s.ai.RunContentIntelligence(ctx, coreai.ContentIntelligenceRequest{Task: "audit_content", ModelStrategy: modelStrategy, ContentType: content.Type, ContentID: fmt.Sprintf("%d", content.ID), CountryCode: content.CountryCode, GradeName: content.GradeName, SubjectName: content.SubjectName, SemesterName: content.SemesterName, CategoryName: content.CategoryName, CurriculumContext: content.CurriculumContext, Title: content.Title, Content: content.Content, PlainText: plain, URL: firstNonEmptyLocal(req.URL, content.URL), Language: "ar", JobID: aiJobIDFromContext(ctx)}); err == nil {
 			report = reportFromAI(aiResp, report)
 		}
 	}
@@ -309,7 +313,7 @@ func (s *Service) CreateFixPreview(ctx context.Context, decisionID uint64) (*mod
 
 	if s.ai != nil {
 		// First try the dedicated content-intelligence fixing task. It should return a real fixed HTML draft.
-		if aiResp, err := s.ai.RunContentIntelligence(ctx, coreai.ContentIntelligenceRequest{Task: "fix_content", ModelStrategy: modelStrategy, ContentType: content.Type, ContentID: fmt.Sprintf("%d", content.ID), CountryCode: content.CountryCode, Title: content.Title, Content: content.Content, PlainText: originalPlain, URL: content.URL, Language: "ar", JobID: aiJobIDFromContext(ctx)}); err == nil {
+		if aiResp, err := s.ai.RunContentIntelligence(ctx, coreai.ContentIntelligenceRequest{Task: "fix_content", ModelStrategy: modelStrategy, ContentType: content.Type, ContentID: fmt.Sprintf("%d", content.ID), CountryCode: content.CountryCode, GradeName: content.GradeName, SubjectName: content.SubjectName, SemesterName: content.SemesterName, CategoryName: content.CategoryName, CurriculumContext: content.CurriculumContext, Title: content.Title, Content: content.Content, PlainText: originalPlain, URL: content.URL, Language: "ar", JobID: aiJobIDFromContext(ctx)}); err == nil {
 			candidateTitle := firstNonEmptyLocal(strings.TrimSpace(aiResp.FixedTitle), fixedTitle)
 			candidateContent := strings.TrimSpace(aiResp.FixedContent)
 			candidateSummary := firstNonEmptyLocal(strings.TrimSpace(aiResp.FixSummary), "تم إنشاء نسخة محسّنة بالذكاء الاصطناعي وفق سياسات AdSense ومعايير SEO.")
@@ -323,7 +327,7 @@ func (s *Service) CreateFixPreview(ctx context.Context, decisionID uint64) (*mod
 		// If the fixing task returns the same weak content, use the existing project article-generation pipeline.
 		// This keeps the style consistent with the generator already used for articles/posts.
 		if !isMeaningfulFix(content.Content, fixedContent, content.Type) {
-			if article, err := s.ai.GenerateSEOArticle(content.Title, content.Type); err == nil && article != nil {
+			if article, err := s.ai.GenerateSEOArticleWithContext(content.Title, content.Type, coreai.SEOGenerationContext{CountryCode: content.CountryCode, GradeName: content.GradeName, SubjectName: content.SubjectName, SemesterName: content.SemesterName, CategoryName: content.CategoryName, CurriculumContext: content.CurriculumContext}); err == nil && article != nil {
 				candidateContent := firstNonEmptyLocal(article.ContentHTML, formatPlainContentToHTML(article.Content))
 				if isMeaningfulFix(content.Content, candidateContent, content.Type) {
 					fixedTitle = firstNonEmptyLocal(article.Title, content.Title)
@@ -336,7 +340,7 @@ func (s *Service) CreateFixPreview(ctx context.Context, decisionID uint64) (*mod
 
 	// Final guard: never save a preview that is effectively identical to the original weak content.
 	if !isMeaningfulFix(content.Content, fixedContent, content.Type) {
-		fixedTitle, fixedContent, summary = localExpandedFallback(content.Title, content.Content, content.Type)
+		fixedTitle, fixedContent, summary = localExpandedFallback(content.Title, content.Content, content.Type, content.CurriculumContext)
 	}
 
 	fixedTitle = strings.TrimSpace(fixedTitle)
@@ -344,11 +348,11 @@ func (s *Service) CreateFixPreview(ctx context.Context, decisionID uint64) (*mod
 		fixedTitle = content.Title
 	}
 	fixedContent = normalizeFixedHTML(fixedContent)
-	// After localExpandedFallback, only reject completely empty output.
-	// Word-count gates do not apply here — the fallback is the last resort
-	// and always produces content that differs structurally from the original.
 	if strings.TrimSpace(normalizePlainText(fixedContent)) == "" {
 		return nil, fmt.Errorf("generated fix preview is not meaningful enough for decision %d", decision.ID)
+	}
+	if aiWordCount(normalizePlainText(fixedContent)) < minFixWords(content.Type) {
+		return nil, fmt.Errorf("generated fix preview is below the educational minimum: %d words required", minFixWords(content.Type))
 	}
 
 	preview := &models.ContentAIFixPreview{DecisionID: decision.ID, ContentType: normalizeContentType(decision.ContentType), ContentID: normalizedID, CountryCode: cc, OriginalTitle: content.Title, OriginalContent: content.Content, FixedTitle: fixedTitle, FixedContent: fixedContent, FixSummary: summary, Status: models.AIFixStatusPreviewed}
@@ -368,6 +372,10 @@ func (s *Service) ApplyFix(ctx context.Context, previewID uint64, userID *uint, 
 	if preview.Status != models.AIFixStatusPreviewed {
 		return nil, ErrFixAlreadyClosed
 	}
+	if aiWordCount(normalizePlainText(preview.FixedContent)) < minFixWords(preview.ContentType) {
+		return nil, fmt.Errorf("لا يمكن اعتماد تحسين أقل من %d كلمة تعليمية", minFixWords(preview.ContentType))
+	}
+
 	_, _, id := normalizeContentReference(preview.ContentID, preview.CountryCode)
 	db := database.GetManager().GetByCode(preview.CountryCode).WithContext(ctx)
 
@@ -377,7 +385,7 @@ func (s *Service) ApplyFix(ctx context.Context, previewID uint64, userID *uint, 
 	switch normalizeContentType(preview.ContentType) {
 	case "article":
 		var item models.Article
-		if err := db.First(&item, id).Error; err != nil {
+		if err := db.Preload("Subject").Preload("Subject.SchoolClass").Preload("Semester").Preload("Semester.SchoolClass").First(&item, id).Error; err != nil {
 			return nil, err
 		}
 		item.Title = preview.FixedTitle
@@ -392,7 +400,7 @@ func (s *Service) ApplyFix(ctx context.Context, previewID uint64, userID *uint, 
 		notifURL = contentAuditEditURL("article", item.ID, preview.CountryCode)
 	case "post":
 		var item models.Post
-		if err := db.First(&item, id).Error; err != nil {
+		if err := db.Preload("Category").First(&item, id).Error; err != nil {
 			return nil, err
 		}
 		item.Title = preview.FixedTitle
@@ -474,27 +482,74 @@ func (s *Service) loadContentByRef(ctx context.Context, contentType, countryCode
 	switch normalizeContentType(contentType) {
 	case "article":
 		var item models.Article
-		if err := db.First(&item, id).Error; err != nil {
+		if err := db.Preload("Subject").Preload("Subject.SchoolClass").Preload("Semester").Preload("Semester.SchoolClass").First(&item, id).Error; err != nil {
 			return nil, err
 		}
 		normalizedCountry := sanitizeCountryCode(countryCode)
 		if normalizedCountry == "" {
 			normalizedCountry = "jo"
 		}
-		return &loadedContent{Type: "article", ID: item.ID, CountryCode: normalizedCountry, Title: item.Title, Content: item.Content, URL: fmt.Sprintf("/%s/articles/%d", normalizedCountry, item.ID)}, nil
+		gradeName, subjectName, semesterName := articleEducationContext(item)
+		return &loadedContent{Type: "article", ID: item.ID, CountryCode: normalizedCountry, Title: item.Title, Content: item.Content, URL: fmt.Sprintf("/%s/articles/%d", normalizedCountry, item.ID), GradeName: gradeName, SubjectName: subjectName, SemesterName: semesterName, CurriculumContext: buildCurriculumContext(normalizedCountry, gradeName, subjectName, semesterName, "")}, nil
 	case "post":
 		var item models.Post
-		if err := db.First(&item, id).Error; err != nil {
+		if err := db.Preload("Category").First(&item, id).Error; err != nil {
 			return nil, err
 		}
 		normalizedCountry := sanitizeCountryCode(firstNonEmptyLocal(item.Country, countryCode))
 		if normalizedCountry == "" {
 			normalizedCountry = "jo"
 		}
-		return &loadedContent{Type: "post", ID: item.ID, CountryCode: normalizedCountry, Title: item.Title, Content: item.Content, URL: fmt.Sprintf("/%s/posts/%d", normalizedCountry, item.ID)}, nil
+		categoryName := ""
+		if item.Category != nil {
+			categoryName = strings.TrimSpace(item.Category.Name)
+		}
+		return &loadedContent{Type: "post", ID: item.ID, CountryCode: normalizedCountry, Title: item.Title, Content: item.Content, URL: fmt.Sprintf("/%s/posts/%d", normalizedCountry, item.ID), CategoryName: categoryName, CurriculumContext: buildCurriculumContext(normalizedCountry, "", "", "", categoryName)}, nil
 	default:
 		return nil, ErrUnsupportedContentType
 	}
+}
+
+func articleEducationContext(item models.Article) (string, string, string) {
+	gradeName := ""
+	subjectName := ""
+	semesterName := ""
+	if item.Subject != nil {
+		subjectName = strings.TrimSpace(item.Subject.SubjectName)
+		if item.Subject.SchoolClass != nil {
+			gradeName = strings.TrimSpace(item.Subject.SchoolClass.GradeName)
+		}
+	}
+	if item.Semester != nil {
+		semesterName = strings.TrimSpace(item.Semester.SemesterName)
+		if gradeName == "" && item.Semester.SchoolClass != nil {
+			gradeName = strings.TrimSpace(item.Semester.SchoolClass.GradeName)
+		}
+	}
+	if gradeName == "" && item.GradeLevel != nil {
+		gradeName = strings.TrimSpace(*item.GradeLevel)
+	}
+	return gradeName, subjectName, semesterName
+}
+
+func buildCurriculumContext(countryCode, gradeName, subjectName, semesterName, categoryName string) string {
+	parts := []string{}
+	if strings.TrimSpace(countryCode) != "" {
+		parts = append(parts, "منهاج الدولة: "+strings.TrimSpace(countryCode))
+	}
+	if strings.TrimSpace(gradeName) != "" {
+		parts = append(parts, "الصف/المرحلة: "+strings.TrimSpace(gradeName))
+	}
+	if strings.TrimSpace(subjectName) != "" {
+		parts = append(parts, "المادة: "+strings.TrimSpace(subjectName))
+	}
+	if strings.TrimSpace(semesterName) != "" {
+		parts = append(parts, "الفصل: "+strings.TrimSpace(semesterName))
+	}
+	if strings.TrimSpace(categoryName) != "" {
+		parts = append(parts, "التصنيف: "+strings.TrimSpace(categoryName))
+	}
+	return strings.Join(parts, " | ")
 }
 
 func buildDecisionReport(content *loadedContent) aiReport {
@@ -729,7 +784,7 @@ func formatPlainContentToHTML(content string) string {
 	return strings.Join(out, "\n")
 }
 
-func localExpandedFallback(title, content, contentType string) (string, string, string) {
+func localExpandedFallback(title, content, contentType, curriculumContext string) (string, string, string) {
 	plain := normalizePlainText(content)
 	if plain == "" {
 		plain = "يحتاج هذا المحتوى إلى إعادة بناء كاملة ليصبح مناسبًا للنشر التعليمي وسياسات الإعلانات."
@@ -742,8 +797,11 @@ func localExpandedFallback(title, content, contentType string) (string, string, 
 		fixedTitle = "دليل شامل حول " + fixedTitle
 	}
 	intro := fmt.Sprintf("يمثل موضوع %s جانبًا مهمًا في المحتوى التعليمي، لأنه يساعد الطالب وولي الأمر والمعلم على فهم الفكرة بصورة أوضح والاستفادة منها عمليًا.", strings.TrimSpace(title))
+	if strings.TrimSpace(curriculumContext) != "" {
+		intro = fmt.Sprintf("يرتبط موضوع %s بالسياق الدراسي التالي: %s. لذلك يجب أن يقدّم المحتوى شرحًا تعليميًا مناسبًا للمنهاج والصف والمادة دون الخروج عن هذا الإطار.", strings.TrimSpace(title), strings.TrimSpace(curriculumContext))
+	}
 	body := plain
-	value := "ولكي يكون المحتوى أكثر فائدة، يجب أن يوضح الفكرة الأساسية، ويعرض أمثلة قريبة من الواقع التعليمي، ثم يقدّم إرشادات عملية يمكن تطبيقها بسهولة. هذا الأسلوب يزيد من جودة الصفحة ويمنح القارئ قيمة واضحة بدل الاكتفاء بجمل عامة قصيرة."
+	value := "ولكي يكون المحتوى أكثر فائدة، يجب أن يوضح الفكرة الأساسية، ويعرض أمثلة قريبة من الواقع التعليمي والمنهاج الدراسي، ثم يقدّم إرشادات عملية يمكن تطبيقها بسهولة داخل الدراسة أو التحضير. هذا الأسلوب يزيد من جودة الصفحة ويمنح القارئ قيمة واضحة بدل الاكتفاء بجمل عامة قصيرة."
 	seo := "من الناحية التحريرية، يُفضّل تقسيم المحتوى إلى فقرات واضحة، وإضافة عناوين فرعية مناسبة، وربط الموضوع بسياق تعليمي مباشر. كما يساعد استخدام كلمات مفتاحية طبيعية دون حشو على تحسين الظهور في محركات البحث مع الحفاظ على تجربة قراءة جيدة."
 	faq := "يمكن أيضًا إضافة أسئلة شائعة في نهاية المحتوى للإجابة عن أهم ما يبحث عنه القارئ، مثل أهمية الموضوع، وطريقة الاستفادة منه، والخطوات العملية المرتبطة به."
 	fixed := fmt.Sprintf("<p>%s</p>\n<h2>شرح الفكرة الأساسية</h2>\n<p>%s</p>\n<h2>القيمة التعليمية للمحتوى</h2>\n<p>%s</p>\n<h2>تحسينات مقترحة للنشر</h2>\n<p>%s</p>\n<h2>أسئلة يمكن إضافتها</h2>\n<p>%s</p>", html.EscapeString(intro), html.EscapeString(body), html.EscapeString(value), html.EscapeString(seo), html.EscapeString(faq))

@@ -35,8 +35,100 @@ var (
 	ErrAIGenerationTimeout = errors.New("ai generation timed out")
 	ErrAIProviderFailed    = errors.New("ai provider failed")
 
-	defaultAIFallbackModels = []string{}
+	defaultAIFallbackModels = []string{"openai/gpt-oss-20b", "Qwen/Qwen3.5-9B"}
 )
+
+type seoGenerationContextKey struct{}
+
+func withSEOGenerationContext(ctx context.Context, generationContext SEOGenerationContext) context.Context {
+	generationContext = sanitizeSEOGenerationContext(generationContext)
+	if generationContext == (SEOGenerationContext{}) {
+		return ctx
+	}
+	return context.WithValue(ctx, seoGenerationContextKey{}, generationContext)
+}
+
+func seoGenerationContextFromContext(ctx context.Context) SEOGenerationContext {
+	if ctx == nil {
+		return SEOGenerationContext{}
+	}
+	if value, ok := ctx.Value(seoGenerationContextKey{}).(SEOGenerationContext); ok {
+		return sanitizeSEOGenerationContext(value)
+	}
+	return SEOGenerationContext{}
+}
+
+func sanitizeSEOGenerationContext(value SEOGenerationContext) SEOGenerationContext {
+	value.CountryCode = strings.ToLower(strings.TrimSpace(value.CountryCode))
+	value.GradeLevel = strings.TrimSpace(value.GradeLevel)
+	value.GradeName = strings.TrimSpace(value.GradeName)
+	value.SubjectID = strings.TrimSpace(value.SubjectID)
+	value.SubjectName = strings.TrimSpace(value.SubjectName)
+	value.SemesterID = strings.TrimSpace(value.SemesterID)
+	value.SemesterName = strings.TrimSpace(value.SemesterName)
+	value.CategoryID = strings.TrimSpace(value.CategoryID)
+	value.CategoryName = strings.TrimSpace(value.CategoryName)
+	value.CurriculumContext = strings.TrimSpace(value.CurriculumContext)
+	return value
+}
+
+func generationContextPromptAr(value SEOGenerationContext, contentType string) string {
+	value = sanitizeSEOGenerationContext(value)
+	parts := []string{}
+	if value.CountryCode != "" {
+		parts = append(parts, "الدولة/المنهاج: "+value.CountryCode)
+	}
+	if value.GradeName != "" || value.GradeLevel != "" {
+		parts = append(parts, "الصف/المرحلة: "+firstNonEmpty(value.GradeName, value.GradeLevel))
+	}
+	if value.SubjectName != "" {
+		parts = append(parts, "المادة: "+value.SubjectName)
+	}
+	if value.SemesterName != "" {
+		parts = append(parts, "الفصل الدراسي: "+value.SemesterName)
+	}
+	if value.CategoryName != "" {
+		parts = append(parts, "تصنيف المنشور: "+value.CategoryName)
+	}
+	if value.CurriculumContext != "" {
+		parts = append(parts, "سياق إضافي: "+value.CurriculumContext)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	kind := "المقال"
+	if contentType == "post" {
+		kind = "المنشور"
+	}
+	return "\nالسياق التعليمي المعتمد لهذا " + kind + ":\n- " + strings.Join(parts, "\n- ") + "\n\nقواعد إلزامية للسياق التعليمي:\n- اربط المحتوى بالمنهاج والصف والمادة المذكورة عند توفرها.\n- لا تخلط بين مناهج أو دول أو صفوف مختلفة.\n- لا تضف معلومات غير مؤكدة عن المنهاج؛ اشرح بأسلوب تعليمي عام إذا لم تتوفر تفاصيل كافية.\n- اجعل الأمثلة والشرح مناسبين لعمر الطالب والمرحلة الدراسية."
+}
+
+func generationContextPromptEn(value SEOGenerationContext, contentType string) string {
+	value = sanitizeSEOGenerationContext(value)
+	parts := []string{}
+	if value.CountryCode != "" {
+		parts = append(parts, "Country/curriculum: "+value.CountryCode)
+	}
+	if value.GradeName != "" || value.GradeLevel != "" {
+		parts = append(parts, "Grade: "+firstNonEmpty(value.GradeName, value.GradeLevel))
+	}
+	if value.SubjectName != "" {
+		parts = append(parts, "Subject: "+value.SubjectName)
+	}
+	if value.SemesterName != "" {
+		parts = append(parts, "Semester: "+value.SemesterName)
+	}
+	if value.CategoryName != "" {
+		parts = append(parts, "Category: "+value.CategoryName)
+	}
+	if value.CurriculumContext != "" {
+		parts = append(parts, "Additional context: "+value.CurriculumContext)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "\nEducational context:\n- " + strings.Join(parts, "\n- ") + "\n\nMandatory rules: keep the article aligned with the provided curriculum, grade, subject, and semester when available; do not mix curricula or grades; use age-appropriate examples; avoid unsupported curriculum claims."
+}
 
 type searchIntent string
 
@@ -77,24 +169,47 @@ type InternalLink struct {
 	URL   string `json:"url"`
 }
 
+// SEOGenerationContext carries curriculum metadata from the dashboard.
+// It is intentionally optional so existing callers keep working, but when
+// present it forces AI output to stay tied to the selected grade, subject,
+// semester, category, and educational curriculum context.
+type SEOGenerationContext struct {
+	CountryCode       string `json:"country_code,omitempty"`
+	GradeLevel        string `json:"grade_level,omitempty"`
+	GradeName         string `json:"grade_name,omitempty"`
+	SubjectID         string `json:"subject_id,omitempty"`
+	SubjectName       string `json:"subject_name,omitempty"`
+	SemesterID        string `json:"semester_id,omitempty"`
+	SemesterName      string `json:"semester_name,omitempty"`
+	CategoryID        string `json:"category_id,omitempty"`
+	CategoryName      string `json:"category_name,omitempty"`
+	CurriculumContext string `json:"curriculum_context,omitempty"`
+}
+
 type AIService interface {
 	GenerateSEOArticle(title, contentType string) (*SEOArticle, error)
+	GenerateSEOArticleWithContext(title, contentType string, generationContext SEOGenerationContext) (*SEOArticle, error)
 	GenerateArticleContent(title string) (string, error)
 	RunContentIntelligence(ctx context.Context, req ContentIntelligenceRequest) (*ContentIntelligenceResponse, error)
 }
 
 type ContentIntelligenceRequest struct {
-	Task          string `json:"task"`
-	ModelStrategy string `json:"model_strategy,omitempty"`
-	ContentType   string `json:"content_type"`
-	ContentID     string `json:"content_id,omitempty"`
-	CountryCode   string `json:"country_code,omitempty"`
-	Title         string `json:"title"`
-	Content       string `json:"content"`
-	PlainText     string `json:"plain_text"`
-	URL           string `json:"url"`
-	Language      string `json:"language"`
-	JobID         string `json:"job_id,omitempty"`
+	Task              string `json:"task"`
+	ModelStrategy     string `json:"model_strategy,omitempty"`
+	ContentType       string `json:"content_type"`
+	ContentID         string `json:"content_id,omitempty"`
+	CountryCode       string `json:"country_code,omitempty"`
+	GradeName         string `json:"grade_name,omitempty"`
+	SubjectName       string `json:"subject_name,omitempty"`
+	SemesterName      string `json:"semester_name,omitempty"`
+	CategoryName      string `json:"category_name,omitempty"`
+	CurriculumContext string `json:"curriculum_context,omitempty"`
+	Title             string `json:"title"`
+	Content           string `json:"content"`
+	PlainText         string `json:"plain_text"`
+	URL               string `json:"url"`
+	Language          string `json:"language"`
+	JobID             string `json:"job_id,omitempty"`
 }
 
 type ContentIntelligenceIssue struct {
@@ -217,6 +332,10 @@ func uniqueFallbackModels(primary string, fallbackModels []string) []string {
 }
 
 func (s *aiService) GenerateSEOArticle(title, contentType string) (*SEOArticle, error) {
+	return s.GenerateSEOArticleWithContext(title, contentType, SEOGenerationContext{})
+}
+
+func (s *aiService) GenerateSEOArticleWithContext(title, contentType string, generationContext SEOGenerationContext) (*SEOArticle, error) {
 	title = normalizeInputTitle(title)
 
 	if err := validateInputTitle(title); err != nil {
@@ -234,6 +353,7 @@ func (s *aiService) GenerateSEOArticle(title, contentType string) (*SEOArticle, 
 	ctx, cancel := context.WithTimeout(context.Background(), AIOverallTimeout)
 	defer cancel()
 
+	ctx = withSEOGenerationContext(ctx, generationContext)
 	return s.generateSEOWithFallback(ctx, title, contentType, 0)
 }
 
@@ -509,6 +629,32 @@ func (s *aiService) runContentIntelligenceWithFallback(ctx context.Context, req 
 	return &out, nil
 }
 
+func curriculumSummary(req ContentIntelligenceRequest) string {
+	parts := []string{}
+	if strings.TrimSpace(req.CountryCode) != "" {
+		parts = append(parts, "الدولة/المنهاج: "+strings.TrimSpace(req.CountryCode))
+	}
+	if strings.TrimSpace(req.GradeName) != "" {
+		parts = append(parts, "الصف/المرحلة: "+strings.TrimSpace(req.GradeName))
+	}
+	if strings.TrimSpace(req.SubjectName) != "" {
+		parts = append(parts, "المادة: "+strings.TrimSpace(req.SubjectName))
+	}
+	if strings.TrimSpace(req.SemesterName) != "" {
+		parts = append(parts, "الفصل: "+strings.TrimSpace(req.SemesterName))
+	}
+	if strings.TrimSpace(req.CategoryName) != "" {
+		parts = append(parts, "التصنيف: "+strings.TrimSpace(req.CategoryName))
+	}
+	if strings.TrimSpace(req.CurriculumContext) != "" {
+		parts = append(parts, strings.TrimSpace(req.CurriculumContext))
+	}
+	if len(parts) == 0 {
+		return "غير محدد؛ استخدم معالجة تعليمية عامة دون ادعاءات منهجية غير مؤكدة"
+	}
+	return strings.Join(parts, " | ")
+}
+
 func buildContentIntelligencePrompts(req ContentIntelligenceRequest) (string, string) {
 	kind := "مقال طويل SEO"
 	minWords := 300
@@ -516,7 +662,7 @@ func buildContentIntelligencePrompts(req ContentIntelligenceRequest) (string, st
 		kind = "بوست تعليمي"
 		minWords = 300
 	}
-	system := "أنت محرر محتوى عربي محترف وخبير SEO وسياسات Google AdSense. استخدم نفس أسلوب منصة الأيمان التعليمية: لغة عربية سليمة، محتوى تعليمي آمن، بنية واضحة، قيمة تعليمية حقيقية، بدون حشو أو مبالغة. أعد Strict JSON فقط ولا تكتب أي نص خارج JSON."
+	system := "أنت محرر محتوى عربي محترف وخبير SEO وسياسات Google AdSense ومختص بالمحتوى التعليمي المدرسي. استخدم نفس أسلوب منصة الأيمان التعليمية: لغة عربية سليمة، محتوى تعليمي آمن، بنية واضحة، قيمة تعليمية حقيقية، بدون حشو أو مبالغة. التزم بالسياق الدراسي والمنهاج والصف والمادة عند توفرها. أعد Strict JSON فقط ولا تكتب أي نص خارج JSON."
 	mode := "حلل المحتوى واتخذ قرار نشر/تصحيح"
 	extra := ""
 	if req.Task == "fix_content" {
@@ -524,7 +670,8 @@ func buildContentIntelligencePrompts(req ContentIntelligenceRequest) (string, st
 		extra = fmt.Sprintf(`
 تعليمات صارمة لمهمة fix_content:
 - ممنوع إرجاع نفس HTML الأصلي أو نسخة مطابقة منه.
-- إذا كان المحتوى قصيراً أو Thin Content، وسّعه إلى %d كلمة على الأقل.
+- إذا كان المحتوى قصيراً أو Thin Content، وسّعه إلى %d كلمة على الأقل، والهدف الأفضل 450 كلمة.
+- يجب أن يكون التوسيع مبنيًا على شرح تعليمي بحت مرتبط بالمنهاج/الصف/المادة عند توفرها.
 - اكتب fixed_content بصيغة HTML نظيفة تحتوي على فقرات <p> وعناوين فرعية <h2> مناسبة.
 - أضف قيمة تعليمية حقيقية: شرح الفكرة، نقاط عملية، أمثلة أو إرشادات، وأسئلة شائعة مختصرة عند الحاجة.
 - لا تضف روابط خارجية، ولا أكواد، ولا عبارات تسويقية مبالغ فيها.
@@ -535,6 +682,7 @@ func buildContentIntelligencePrompts(req ContentIntelligenceRequest) (string, st
 نوع المحتوى: %s
 العنوان: %s
 الرابط: %s
+السياق التعليمي: %s
 
 النص الصافي:
 %s
@@ -544,7 +692,7 @@ HTML الأصلي:
 %s
 
 أرجع JSON بهذه المفاتيح فقط: decision, adsense_risk, score, policy_score, seo_score, language_score, safety_links_score, structure_score, can_auto_fix, summary, issues, suggestions, fixed_title, fixed_content, fix_summary.
-قواعد القرار: أي Thin Content أو مخالفة سياسة مهمة يجب أن تكون needs_fix أو restricted_ads أو rejected وليس approved. إذا كانت المهمة fix_content فأعد fixed_content بصيغة HTML نظيفة مناسبة لـ %s.`, mode, kind, req.Title, req.URL, truncate(req.PlainText, 6000), truncate(req.Content, 6000), extra, kind)
+قواعد القرار: أي Thin Content أو مخالفة سياسة مهمة يجب أن تكون needs_fix أو restricted_ads أو rejected وليس approved. إذا كانت المهمة fix_content فأعد fixed_content بصيغة HTML نظيفة مناسبة لـ %s.`, mode, kind, req.Title, req.URL, curriculumSummary(req), truncate(req.PlainText, 6000), truncate(req.Content, 6000), extra, kind)
 	return system, user
 }
 
@@ -687,7 +835,7 @@ func (s *aiService) generateSEOWithFallback(ctx context.Context, title, contentT
 		truncate(title, 70),
 	)
 
-	systemPrompt, userPrompt := buildSEOPrompts(title, isArabic, intent)
+	systemPrompt, userPrompt := buildSEOPrompts(title, isArabic, intent, seoGenerationContextFromContext(ctx), contentType)
 
 	payload := map[string]interface{}{
 		"model": currentModel,
@@ -965,7 +1113,7 @@ func intentHintEn(i searchIntent) string {
 	}
 }
 
-func buildSEOPrompts(title string, isArabic bool, intent searchIntent) (string, string) {
+func buildSEOPrompts(title string, isArabic bool, intent searchIntent, generationContext SEOGenerationContext, contentType string) (string, string) {
 	if isArabic {
 		system := `أنت محرر محتوى عربي محترف متخصص في كتابة مقالات SEO تعليمية عالية الجودة.
 
@@ -1010,13 +1158,14 @@ func buildSEOPrompts(title string, isArabic bool, intent searchIntent) (string, 
 - المقال يجب أن يكون مفيداً للطالب أو ولي الأمر أو المعلم.
 - يجب أن يجيب على نية البحث بشكل مباشر.
 
-الالتزام بهذه القواعد بدقة.`
+الالتزام بهذه القواعد بدقة.` + generationContextPromptAr(generationContext, contentType)
 
 		user := fmt.Sprintf(`اكتب مقالاً SEO تعليمياً احترافياً عن: "%s"
 %s
 
 الشروط الخاصة بهذا الطلب:
-- اجعل content بين 350 و450 كلمة تقريباً.
+- اجعل content بين 350 و450 كلمة تقريباً، ولا تقبل أي نتيجة أقل من 300 كلمة.
+- اجعل المحتوى تعليميًا بحتًا ومناسبًا للمنهاج والسياق الدراسي عند توفره.
 - اكتب 5 إلى 8 كلمات مفتاحية دقيقة.
 - اكتب 2 إلى 4 أسئلة FAQ مفيدة مرتبطة مباشرة بالموضوع.`, title, intentHintAr(intent))
 
@@ -1035,7 +1184,7 @@ Rules:
 - Include 5-8 precise keywords and 2-4 useful FAQ items.
 - Do not start with "This article" or "In this article".
 - Answer the search intent directly and practically.
-- Output exactly this JSON shape: {"meta_description":"...","keywords":["..."],"faq":[{"question":"...","answer":"..."}],"content":"..."}.`
+- Output exactly this JSON shape: {"meta_description":"...","keywords":["..."],"faq":[{"question":"...","answer":"..."}],"content":"..."}.` + generationContextPromptEn(generationContext, contentType)
 
 	user := fmt.Sprintf(`Write a professional SEO educational article about: "%s"
 %s

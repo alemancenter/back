@@ -1,0 +1,56 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/back
+/server
+
+# Build output
+/bin/
+/dist/
+
+# Test output
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# Dependencies
+/vendor/
+
+# Environment & config
+.env
+.env.*
+!.env.example
+config.yaml
+config.yml
+config.json
+config.local.*
+*.local.yaml
+*.local.json
+
+# Logs
+*.log
+/storage/logs/
+/logs/
+
+# Storage uploads (user-generated content, not source code)
+/storage/app/
+/storage/uploads/
+/storage/files/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Go tools
+/docs/swagger.json
+/docs/swagger.yaml

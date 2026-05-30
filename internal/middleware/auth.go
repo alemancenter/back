@@ -67,14 +67,14 @@ func Auth() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		tokenStr := authTokenFromRequest(c)
 		if tokenStr == "" {
-			return utils.Unauthorized(c)
+			return utils.UnauthorizedCode(c, "AUTH_REQUIRED", "يرجى تسجيل الدخول أولًا")
 		}
 
 		jwtSvc := services.NewJWTService()
 
 		claims, err := jwtSvc.ValidateToken(tokenStr)
 		if err != nil {
-			return utils.Unauthorized(c, "رمز المصادقة غير صالح أو منتهي الصلاحية")
+			return utils.UnauthorizedCode(c, "TOKEN_INVALID", "رمز المصادقة غير صالح أو منتهي الصلاحية")
 		}
 
 		// Check token blacklist (tokens invalidated by logout)
@@ -83,17 +83,17 @@ func Auth() fiber.Handler {
 		hash := sha256.Sum256([]byte(tokenStr))
 		blacklistKey := rdb.Key("blacklist", fmt.Sprintf("%x", hash))
 		if exists, _ := rdb.Exists(ctx, blacklistKey); exists {
-			return utils.Unauthorized(c, "رمز المصادقة غير صالح أو منتهي الصلاحية")
+			return utils.UnauthorizedCode(c, "TOKEN_INVALID", "رمز المصادقة غير صالح أو منتهي الصلاحية")
 		}
 
 		// Load user from Redis cache (falls back to DB on miss)
 		user, err := loadUserCached(claims.UserID)
 		if err != nil {
-			return utils.Unauthorized(c, "المستخدم غير موجود")
+			return utils.UnauthorizedCode(c, "USER_NOT_FOUND", "المستخدم غير موجود")
 		}
 
 		if !user.IsActive() {
-			return utils.Unauthorized(c, "الحساب غير نشط أو محظور")
+			return utils.UnauthorizedCode(c, "ACCOUNT_INACTIVE", "الحساب غير نشط أو محظور")
 		}
 
 		c.Locals("user", user)
@@ -139,16 +139,12 @@ func RequireVerifiedEmail() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		user, ok := c.Locals("user").(*models.User)
 		if !ok || user == nil {
-			return utils.Unauthorized(c)
+			return utils.UnauthorizedCode(c, "AUTH_REQUIRED", "يرجى تسجيل الدخول أولًا")
 		}
 		if user.IsVerified() || user.IsAdmin() {
 			return c.Next()
 		}
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"success": false,
-			"message": "يرجى تفعيل بريدك الإلكتروني قبل استخدام هذه الخدمة",
-			"code":    "email_not_verified",
-		})
+		return utils.ForbiddenCode(c, "EMAIL_NOT_VERIFIED", "يرجى تفعيل بريدك الإلكتروني قبل استخدام هذه الخدمة")
 	}
 }
 
@@ -157,7 +153,7 @@ func Can(permission string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		user, ok := c.Locals("user").(*models.User)
 		if !ok || user == nil {
-			return utils.Unauthorized(c)
+			return utils.UnauthorizedCode(c, "AUTH_REQUIRED", "يرجى تسجيل الدخول أولًا")
 		}
 
 		if !user.HasPermission(permission) && !user.IsAdmin() {
@@ -173,7 +169,7 @@ func HasRole(role string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		user, ok := c.Locals("user").(*models.User)
 		if !ok || user == nil {
-			return utils.Unauthorized(c)
+			return utils.UnauthorizedCode(c, "AUTH_REQUIRED", "يرجى تسجيل الدخول أولًا")
 		}
 
 		if !user.HasRole(role) && !user.IsAdmin() {
@@ -189,7 +185,7 @@ func AdminOnly() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		user, ok := c.Locals("user").(*models.User)
 		if !ok || user == nil {
-			return utils.Unauthorized(c)
+			return utils.UnauthorizedCode(c, "AUTH_REQUIRED", "يرجى تسجيل الدخول أولًا")
 		}
 
 		if !user.IsAdmin() {
@@ -211,7 +207,7 @@ func CanAny(permissions ...string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		user, ok := c.Locals("user").(*models.User)
 		if !ok || user == nil {
-			return utils.Unauthorized(c)
+			return utils.UnauthorizedCode(c, "AUTH_REQUIRED", "يرجى تسجيل الدخول أولًا")
 		}
 		if user.IsAdmin() {
 			return c.Next()

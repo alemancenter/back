@@ -23,6 +23,7 @@ func normalizeData(v interface{}) interface{} {
 type APIResponse struct {
 	Success    bool            `json:"success"`
 	Message    string          `json:"message"`
+	Code       string          `json:"code,omitempty"`
 	Data       interface{}     `json:"data,omitempty"`
 	Errors     interface{}     `json:"errors,omitempty"`
 	Token      *string         `json:"token,omitempty"`
@@ -104,6 +105,15 @@ func Unauthorized(c *fiber.Ctx, message ...string) error {
 	})
 }
 
+// UnauthorizedCode sends a 401 response with a machine-readable error code.
+func UnauthorizedCode(c *fiber.Ctx, code string, message string) error {
+	return c.Status(fiber.StatusUnauthorized).JSON(APIResponse{
+		Success: false,
+		Message: message,
+		Code:    code,
+	})
+}
+
 // Forbidden sends a 403 forbidden response
 func Forbidden(c *fiber.Ctx, message ...string) error {
 	msg := "ليس لديك صلاحية للوصول لهذا المورد"
@@ -113,6 +123,15 @@ func Forbidden(c *fiber.Ctx, message ...string) error {
 	return c.Status(fiber.StatusForbidden).JSON(APIResponse{
 		Success: false,
 		Message: msg,
+	})
+}
+
+// ForbiddenCode sends a 403 response with a machine-readable error code.
+func ForbiddenCode(c *fiber.Ctx, code string, message string) error {
+	return c.Status(fiber.StatusForbidden).JSON(APIResponse{
+		Success: false,
+		Message: message,
+		Code:    code,
 	})
 }
 

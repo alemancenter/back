@@ -552,14 +552,16 @@ func (h *Handler) Contact(c *fiber.Ctx) error {
 	if _, err := mail.ParseAddress(req.Email); err != nil {
 		return utils.BadRequest(c, "invalid email address")
 	}
-	if req.Recaptcha == "" {
-		return utils.BadRequest(c, "recaptcha token is required")
-	}
 	if req.FormTime > 0 && req.FormTime < 1200 {
 		return utils.BadRequest(c, "contact form submitted too quickly")
 	}
 
 	settings, _ := h.svc.GetPublic(c.Context(), countryIDFromContext(c))
+	// reCAPTCHA is only enforced when a site key is configured in settings.
+	// Without a configured key the widget is not shown, so the token will be empty.
+	if settings["recaptcha_site_key"] != "" && req.Recaptcha == "" {
+		return utils.BadRequest(c, "recaptcha token is required")
+	}
 	recipient := firstSetting(settings, "contact_email", "site_email")
 	if recipient == "" {
 		recipient = config.Get().Mail.FromAddress

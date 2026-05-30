@@ -400,6 +400,16 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 	// Persist env-backed settings to .env and sync in-memory configs immediately.
 	applyEnvAndConfigUpdates(updates)
 
+	// If any globally-consistent setting is updated, invalidate the settings
+	// cache for ALL country databases so the new value is reflected everywhere.
+	globalKeys := []string{"adsense_client", "canonical_url", "site_url", "site_name", "contact_email", "recaptcha_site_key"}
+	for _, gk := range globalKeys {
+		if _, ok := updates[gk]; ok {
+			invalidateAllCountrySettingsCache()
+			break
+		}
+	}
+
 	return utils.Success(c, "تم حفظ الإعدادات بنجاح", updates)
 }
 
@@ -625,4 +635,15 @@ func firstSetting(settings map[string]string, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+
+// invalidateAllCountrySettingsCache clears the Redis settings cache for every
+// country database. Call this whenever a setting that must be globally consistent
+// (e.g. adsense_client) is updated from the dashboard.
+func invalidateAllCountrySettingsCache() {
+	countryCodes := []string{"jo", "sa", "eg", "ps"}
+	for _, code := range countryCodes {
+		services.InvalidateCache(database.Redis().Key("settings", code))
+	}
 }

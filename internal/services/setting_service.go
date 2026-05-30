@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alemancenter/fiber-api/internal/config"
 	"github.com/alemancenter/fiber-api/internal/database"
 	"github.com/alemancenter/fiber-api/internal/repositories"
 )
@@ -62,8 +63,33 @@ func (s *settingService) GetPublic(ctx context.Context, countryID database.Count
 		}
 		return m, nil
 	})
+	if err != nil {
+		return nil, MapError(err)
+	}
 
-	return result, MapError(err)
+	// ── AdSense unification (AdSense policy: only ONE ca-pub-* per domain) ──
+	// If ADSENSE_CLIENT env var is set, it overrides whatever the per-country DB
+	// returns. This guarantees every page — regardless of the country route —
+	// carries the same publisher ID, preventing a dual-account policy violation.
+	if envAdsense := strings.TrimSpace(config.Get().Frontend.AdsenseClient); envAdsense != "" {
+		result["adsense_client"] = envAdsense
+	}
+
+	// ── canonical_url / site_url fallback ──
+	// Some country DBs have an empty canonical_url / site_url which causes the
+	// frontend to render broken links (e.g. "[](<>)" in privacy-policy).
+	// Fall back to the FRONTEND_URL env var so the value is never empty.
+	frontendURL := strings.TrimSpace(config.Get().Frontend.URL)
+	if frontendURL != "" {
+		if strings.TrimSpace(result["canonical_url"]) == "" {
+			result["canonical_url"] = frontendURL
+		}
+		if strings.TrimSpace(result["site_url"]) == "" {
+			result["site_url"] = frontendURL
+		}
+	}
+
+	return result, nil
 }
 
 func (s *settingService) Update(ctx context.Context, countryID database.CountryID, updates map[string]string, userID uint) error {

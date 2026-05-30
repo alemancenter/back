@@ -109,6 +109,7 @@ type JWTConfig struct {
 type FrontendConfig struct {
 	APIKey          string
 	URL             string
+	AdsenseClient   string // canonical AdSense publisher ID; overrides DB value across all countries
 	CORSOrigins     []string
 	RateLimit       bool
 	RateLimitMax    int
@@ -336,6 +337,7 @@ func Load() *Config {
 			Frontend: FrontendConfig{
 				APIKey:          v.GetString("FRONTEND_API_KEY"),
 				URL:             v.GetString("FRONTEND_URL"),
+				AdsenseClient:   v.GetString("ADSENSE_CLIENT"),
 				CORSOrigins:     strings.Split(v.GetString("CORS_ALLOWED_ORIGINS"), ","),
 				RateLimit:       v.GetBool("FRONTEND_RATE_LIMIT"),
 				RateLimitMax:    v.GetInt("FRONTEND_RATE_LIMIT_MAX"),

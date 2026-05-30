@@ -14,20 +14,20 @@ func registerAuthRoutes(api, dash fiber.Router, h *Handlers) {
 	authGroup := api.Group("/auth")
 
 	// Brute-force-sensitive endpoints get a dedicated per-IP rate limiter
-	authGroup.Post("/check-email", h.Auth.CheckEmail)
-	authGroup.Post("/email/preflight", h.Auth.EmailPreflight)
+	authGroup.Post("/check-email", middleware.AuthRateLimit(), h.Auth.CheckEmail)
+	authGroup.Post("/email/preflight", middleware.AuthRateLimit(), h.Auth.EmailPreflight)
 	authGroup.Post("/register", middleware.AuthRateLimit(), h.Auth.Register)
 	authGroup.Post("/login", middleware.AuthRateLimit(), h.Auth.Login)
 	authGroup.Post("/refresh", middleware.AuthRateLimit(), h.Auth.RefreshToken)
 	authGroup.Post("/password/forgot", middleware.AuthRateLimit(), h.Auth.ForgotPassword)
 
-	authGroup.Get("/google/redirect", h.Auth.GoogleRedirect)
-	authGroup.Get("/google/callback", h.Auth.GoogleCallback)
-	authGroup.Post("/google/token", h.Auth.GoogleTokenLogin)
-	authGroup.Get("/facebook/redirect", h.Auth.FacebookRedirect)
-	authGroup.Get("/facebook/callback", h.Auth.FacebookCallback)
-	authGroup.Post("/facebook/token", h.Auth.FacebookTokenLogin)
-	authGroup.Post("/password/reset", h.Auth.ResetPassword)
+	authGroup.Get("/google/redirect", middleware.AuthRateLimit(), h.Auth.GoogleRedirect)
+	authGroup.Get("/google/callback", middleware.AuthRateLimit(), h.Auth.GoogleCallback)
+	authGroup.Post("/google/token", middleware.AuthRateLimit(), h.Auth.GoogleTokenLogin)
+	authGroup.Get("/facebook/redirect", middleware.AuthRateLimit(), h.Auth.FacebookRedirect)
+	authGroup.Get("/facebook/callback", middleware.AuthRateLimit(), h.Auth.FacebookCallback)
+	authGroup.Post("/facebook/token", middleware.AuthRateLimit(), h.Auth.FacebookTokenLogin)
+	authGroup.Post("/password/reset", middleware.AuthRateLimit(), h.Auth.ResetPassword)
 	authGroup.Get("/email/verify/:id/:hash", h.Auth.VerifyEmail)
 
 	// Authenticated auth routes

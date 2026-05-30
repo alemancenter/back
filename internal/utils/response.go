@@ -151,7 +151,8 @@ func NotFound(c *fiber.Ctx, message ...string) error {
 func ValidationError(c *fiber.Ctx, errors interface{}) error {
 	return c.Status(fiber.StatusUnprocessableEntity).JSON(APIResponse{
 		Success: false,
-		Message: "بيانات غير صحيحة",
+		Message: "يرجى تصحيح الحقول المطلوبة",
+		Code:    "VALIDATION_ERROR",
 		Errors:  errors,
 	})
 }
@@ -160,7 +161,8 @@ func ValidationError(c *fiber.Ctx, errors interface{}) error {
 func TooManyRequests(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusTooManyRequests).JSON(APIResponse{
 		Success: false,
-		Message: "تم تجاوز الحد المسموح للطلبات",
+		Message: "تم تجاوز الحد المسموح للطلبات، يرجى المحاولة لاحقًا",
+		Code:    "RATE_LIMITED",
 	})
 }
 

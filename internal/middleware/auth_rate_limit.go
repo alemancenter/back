@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/alemancenter/fiber-api/internal/database"
@@ -20,10 +21,19 @@ type authLimitRule struct {
 
 // authLimits maps endpoint suffix → rule. Keys are matched as path suffixes.
 var authLimits = map[string]authLimitRule{
-	"/auth/login":           {max: 5, window: 15 * time.Minute},
-	"/auth/register":        {max: 10, window: 15 * time.Minute},
-	"/auth/password/forgot": {max: 3, window: 15 * time.Minute},
-	"/auth/refresh":         {max: 10, window: time.Minute},
+	"/auth/login":             {max: 5, window: 15 * time.Minute},
+	"/auth/register":          {max: 10, window: 15 * time.Minute},
+	"/auth/check-email":       {max: 20, window: 10 * time.Minute},
+	"/auth/email/preflight":   {max: 20, window: 10 * time.Minute},
+	"/auth/password/forgot":   {max: 3, window: 15 * time.Minute},
+	"/auth/password/reset":    {max: 5, window: 15 * time.Minute},
+	"/auth/refresh":           {max: 20, window: time.Minute},
+	"/auth/google/redirect":   {max: 20, window: 15 * time.Minute},
+	"/auth/google/callback":   {max: 30, window: 15 * time.Minute},
+	"/auth/google/token":      {max: 10, window: 15 * time.Minute},
+	"/auth/facebook/redirect": {max: 20, window: 15 * time.Minute},
+	"/auth/facebook/callback": {max: 30, window: 15 * time.Minute},
+	"/auth/facebook/token":    {max: 10, window: 15 * time.Minute},
 }
 
 // AuthRateLimit applies a strict per-IP rate limit for sensitive auth endpoints.
@@ -33,8 +43,16 @@ func AuthRateLimit() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		path := c.Path()
 
-		rule, ok := authLimits[path]
-		if !ok {
+		var rule authLimitRule
+		matched := false
+		for suffix, currentRule := range authLimits {
+			if strings.HasSuffix(path, suffix) {
+				rule = currentRule
+				matched = true
+				break
+			}
+		}
+		if !matched {
 			return c.Next()
 		}
 

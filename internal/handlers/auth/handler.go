@@ -66,6 +66,53 @@ func New(svc services.AuthService) *Handler {
 	}
 }
 
+func (h *Handler) isProduction() bool {
+	return strings.EqualFold(strings.TrimSpace(h.cfg.App.Env), "production") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(h.cfg.Frontend.URL)), "https://")
+}
+
+func (h *Handler) setAuthCookies(c *fiber.Ctx, accessToken string, refreshToken string) {
+	secure := h.isProduction() || strings.EqualFold(c.Protocol(), "https") || strings.EqualFold(c.Get("X-Forwarded-Proto"), "https")
+
+	if strings.TrimSpace(accessToken) != "" {
+		c.Cookie(&fiber.Cookie{
+			Name:     "token",
+			Value:    accessToken,
+			HTTPOnly: true,
+			Secure:   secure,
+			SameSite: "Lax",
+			Path:     "/",
+			MaxAge:   h.cfg.JWT.ExpireHours * 60 * 60,
+		})
+	}
+
+	if strings.TrimSpace(refreshToken) != "" {
+		c.Cookie(&fiber.Cookie{
+			Name:     "refresh_token",
+			Value:    refreshToken,
+			HTTPOnly: true,
+			Secure:   secure,
+			SameSite: "Lax",
+			Path:     "/",
+			MaxAge:   h.cfg.JWT.RefreshHours * 60 * 60,
+		})
+	}
+}
+
+func (h *Handler) clearAuthCookies(c *fiber.Ctx) {
+	secure := h.isProduction() || strings.EqualFold(c.Protocol(), "https") || strings.EqualFold(c.Get("X-Forwarded-Proto"), "https")
+	for _, name := range []string{"token", "refresh_token"} {
+		c.Cookie(&fiber.Cookie{
+			Name:     name,
+			Value:    "",
+			HTTPOnly: true,
+			Secure:   secure,
+			SameSite: "Lax",
+			Path:     "/",
+			MaxAge:   -1,
+		})
+	}
+}
+
 // CheckEmail checks whether an email address is available for registration.
 func (h *Handler) CheckEmail(c *fiber.Ctx) error {
 	var req struct {
@@ -158,6 +205,9 @@ func (h *Handler) Register(c *fiber.Ctx) error {
 		return utils.InternalError(c, "فشل إنشاء الحساب")
 	}
 
+	refreshToken, _ := h.svc.GenerateRefreshTokenForUser(user.ID, user.Email)
+	h.setAuthCookies(c, token, refreshToken)
+
 	return c.Status(fiber.StatusCreated).JSON(services.RegisterResponse{
 		Success:               true,
 		Message:               "تم إنشاء الحساب بنجاح. يرجى التحقق من بريدك الإلكتروني.",
@@ -199,13 +249,17 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 	)
 
 	if err != nil {
-		if err == services.ErrInvalidCredentials || err == services.ErrAccountInactive {
-			return utils.Unauthorized(c, err.Error())
+		if err == services.ErrAccountInactive {
+			return utils.UnauthorizedCode(c, "ACCOUNT_INACTIVE", "الحساب غير نشط أو محظور")
+		}
+		if err == services.ErrInvalidCredentials {
+			return utils.UnauthorizedCode(c, "INVALID_CREDENTIALS", "بيانات تسجيل الدخول غير صحيحة")
 		}
 		return utils.InternalError(c)
 	}
 
 	refreshToken, _ := h.svc.GenerateRefreshTokenForUser(user.ID, user.Email)
+	h.setAuthCookies(c, token, refreshToken)
 
 	return c.JSON(fiber.Map{
 		"success":       true,
@@ -244,13 +298,15 @@ func (h *Handler) RefreshToken(c *fiber.Ctx) error {
 	}
 
 	if refreshTokenStr == "" {
-		return utils.BadRequest(c, "رمز التحديث مطلوب")
+		return utils.UnauthorizedCode(c, "REFRESH_TOKEN_REQUIRED", "جلسة الدخول غير موجودة أو انتهت صلاحيتها")
 	}
 
 	accessToken, newRefresh, err := h.svc.RefreshToken(refreshTokenStr)
 	if err != nil {
-		return utils.Unauthorized(c, "رمز التحديث غير صالح أو منتهي الصلاحية")
+		return utils.UnauthorizedCode(c, "REFRESH_TOKEN_INVALID", "جلسة الدخول غير صالحة أو منتهية الصلاحية")
 	}
+
+	h.setAuthCookies(c, accessToken, newRefresh)
 
 	return utils.Success(c, "تم تجديد الرمز بنجاح", fiber.Map{
 		"token":         accessToken,
@@ -288,6 +344,7 @@ func (h *Handler) Logout(c *fiber.Ctx) error {
 		return utils.InternalError(c, "فشل تسجيل الخروج")
 	}
 
+	h.clearAuthCookies(c)
 	return utils.Success(c, "تم تسجيل الخروج بنجاح", nil)
 }
 
@@ -594,7 +651,10 @@ func (h *Handler) GoogleCallback(c *fiber.Ctx) error {
 		return c.Redirect(callbackBase + "?error=login_failed")
 	}
 
-	return c.Redirect(callbackBase + "?token=" + token)
+	refreshToken, _ := h.svc.GenerateRefreshTokenForUser(user.ID, user.Email)
+	h.setAuthCookies(c, token, refreshToken)
+
+	return c.Redirect(callbackBase)
 }
 
 // TokenRequest contains the Google OAuth token
@@ -656,7 +716,10 @@ func (h *Handler) FacebookCallback(c *fiber.Ctx) error {
 		return c.Redirect(callbackBase + "?error=login_failed")
 	}
 
-	return c.Redirect(callbackBase + "?token=" + token)
+	refreshToken, _ := h.svc.GenerateRefreshTokenForUser(user.ID, user.Email)
+	h.setAuthCookies(c, token, refreshToken)
+
+	return c.Redirect(callbackBase)
 }
 
 // FacebookTokenRequest contains the Facebook OAuth access token
@@ -799,7 +862,16 @@ func (h *Handler) loginOrRegisterGoogleUser(c *fiber.Ctx, info *services.GoogleU
 		return utils.InternalError(c, "فشل معالجة حساب Google")
 	}
 
-	return utils.WithToken(c, "تم تسجيل الدخول بنجاح", buildUserResponse(user, h.cfg.Storage.URL), token)
+	refreshToken, _ := h.svc.GenerateRefreshTokenForUser(user.ID, user.Email)
+	h.setAuthCookies(c, token, refreshToken)
+
+	return c.JSON(fiber.Map{
+		"success":       true,
+		"message":       "تم تسجيل الدخول بنجاح",
+		"token":         token,
+		"refresh_token": refreshToken,
+		"data":          buildUserResponse(user, h.cfg.Storage.URL),
+	})
 }
 
 func buildUserResponse(user *models.User, storageURL string) *services.UserResponse {
@@ -937,7 +1009,16 @@ func (h *Handler) loginOrRegisterFacebookUser(c *fiber.Ctx, info *services.Faceb
 		return utils.InternalError(c, "فشل معالجة حساب Facebook")
 	}
 
-	return utils.WithToken(c, "تم تسجيل الدخول بنجاح", buildUserResponse(user, h.cfg.Storage.URL), token)
+	refreshToken, _ := h.svc.GenerateRefreshTokenForUser(user.ID, user.Email)
+	h.setAuthCookies(c, token, refreshToken)
+
+	return c.JSON(fiber.Map{
+		"success":       true,
+		"message":       "تم تسجيل الدخول بنجاح",
+		"token":         token,
+		"refresh_token": refreshToken,
+		"data":          buildUserResponse(user, h.cfg.Storage.URL),
+	})
 }
 
 func parseSocialLinks(raw *string) map[string]string {

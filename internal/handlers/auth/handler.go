@@ -70,8 +70,37 @@ func (h *Handler) isProduction() bool {
 	return strings.EqualFold(strings.TrimSpace(h.cfg.App.Env), "production") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(h.cfg.Frontend.URL)), "https://")
 }
 
+// cookieDomain returns the apex domain with a leading dot (e.g. ".alemancenter.com")
+// so that cookies set on api.alemancenter.com are also sent to alemancenter.com.
+// Returns "" for localhost/loopback so dev environments stay as host-only cookies.
+func (h *Handler) cookieDomain() string {
+	raw := strings.TrimRight(h.cfg.Frontend.URL, "/")
+	if idx := strings.Index(raw, "://"); idx >= 0 {
+		raw = raw[idx+3:]
+	}
+	if i := strings.LastIndexByte(raw, ':'); i > 0 {
+		raw = raw[:i]
+	}
+	if i := strings.IndexByte(raw, '/'); i > 0 {
+		raw = raw[:i]
+	}
+	host := strings.ToLower(strings.TrimSpace(raw))
+	if host == "" || host == "localhost" ||
+		strings.HasPrefix(host, "127.") ||
+		strings.HasPrefix(host, "192.168.") ||
+		strings.HasPrefix(host, "10.") {
+		return ""
+	}
+	parts := strings.Split(host, ".")
+	if len(parts) >= 2 {
+		return "." + strings.Join(parts[len(parts)-2:], ".")
+	}
+	return ""
+}
+
 func (h *Handler) setAuthCookies(c *fiber.Ctx, accessToken string, refreshToken string) {
 	secure := h.isProduction() || strings.EqualFold(c.Protocol(), "https") || strings.EqualFold(c.Get("X-Forwarded-Proto"), "https")
+	domain := h.cookieDomain()
 
 	if strings.TrimSpace(accessToken) != "" {
 		c.Cookie(&fiber.Cookie{
@@ -81,6 +110,7 @@ func (h *Handler) setAuthCookies(c *fiber.Ctx, accessToken string, refreshToken 
 			Secure:   secure,
 			SameSite: "Lax",
 			Path:     "/",
+			Domain:   domain,
 			MaxAge:   h.cfg.JWT.ExpireHours * 60 * 60,
 		})
 	}
@@ -93,6 +123,7 @@ func (h *Handler) setAuthCookies(c *fiber.Ctx, accessToken string, refreshToken 
 			Secure:   secure,
 			SameSite: "Lax",
 			Path:     "/",
+			Domain:   domain,
 			MaxAge:   h.cfg.JWT.RefreshHours * 60 * 60,
 		})
 	}
@@ -100,6 +131,7 @@ func (h *Handler) setAuthCookies(c *fiber.Ctx, accessToken string, refreshToken 
 
 func (h *Handler) clearAuthCookies(c *fiber.Ctx) {
 	secure := h.isProduction() || strings.EqualFold(c.Protocol(), "https") || strings.EqualFold(c.Get("X-Forwarded-Proto"), "https")
+	domain := h.cookieDomain()
 	for _, name := range []string{"token", "refresh_token"} {
 		c.Cookie(&fiber.Cookie{
 			Name:     name,
@@ -108,6 +140,7 @@ func (h *Handler) clearAuthCookies(c *fiber.Ctx) {
 			Secure:   secure,
 			SameSite: "Lax",
 			Path:     "/",
+			Domain:   domain,
 			MaxAge:   -1,
 		})
 	}

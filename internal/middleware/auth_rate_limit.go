@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"strings"
 	"time"
@@ -14,20 +15,27 @@ import (
 )
 
 // authLimitRule defines per-endpoint brute-force limits.
+// max/window protect by IP. subjectMax/subjectWindow protect a specific email/user.
 type authLimitRule struct {
-	max    int
-	window time.Duration
+	max           int
+	window        time.Duration
+	subjectMax    int
+	subjectWindow time.Duration
 }
 
 // authLimits maps endpoint suffix → rule. Keys are matched as path suffixes.
+// Nginx already performs a first-pass IP throttle; these Redis rules protect the backend
+// by IP and by logical actor (email/user) so one endpoint cannot be abused repeatedly.
 var authLimits = map[string]authLimitRule{
-	"/auth/login":             {max: 5, window: 15 * time.Minute},
-	"/auth/register":          {max: 10, window: 15 * time.Minute},
-	"/auth/check-email":       {max: 20, window: 10 * time.Minute},
-	"/auth/email/preflight":   {max: 20, window: 10 * time.Minute},
-	"/auth/password/forgot":   {max: 3, window: 15 * time.Minute},
-	"/auth/password/reset":    {max: 5, window: 15 * time.Minute},
-	"/auth/refresh":           {max: 20, window: time.Minute},
+	"/auth/login":             {max: 10, window: 10 * time.Minute, subjectMax: 5, subjectWindow: 10 * time.Minute},
+	"/auth/register":          {max: 10, window: 15 * time.Minute, subjectMax: 3, subjectWindow: 30 * time.Minute},
+	"/auth/check-email":       {max: 30, window: 10 * time.Minute, subjectMax: 8, subjectWindow: 10 * time.Minute},
+	"/auth/email/preflight":   {max: 30, window: 10 * time.Minute, subjectMax: 8, subjectWindow: 10 * time.Minute},
+	"/auth/email/resend":      {max: 5, window: time.Hour, subjectMax: 5, subjectWindow: time.Hour},
+	"/auth/email/change":      {max: 5, window: 30 * time.Minute, subjectMax: 3, subjectWindow: 30 * time.Minute},
+	"/auth/password/forgot":   {max: 5, window: time.Hour, subjectMax: 3, subjectWindow: time.Hour},
+	"/auth/password/reset":    {max: 5, window: 15 * time.Minute, subjectMax: 5, subjectWindow: 15 * time.Minute},
+	"/auth/refresh":           {max: 30, window: time.Minute},
 	"/auth/google/redirect":   {max: 20, window: 15 * time.Minute},
 	"/auth/google/callback":   {max: 30, window: 15 * time.Minute},
 	"/auth/google/token":      {max: 10, window: 15 * time.Minute},
@@ -36,33 +44,70 @@ var authLimits = map[string]authLimitRule{
 	"/auth/facebook/token":    {max: 10, window: 15 * time.Minute},
 }
 
-// AuthRateLimit applies a strict per-IP rate limit for sensitive auth endpoints.
-// It is intentionally separate from the general FrontendGuard rate limiter so
-// that auth routes can be tuned independently without affecting other API paths.
+func matchAuthLimitRule(path string) (authLimitRule, bool) {
+	for suffix, currentRule := range authLimits {
+		if strings.HasSuffix(path, suffix) {
+			return currentRule, true
+		}
+	}
+	return authLimitRule{}, false
+}
+
+func normalizeRateLimitEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func hashRateLimitSubject(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return fmt.Sprintf("%x", sum)
+}
+
+func subjectFromRequest(c *fiber.Ctx) string {
+	if userID := c.Locals("user_id"); userID != nil {
+		return fmt.Sprintf("user:%v", userID)
+	}
+
+	var payload struct {
+		Email string `json:"email" form:"email"`
+	}
+	if err := c.BodyParser(&payload); err == nil {
+		if email := normalizeRateLimitEmail(payload.Email); email != "" {
+			return "email:" + hashRateLimitSubject(email)
+		}
+	}
+
+	return ""
+}
+
+func applyRedisRateLimit(c *fiber.Ctx, key string, maxAllowed int, window time.Duration) (int64, error) {
+	rdb := database.GetRedis()
+	ctx := context.Background()
+	count, err := rdb.IncrBy(ctx, key, 1)
+	if err != nil {
+		return 0, err
+	}
+	if count == 1 {
+		_ = rdb.Expire(ctx, key, window)
+	}
+	return count, nil
+}
+
+// AuthRateLimit applies Redis-backed rate limiting for sensitive auth endpoints.
+// It limits both by client IP and, when available, by email/user. Redis errors fail closed
+// because auth endpoints are abuse-prone and should not bypass throttling when Redis fails.
 func AuthRateLimit() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		path := c.Path()
-
-		var rule authLimitRule
-		matched := false
-		for suffix, currentRule := range authLimits {
-			if strings.HasSuffix(path, suffix) {
-				rule = currentRule
-				matched = true
-				break
-			}
-		}
+		rule, matched := matchAuthLimitRule(path)
 		if !matched {
 			return c.Next()
 		}
 
 		clientIP := utils.GetClientIP(c)
 		rdb := database.GetRedis()
-		ctx := context.Background()
+		ipKey := rdb.Key("auth_rl", clientIP, c.Method(), path)
 
-		key := rdb.Key("auth_rl", clientIP, path)
-
-		count, err := rdb.IncrBy(ctx, key, 1)
+		ipCount, err := applyRedisRateLimit(c, ipKey, rule.max, rule.window)
 		if err != nil {
 			logger.Error("auth rate limit Redis error — failing closed",
 				zap.String("ip", clientIP),
@@ -72,17 +117,35 @@ func AuthRateLimit() fiber.Handler {
 			return utils.TooManyRequests(c)
 		}
 
-		if count == 1 {
-			_ = rdb.Expire(ctx, key, rule.window)
+		remaining := rule.max - int(ipCount)
+		if remaining < 0 {
+			remaining = 0
+		}
+		c.Set("X-RateLimit-Limit", fmt.Sprintf("%d", rule.max))
+		c.Set("X-RateLimit-Remaining", fmt.Sprintf("%d", remaining))
+
+		if int(ipCount) > rule.max {
+			c.Set("Retry-After", fmt.Sprintf("%d", int(rule.window.Seconds())))
+			return utils.TooManyRequests(c)
 		}
 
-		c.Set("X-RateLimit-Limit", fmt.Sprintf("%d", rule.max))
-		c.Set("X-RateLimit-Remaining", fmt.Sprintf("%d", max(0, rule.max-int(count))))
-
-		if int(count) > rule.max {
-			retryAfter := int(rule.window.Seconds())
-			c.Set("Retry-After", fmt.Sprintf("%d", retryAfter))
-			return utils.TooManyRequests(c)
+		if rule.subjectMax > 0 {
+			if subject := subjectFromRequest(c); subject != "" {
+				subjectKey := rdb.Key("auth_subject_rl", subject, c.Method(), path)
+				subjectCount, err := applyRedisRateLimit(c, subjectKey, rule.subjectMax, rule.subjectWindow)
+				if err != nil {
+					logger.Error("auth subject rate limit Redis error — failing closed",
+						zap.String("ip", clientIP),
+						zap.String("path", path),
+						zap.Error(err),
+					)
+					return utils.TooManyRequests(c)
+				}
+				if int(subjectCount) > rule.subjectMax {
+					c.Set("Retry-After", fmt.Sprintf("%d", int(rule.subjectWindow.Seconds())))
+					return utils.TooManyRequests(c)
+				}
+			}
 		}
 
 		return c.Next()

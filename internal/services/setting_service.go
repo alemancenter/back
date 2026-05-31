@@ -76,9 +76,7 @@ func (s *settingService) GetPublic(ctx context.Context, countryID database.Count
 	}
 
 	// ── canonical_url / site_url fallback ──
-	// Some country DBs have an empty canonical_url / site_url which causes the
-	// frontend to render broken links (e.g. "[](<>)" in privacy-policy).
-	// Fall back to the FRONTEND_URL env var so the value is never empty.
+	
 	frontendURL := strings.TrimSpace(config.Get().Frontend.URL)
 	if frontendURL != "" {
 		if strings.TrimSpace(result["canonical_url"]) == "" {

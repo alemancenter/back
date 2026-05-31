@@ -19,10 +19,14 @@ import (
 func FrontendGuard() fiber.Handler {
 	cfg := config.Get()
 
-	// Paths excluded from frontend guard validation
+	// Paths excluded from frontend guard validation.
+	// OAuth redirect/callback URLs come from external providers (Google, Facebook)
+	// without X-Frontend-Key or controlled Origin headers — they must bypass the guard.
 	excludedPaths := []string{
 		"/api/auth/google/redirect",
 		"/api/auth/google/callback",
+		"/api/auth/facebook/redirect",
+		"/api/auth/facebook/callback",
 		"/api/auth/email/verify/",
 		"/api/ping",
 		"/api/img/fit/",

@@ -36,11 +36,11 @@ var authLimits = map[string]authLimitRule{
 	"/auth/password/forgot":   {max: 5, window: time.Hour, subjectMax: 3, subjectWindow: time.Hour},
 	"/auth/password/reset":    {max: 5, window: 15 * time.Minute, subjectMax: 5, subjectWindow: 15 * time.Minute},
 	"/auth/refresh":           {max: 30, window: time.Minute},
-	"/auth/google/redirect":   {max: 20, window: 15 * time.Minute},
-	"/auth/google/callback":   {max: 30, window: 15 * time.Minute},
+	"/auth/google/redirect":   {max: 10, window: 15 * time.Minute},
+	"/auth/google/callback":   {max: 20, window: 15 * time.Minute},
 	"/auth/google/token":      {max: 10, window: 15 * time.Minute},
-	"/auth/facebook/redirect": {max: 20, window: 15 * time.Minute},
-	"/auth/facebook/callback": {max: 30, window: 15 * time.Minute},
+	"/auth/facebook/redirect": {max: 10, window: 15 * time.Minute},
+	"/auth/facebook/callback": {max: 20, window: 15 * time.Minute},
 	"/auth/facebook/token":    {max: 10, window: 15 * time.Minute},
 }
 

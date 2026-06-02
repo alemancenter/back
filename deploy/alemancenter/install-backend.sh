@@ -21,6 +21,10 @@ fi
 
 cp deploy/alemancenter/alemancenter-api.service /etc/systemd/system/alemancenter-api.service
 
+# Install shared Nginx rate-limit zones (http-context — cannot go in Plesk Additional Directives)
+cp deploy/alemancenter/nginx-rate-limit-zones.conf /etc/nginx/conf.d/alemancenter-rate-limit.conf
+nginx -t && nginx -s reload
+
 systemctl daemon-reload
 systemctl enable alemancenter-api
 systemctl restart alemancenter-api

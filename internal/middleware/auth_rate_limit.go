@@ -31,6 +31,7 @@ var authLimits = map[string]authLimitRule{
 	"/auth/register":          {max: 10, window: 15 * time.Minute, subjectMax: 3, subjectWindow: 30 * time.Minute},
 	"/auth/check-email":       {max: 30, window: 10 * time.Minute, subjectMax: 8, subjectWindow: 10 * time.Minute},
 	"/auth/email/preflight":   {max: 30, window: 10 * time.Minute, subjectMax: 8, subjectWindow: 10 * time.Minute},
+	"/auth/email/verify/":     {max: 10, window: 15 * time.Minute},
 	"/auth/email/resend":      {max: 5, window: time.Hour, subjectMax: 5, subjectWindow: time.Hour},
 	"/auth/email/change":      {max: 5, window: 30 * time.Minute, subjectMax: 3, subjectWindow: 30 * time.Minute},
 	"/auth/password/forgot":   {max: 5, window: time.Hour, subjectMax: 3, subjectWindow: time.Hour},
@@ -45,8 +46,14 @@ var authLimits = map[string]authLimitRule{
 }
 
 func matchAuthLimitRule(path string) (authLimitRule, bool) {
-	for suffix, currentRule := range authLimits {
-		if strings.HasSuffix(path, suffix) {
+	for pattern, currentRule := range authLimits {
+		// Keys ending with "/" are prefix rules (e.g. "/auth/email/verify/" matches
+		// "/api/auth/email/verify/123/abc"). All others are exact suffix matches.
+		if strings.HasSuffix(pattern, "/") {
+			if strings.Contains(path, pattern) {
+				return currentRule, true
+			}
+		} else if strings.HasSuffix(path, pattern) {
 			return currentRule, true
 		}
 	}

@@ -18,12 +18,71 @@ type cachedHTTPResponse struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-func ResponseCache(ttl time.Duration) fiber.Handler {
+// pathTTLRules maps path prefixes to their Redis cache TTL.
+// Paths NOT listed here are not cached.
+// neverCachedPaths is checked first and always wins.
+var pathTTLRules = []struct {
+	prefix string
+	ttl    time.Duration
+}{
+	// Static-ish reference data — changes only via admin dashboard
+	{"/api/school-classes", 10 * time.Minute},
+	{"/api/subjects", 10 * time.Minute},
+	{"/api/semesters", 10 * time.Minute},
+	{"/api/classes", 10 * time.Minute},
+
+	// Settings loaded on every SSR render — short TTL avoids DB hit on each page
+	{"/api/front/settings", 5 * time.Minute},
+
+	// Public content feeds
+	{"/api/articles", 2 * time.Minute},
+	{"/api/posts", 2 * time.Minute},
+	{"/api/home", 2 * time.Minute},
+	{"/api/categories", 2 * time.Minute},
+	{"/api/keywords", 2 * time.Minute},
+
+	// Comments are the highest-traffic public endpoint.
+	// 60 s cache cuts repeated identical requests to near zero while staying fresh.
+	{"/api/comments", 60 * time.Second},
+}
+
+// neverCachedPaths are always skipped regardless of pathTTLRules.
+var neverCachedPaths = []string{
+	"/api/dashboard",
+	"/api/auth",
+	"/api/user",
+	"/api/notifications",
+	"/api/messages",
+}
+
+func cacheTTLForPath(path string) time.Duration {
+	for _, prefix := range neverCachedPaths {
+		if strings.HasPrefix(path, prefix) {
+			return 0
+		}
+	}
+	for _, rule := range pathTTLRules {
+		if strings.HasPrefix(path, rule.prefix) {
+			return rule.ttl
+		}
+	}
+	return 0
+}
+
+// ResponseCache caches successful GET responses in Redis with per-path TTLs.
+// The ttl parameter is kept for call-site compatibility but is now unused —
+// TTLs are determined per path by pathTTLRules.
+func ResponseCache(_ time.Duration) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		if ttl <= 0 || c.Method() != fiber.MethodGet || !isPublicCacheablePath(c.Path()) {
+		if c.Method() != fiber.MethodGet {
 			return c.Next()
 		}
 		if strings.Contains(strings.ToLower(c.Get(fiber.HeaderCacheControl)), "no-cache") {
+			return c.Next()
+		}
+
+		ttl := cacheTTLForPath(c.Path())
+		if ttl <= 0 {
 			return c.Next()
 		}
 
@@ -59,22 +118,6 @@ func ResponseCache(ttl time.Duration) fiber.Handler {
 		c.Set("X-Cache", "MISS")
 		return nil
 	}
-}
-
-func isPublicCacheablePath(path string) bool {
-	blocked := []string{"/api/dashboard", "/api/auth", "/api/user", "/api/notifications", "/api/messages", "/api/comments"}
-	for _, prefix := range blocked {
-		if strings.HasPrefix(path, prefix) {
-			return false
-		}
-	}
-	allowed := []string{"/api/front/settings", "/api/home", "/api/classes", "/api/school-classes", "/api/subjects", "/api/semesters", "/api/articles", "/api/posts", "/api/categories", "/api/keywords"}
-	for _, prefix := range allowed {
-		if strings.HasPrefix(path, prefix) {
-			return true
-		}
-	}
-	return false
 }
 
 func publicCacheKey(c *fiber.Ctx) string {

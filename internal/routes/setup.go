@@ -39,6 +39,10 @@ func Setup(app *fiber.App) *Handlers {
 		middleware.RateLimitRule{Prefix: "/backend-api/ai/status/", Max: 300, Window: 5 * time.Minute},
 		middleware.RateLimitRule{Prefix: "/api/ai/", Max: 60, Window: 5 * time.Minute},
 		middleware.RateLimitRule{Prefix: "/backend-api/ai/", Max: 60, Window: 5 * time.Minute},
+		middleware.RateLimitRule{Prefix: "/api/chatbot/message", Methods: []string{fiber.MethodPost}, Max: 30, Window: 10 * time.Minute},
+		middleware.RateLimitRule{Prefix: "/backend-api/chatbot/message", Methods: []string{fiber.MethodPost}, Max: 30, Window: 10 * time.Minute},
+		middleware.RateLimitRule{Prefix: "/api/chatbot/feedback", Methods: []string{fiber.MethodPost}, Max: 60, Window: 10 * time.Minute},
+		middleware.RateLimitRule{Prefix: "/backend-api/chatbot/feedback", Methods: []string{fiber.MethodPost}, Max: 60, Window: 10 * time.Minute},
 		middleware.RateLimitRule{Prefix: "/api/dashboard/files", Max: 60, Window: time.Minute},
 		middleware.RateLimitRule{Prefix: "/backend-api/dashboard/files", Max: 60, Window: time.Minute},
 	))

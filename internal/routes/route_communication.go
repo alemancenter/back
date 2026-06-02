@@ -16,6 +16,11 @@ func registerCommunicationRoutes(public, dash fiber.Router, h *Handlers) {
 	public.Get("/home/calendar", h.Calendar.PublicEvents)
 	public.Get("/home/event/:id", h.Calendar.PublicEventDetail)
 
+	// Public support chatbot. OptionalAuth is already applied on the public router.
+	public.Get("/chatbot/suggestions", h.Chatbot.Suggestions)
+	public.Post("/chatbot/message", h.Chatbot.Message)
+	public.Post("/chatbot/feedback", h.Chatbot.Feedback)
+
 	// =====================
 	// ADMIN DASHBOARD ROUTES
 	// =====================
@@ -47,6 +52,14 @@ func registerCommunicationRoutes(public, dash fiber.Router, h *Handlers) {
 	dashContactMessages.Get("/:id", h.ContactMessages.Get)
 	dashContactMessages.Post("/:id/read", h.ContactMessages.MarkAsRead)
 	dashContactMessages.Delete("/:id", h.ContactMessages.Delete)
+
+	// Chatbot management
+	dashChatbot := dash.Group("/chatbot", middleware.Can("manage settings"))
+	dashChatbot.Get("/sessions", h.Chatbot.DashboardSessions)
+	dashChatbot.Get("/knowledge", h.Chatbot.DashboardKnowledge)
+	dashChatbot.Post("/knowledge", h.Chatbot.StoreKnowledge)
+	dashChatbot.Put("/knowledge/:id", h.Chatbot.UpdateKnowledge)
+	dashChatbot.Delete("/knowledge/:id", h.Chatbot.DeleteKnowledge)
 
 	// Notifications
 	dashNotifications := dash.Group("/notifications")

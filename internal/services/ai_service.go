@@ -21,11 +21,11 @@ import (
 
 const (
 	AIOverallTimeout = 3 * time.Minute
-	AIRequestTimeout = 60 * time.Second
+	AIRequestTimeout = 55 * time.Second
 	siteBaseURL      = "https://alemancenter.com"
 
 	defaultAIBaseURL = "https://api.together.ai/v1"
-	defaultAIModel   = "Qwen/Qwen3.5-9B"
+	defaultAIModel   = "openai/gpt-oss-120b"
 
 	minSEOArticleWords = 300
 	maxSEOArticleWords = 1000
@@ -35,7 +35,11 @@ var (
 	ErrAIGenerationTimeout = errors.New("ai generation timed out")
 	ErrAIProviderFailed    = errors.New("ai provider failed")
 
-	defaultAIFallbackModels = []string{"openai/gpt-oss-20b", "Qwen/Qwen3.5-9B"}
+	defaultAIFallbackModels = []string{
+		"Qwen/Qwen3-235B-A22B-Instruct-2507-tput",
+		"openai/gpt-oss-20b",
+		"google/gemma-3n-E4B-it",
+	}
 )
 
 type seoGenerationContextKey struct{}
@@ -412,34 +416,44 @@ func estimateAITokens(text string) int {
 func aiModelCostPerMillion(model string) (float64, float64) {
 	m := strings.ToLower(model)
 	switch {
+	// ── Economy ────────────────────────────────────────────────────────────────
 	case strings.Contains(m, "lfm2-24b"):
-		return 0.03, 0.12
+		return 0.03, 0.12 // togethercomputer/LFM2-24B-A2B
 	case strings.Contains(m, "gpt-oss-20b"):
-		return 0.05, 0.20
+		return 0.05, 0.20 // openai/gpt-oss-20b
 	case strings.Contains(m, "gemma-3n"):
-		return 0.06, 0.12
+		return 0.06, 0.12 // google/gemma-3n-E4B-it
 	case strings.Contains(m, "qwen3.5-9b") || strings.Contains(m, "qwen3-9b"):
-		return 0.10, 0.15
+		return 0.17, 0.25 // Qwen/Qwen3.5-9B FP8
 	case strings.Contains(m, "rnj-1"):
-		return 0.15, 0.15
+		return 0.15, 0.15 // EssentialAI Rnj-1 (flat rate)
 	case strings.Contains(m, "gpt-oss-120b"):
-		return 0.15, 0.60
-	case strings.Contains(m, "gemma-4-31b"):
-		return 0.20, 0.50
+		return 0.15, 0.60 // openai/gpt-oss-120b
+	// ── Mid-tier ───────────────────────────────────────────────────────────────
 	case strings.Contains(m, "qwen3-235b"):
-		return 0.20, 0.60
+		return 0.20, 0.60 // Qwen/Qwen3-235B-A22B-Instruct-2507-tput
+	case strings.Contains(m, "pearl-ai") && strings.Contains(m, "gemma"):
+		return 0.28, 0.86 // pearl-ai/gemma-4-31b-it-pearl
 	case strings.Contains(m, "minimax"):
-		return 0.30, 1.20
-	case strings.Contains(m, "kimi-k2.5") || strings.Contains(m, "kimi/kimi-k2.5"):
-		return 0.50, 2.80
+		return 0.30, 1.20 // MiniMax M2.7 FP4
+	case strings.Contains(m, "gemma-4-31b") || strings.Contains(m, "gemma4-31b"):
+		return 0.39, 0.97 // google/gemma-4-31B-it FP8
 	case strings.Contains(m, "qwen3.5-397b") || strings.Contains(m, "397b"):
-		return 0.60, 3.60
+		return 0.60, 3.60 // Qwen3.5-397B A17b FP4
+	// ── Premium ────────────────────────────────────────────────────────────────
 	case strings.Contains(m, "llama-3.3-70b"):
-		return 0.88, 0.88
+		return 1.04, 1.04 // meta-llama/Llama-3.3-70B-Instruct-Turbo (flat)
+	case strings.Contains(m, "kimi-k2"):
+		return 1.20, 4.50 // Kimi K2.6 FP4
+	case strings.Contains(m, "cogito") || strings.Contains(m, "671b"):
+		return 1.25, 1.25 // Cogito v2.1 671B (flat)
 	case strings.Contains(m, "glm-5.1"):
-		return 1.40, 4.40
+		return 1.40, 4.40 // zai-org/GLM-5.1 FP4
 	case strings.Contains(m, "glm-5"):
-		return 1.00, 3.20
+		return 1.00, 3.20 // GLM-5 FP4
+	// ── Frontier ───────────────────────────────────────────────────────────────
+	case strings.Contains(m, "qwen3-coder") || strings.Contains(m, "480b"):
+		return 2.00, 2.00 // Qwen3 Coder 480B A35B FP8 (flat)
 	case strings.Contains(m, "deepseek"):
 		return 2.10, 4.40
 	default:
@@ -722,14 +736,14 @@ func newAIModelRouter(defaultModel string, fallbackModels []string) aiModelRoute
 		defaultModel: defaultModel,
 		fallbacks:    fallbackModels,
 		routes: map[string][]string{
-			"audit_content:economy":      modelRouteFromEnv("AI_MODELS_AUDIT_ECONOMY", append(parseModelList("togethercomputer/LFM2-24B-A2B,openai/gpt-oss-20b"), base...)),
-			"audit_content:balanced":     modelRouteFromEnv("AI_MODELS_AUDIT_BALANCED", append(parseModelList("openai/gpt-oss-20b,Qwen/Qwen3.5-9B,google/gemma-3n-E4B-it"), base...)),
-			"audit_content:quality":      modelRouteFromEnv("AI_MODELS_AUDIT_QUALITY", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-FP8-Throughput,openai/gpt-oss-120b,Qwen/Qwen3.5-9B"), base...)),
-			"audit_content:final_review": modelRouteFromEnv("AI_MODELS_AUDIT_FINAL", append(parseModelList("openai/gpt-oss-120b,Kimi/Kimi-K2.5,Qwen/Qwen3-235B-A22B-Instruct-2507-FP8-Throughput,Qwen/Qwen3.5-9B"), base...)),
-			"fix_content:economy":        modelRouteFromEnv("AI_MODELS_FIX_ECONOMY", append(parseModelList("Qwen/Qwen3.5-9B,openai/gpt-oss-20b"), base...)),
-			"fix_content:balanced":       modelRouteFromEnv("AI_MODELS_FIX_BALANCED", append(parseModelList("Qwen/Qwen3.5-9B,google/gemma-4-31b-it-fp8,openai/gpt-oss-120b"), base...)),
-			"fix_content:quality":        modelRouteFromEnv("AI_MODELS_FIX_QUALITY", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-FP8-Throughput,openai/gpt-oss-120b,Qwen/Qwen3.5-9B"), base...)),
-			"fix_content:final_review":   modelRouteFromEnv("AI_MODELS_FIX_FINAL", append(parseModelList("openai/gpt-oss-120b,Kimi/Kimi-K2.5,Qwen/Qwen3-235B-A22B-Instruct-2507-FP8-Throughput,Qwen/Qwen3.5-9B"), base...)),
+			"audit_content:economy":      modelRouteFromEnv("AI_MODELS_AUDIT_ECONOMY", append(parseModelList("google/gemma-3n-E4B-it,openai/gpt-oss-20b"), base...)),
+			"audit_content:balanced":     modelRouteFromEnv("AI_MODELS_AUDIT_BALANCED", append(parseModelList("openai/gpt-oss-20b,pearl-ai/gemma-4-31b-it,google/gemma-4-31B-it"), base...)),
+			"audit_content:quality":      modelRouteFromEnv("AI_MODELS_AUDIT_QUALITY", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,openai/gpt-oss-120b,zai-org/GLM-5.1"), base...)),
+			"audit_content:final_review": modelRouteFromEnv("AI_MODELS_AUDIT_FINAL", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,zai-org/GLM-5.1,openai/gpt-oss-120b"), base...)),
+			"fix_content:economy":        modelRouteFromEnv("AI_MODELS_FIX_ECONOMY", append(parseModelList("google/gemma-3n-E4B-it,openai/gpt-oss-20b"), base...)),
+			"fix_content:balanced":       modelRouteFromEnv("AI_MODELS_FIX_BALANCED", append(parseModelList("meta-llama/Llama-3.3-70B-Instruct-Turbo,pearl-ai/gemma-4-31b-it,google/gemma-4-31B-it"), base...)),
+			"fix_content:quality":        modelRouteFromEnv("AI_MODELS_FIX_QUALITY", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,openai/gpt-oss-120b,zai-org/GLM-5.1"), base...)),
+			"fix_content:final_review":   modelRouteFromEnv("AI_MODELS_FIX_FINAL", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,zai-org/GLM-5.1,openai/gpt-oss-120b"), base...)),
 		},
 	}
 }
@@ -843,7 +857,7 @@ func (s *aiService) generateSEOWithFallback(ctx context.Context, title, contentT
 			{"role": "system", "content": systemPrompt},
 			{"role": "user", "content": userPrompt},
 		},
-		"max_tokens":  2200,
+		"max_tokens":  3500,
 		"temperature": 0.46,
 		"top_p":       0.9,
 		"stop":        []string{"<|eot_id|>", "<|im_end|>"},
@@ -1013,9 +1027,20 @@ func detectIntent(title string) searchIntent {
 		strings.Contains(l, "درس") ||
 		strings.Contains(l, "شرح") ||
 		strings.Contains(l, "اختبار") ||
+		strings.Contains(l, "جدول مواصفات") ||
+		strings.Contains(l, "مواصفات") ||
+		strings.Contains(l, "ملخص") ||
+		strings.Contains(l, "ثانوي") ||
+		strings.Contains(l, "ابتدائي") ||
+		strings.Contains(l, "متوسط") ||
+		strings.Contains(l, "إعدادي") ||
+		strings.Contains(l, "الصف") ||
+		strings.Contains(l, "فصل أول") ||
+		strings.Contains(l, "فصل ثاني") ||
 		strings.Contains(l, "lesson") ||
 		strings.Contains(l, "exam") ||
-		strings.Contains(l, "worksheet"):
+		strings.Contains(l, "worksheet") ||
+		strings.Contains(l, "specification"):
 		return intentSchool
 
 	default:
@@ -1092,11 +1117,43 @@ func intentHintAr(i searchIntent) string {
 	case intentInformational:
 		return "- ركّز على الإجابة العملية عن سؤال القارئ، ووضّح الشروط والخطوات والفوائد بشكل مترابط."
 	case intentDownload:
-		return "- وضّح فائدة الملف أو النموذج، وكيف يمكن استخدامه تعليمياً، دون وضع روابط تحميل."
+		return `- اكتب المقال وفق هذا الهيكل الإلزامي من خمس فقرات مستقلة. كل فقرة لا تقل عن أربع جمل. إكمال الهيكل بالكامل شرط أساسي:
+
+الفقرة الأولى — التعريف والأهمية: اشرح ما هذا النموذج أو الملف، ما الغرض منه، ولماذا هو ضروري في البيئة المدرسية والتعليمية.
+
+الفقرة الثانية — المحتوى والعناصر: صف بالتفصيل ما يتضمنه هذا النموذج من عناصر وبيانات وأقسام، وكيف يبدو شكله العام.
+
+الفقرة الثالثة — طريقة الاستخدام: اشرح خطوات توظيف هذا النموذج بشكل عملي، كيف يعدّله المعلم أو المسؤول ليناسب احتياجه، وكيف يطبعه أو يوزعه.
+
+الفقرة الرابعة — الجهات المستفيدة: وضّح كيف يستفيد من هذا النموذج كل من المعلم والإدارة المدرسية وولي الأمر والطالب، وما الدور الذي يؤديه لكل طرف.
+
+الفقرة الخامسة — الأثر التعليمي والتحفيزي: اشرح الأثر الإيجابي لاستخدام هذا النموذج في تحفيز الطلاب ورفع مستوى التحصيل الدراسي والانتماء المدرسي.
+
+لا تضع روابط تحميل. أكمل كل فقرة بالكامل قبل الانتقال للتالية.`
 	case intentSchool:
-		return "- استخدم أسلوباً تعليمياً واضحاً مناسباً للطلاب وأولياء الأمور والمعلمين."
+		return `- استخدم أسلوباً تعليمياً واضحاً وفق هيكل من أربع فقرات مستقلة، كل فقرة لا تقل عن أربع جمل كاملة:
+
+الفقرة الأولى — ما هذا الملف أو الموضوع: عرّف الملف أو المادة الدراسية، وأوضح لماذا هو مهم للطالب والمعلم في هذه المرحلة الدراسية.
+
+الفقرة الثانية — المحتوى التفصيلي: صف العناصر والمكونات والموضوعات التي يتضمنها هذا الملف أو جدول المواصفات بالتفصيل.
+
+الفقرة الثالثة — طريقة الاستخدام: اشرح كيف يستخدمه الطالب في المراجعة، وكيف يستفيد منه المعلم في التحضير والتدريس.
+
+الفقرة الرابعة — الأثر على التحصيل: وضّح كيف يؤدي هذا الملف إلى تحسين المستوى الدراسي ورفع درجة الفهم والاستيعاب لدى الطالب.
+
+أكمل كل فقرة بالكامل قبل الانتقال للتالية.`
 	default:
-		return "- اجعل المقال مفيداً وعملياً للقارئ العادي، مع أمثلة أو توضيحات عند الحاجة."
+		return `- اكتب المقال وفق هيكل من أربع فقرات مستقلة، كل فقرة لا تقل عن أربع جمل كاملة:
+
+الفقرة الأولى — التعريف والأهمية: عرّف الموضوع وأوضح أهميته وسياقه العام.
+
+الفقرة الثانية — التفاصيل والمكونات: اشرح عناصره ومحتواه بالتفصيل.
+
+الفقرة الثالثة — الاستخدام والتطبيق: كيف يُستخدم هذا في الواقع، ومن يستفيد منه وكيف.
+
+الفقرة الرابعة — الخلاصة والقيمة العملية: ختم بتوجيه مفيد للقارئ يُبرز القيمة الفعلية للموضوع.
+
+أكمل كل فقرة بالكامل قبل الانتقال للتالية.`
 	}
 }
 
@@ -1105,11 +1162,43 @@ func intentHintEn(i searchIntent) string {
 	case intentInformational:
 		return "- Answer the reader's practical question with clear conditions, steps, and benefits."
 	case intentDownload:
-		return "- Explain the file or template benefit and how it can be used educationally, without links."
+		return `- Write the article using this mandatory five-paragraph structure. Each paragraph must have at least four sentences:
+
+Paragraph 1 — Definition and importance: Explain what this template or file is, its purpose, and why it matters in educational settings.
+
+Paragraph 2 — Contents and elements: Describe in detail the sections, fields, and components included in the template.
+
+Paragraph 3 — How to use it: Give practical steps for customizing, printing, or distributing the template.
+
+Paragraph 4 — Who benefits: Explain how teachers, school administrators, parents, and students each benefit from this template.
+
+Paragraph 5 — Educational impact: Describe the positive effect of using this template on student motivation and academic achievement.
+
+Do not include download links. Complete each paragraph fully before moving to the next.`
 	case intentSchool:
-		return "- Use a clear educational style suitable for students, parents, and teachers."
+		return `- Write using this mandatory four-paragraph structure. Each paragraph must have at least four sentences:
+
+Paragraph 1 — What this file or topic is: Define it and explain its importance for students and teachers at this grade level.
+
+Paragraph 2 — Detailed content: Describe all the elements, components, and topics included in detail.
+
+Paragraph 3 — How to use it: Explain how students use it for revision and how teachers use it for planning and instruction.
+
+Paragraph 4 — Academic impact: Describe how this file improves student achievement and comprehension.
+
+Complete each paragraph fully before moving to the next.`
 	default:
-		return "- Make the article useful and practical for the average reader."
+		return `- Write using this mandatory four-paragraph structure. Each paragraph must have at least four sentences:
+
+Paragraph 1 — Definition and importance: Define the topic and explain its context and relevance.
+
+Paragraph 2 — Details and components: Explain its elements and content in depth.
+
+Paragraph 3 — Application and use: How is it used in practice, and who benefits from it and how.
+
+Paragraph 4 — Summary and practical value: Close with a useful takeaway that highlights the real value for the reader.
+
+Complete each paragraph fully before moving to the next.`
 	}
 }
 
@@ -1136,7 +1225,7 @@ func buildSEOPrompts(title string, isArabic bool, intent searchIntent, generatio
 
 3. جودة المحتوى:
 - اكتب محتوى حقيقي مفيد وليس حشو أو جمل عامة.
-- اكتب content بطول 350 إلى 450 كلمة تقريباً.
+- اكتب content لا يقل عن 350 كلمة مطلقاً والهدف المثالي 400 إلى 500 كلمة. أتمّ كل الفقرات المطلوبة بالكامل حتى تصل لهذا الحد.
 - لا تكرر نفس الفكرة بصياغات مختلفة.
 - اجعل الأسلوب عملياً وموجهاً للقارئ.
 
@@ -1164,7 +1253,7 @@ func buildSEOPrompts(title string, isArabic bool, intent searchIntent, generatio
 %s
 
 الشروط الخاصة بهذا الطلب:
-- اجعل content بين 350 و450 كلمة تقريباً، ولا تقبل أي نتيجة أقل من 300 كلمة.
+- اكتب content لا يقل عن 350 كلمة مطلقاً، والهدف 420 إلى 500 كلمة. اتبع هيكل الفقرات الإلزامي كاملاً حتى تصل لهذا الحد. المحتوى الأقصر من 300 كلمة مرفوض تلقائياً.
 - اجعل المحتوى تعليميًا بحتًا ومناسبًا للمنهاج والسياق الدراسي عند توفره.
 - اكتب 5 إلى 8 كلمات مفتاحية دقيقة.
 - اكتب 2 إلى 4 أسئلة FAQ مفيدة مرتبطة مباشرة بالموضوع.`, title, intentHintAr(intent))

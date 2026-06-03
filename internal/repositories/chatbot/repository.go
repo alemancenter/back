@@ -3,6 +3,7 @@ package chatbot
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -19,6 +20,11 @@ type ContentResult struct {
 	Type        string `json:"type"`
 	Description string `json:"description,omitempty"`
 	URL         string `json:"url"`
+	Grade       string `json:"grade,omitempty"`
+	Subject     string `json:"subject,omitempty"`
+	Semester    string `json:"semester,omitempty"`
+	Category    string `json:"category,omitempty"`
+	Score       int    `json:"score,omitempty"`
 }
 
 type Repository interface {
@@ -141,112 +147,183 @@ func (r *repository) FindKnowledge(countryID database.CountryID, countryCode, qu
 }
 
 func (r *repository) SearchContent(countryID database.CountryID, query string, limit int) ([]ContentResult, error) {
-	if limit <= 0 || limit > 8 {
-		limit = 5
+	if limit <= 0 || limit > 12 {
+		limit = 8
 	}
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return []ContentResult{}, nil
 	}
+
 	terms := searchTerms(query)
+	expandedTerms := expandSearchTerms(terms)
 	cc := database.CountryCode(countryID)
 	db := r.db(countryID)
 
-	// run performs the full three-source search using either strict (AND, every
-	// term must match) or loose (OR, any term matches) relevance matching.
-	run := func(strict bool) []ContentResult {
-		results := make([]ContentResult, 0, limit)
-		seen := map[string]bool{}
-		appendResult := func(item ContentResult) {
-			key := item.Type + ":" + uintToString(item.ID)
-			if seen[key] || len(results) >= limit {
-				return
-			}
-			seen[key] = true
-			results = append(results, item)
-		}
+	results := make([]ContentResult, 0, limit)
+	seen := map[string]bool{}
 
+	appendResult := func(item ContentResult) {
+		key := item.Type + ":" + uintToString(item.ID)
+		if seen[key] || len(results) >= limit {
+			return
+		}
+		item.Score = scoreContentResult(query, terms, item)
+		seen[key] = true
+		results = append(results, item)
+	}
+
+	// Files first: users usually ask for امتحان/اختبار/نموذج/ملف.
+	var files []models.File
+	fileDB := db.Model(&models.File{}).
+		Preload("Article").
+		Preload("Article.Subject").
+		Preload("Article.Semester").
+		Preload("Post").
+		Select("id, article_id, post_id, file_name, file_category, created_at, download_count, view_count, views_count")
+	fileDB = applySmartMatch(fileDB, []string{"file_name", "file_category"}, expandedTerms, false)
+	if err := fileDB.Order("download_count DESC, view_count DESC, views_count DESC, created_at DESC").Limit(limit * 2).Find(&files).Error; err == nil {
+		for _, f := range files {
+			desc := ""
+			if f.FileCategory != nil {
+				desc = *f.FileCategory
+			}
+			item := ContentResult{ID: f.ID, Title: f.FileName, Type: "file", Description: desc, URL: "/download/" + uintToString(f.ID), Category: desc}
+			if f.Article != nil {
+				item.Grade = gradeNameFromArticle(f.Article)
+				if f.Article.Subject != nil {
+					item.Subject = f.Article.Subject.SubjectName
+				}
+				if f.Article.Semester != nil {
+					item.Semester = f.Article.Semester.SemesterName
+				}
+				if item.Description == "" && f.Article.MetaDescription != nil {
+					item.Description = *f.Article.MetaDescription
+				}
+			}
+			if f.Post != nil && item.Description == "" && f.Post.MetaDescription != nil {
+				item.Description = *f.Post.MetaDescription
+			}
+			appendResult(item)
+		}
+	}
+
+	// Articles with joined subject/semester names.
+	if len(results) < limit {
 		var articles []models.Article
-		aq := applyMatch(db.Model(&models.Article{}).Select("id,title,meta_description").Where("status = ?", 1), []string{"title", "meta_description"}, terms, strict)
-		if err := aq.Order("visit_count DESC, created_at DESC").Limit(limit).Find(&articles).Error; err == nil {
+		articleDB := db.Model(&models.Article{}).
+			Preload("Subject").
+			Preload("Semester").
+			Select("id,title,meta_description,grade_level,subject_id,semester_id,visit_count,created_at").
+			Where("status = ?", 1)
+		articleDB = applySmartMatch(articleDB, []string{"title", "meta_description", "content"}, expandedTerms, false)
+		if err := articleDB.Order("visit_count DESC, created_at DESC").Limit(limit * 2).Find(&articles).Error; err == nil {
 			for _, a := range articles {
 				desc := ""
 				if a.MetaDescription != nil {
 					desc = *a.MetaDescription
 				}
-				appendResult(ContentResult{ID: a.ID, Title: a.Title, Type: "article", Description: desc, URL: "/" + cc + "/lesson/articles/" + uintToString(a.ID)})
-			}
-		}
-
-		if len(results) < limit {
-			var posts []models.Post
-			pq := applyMatch(db.Model(&models.Post{}).Select("id,title,meta_description").Where("is_active = ?", true), []string{"title", "meta_description"}, terms, strict)
-			if err := pq.Order("views DESC, created_at DESC").Limit(limit - len(results)).Find(&posts).Error; err == nil {
-				for _, p := range posts {
-					desc := ""
-					if p.MetaDescription != nil {
-						desc = *p.MetaDescription
-					}
-					appendResult(ContentResult{ID: p.ID, Title: p.Title, Type: "post", Description: desc, URL: "/" + cc + "/posts/" + uintToString(p.ID)})
+				item := ContentResult{ID: a.ID, Title: a.Title, Type: "article", Description: desc, URL: "/" + cc + "/lesson/articles/" + uintToString(a.ID), Grade: gradeNameFromArticle(&a)}
+				if a.Subject != nil {
+					item.Subject = a.Subject.SubjectName
 				}
-			}
-		}
-
-		if len(results) < limit {
-			var files []models.File
-			fq := applyMatch(db.Model(&models.File{}).Select("id,file_name,file_category"), []string{"file_name", "file_category"}, terms, strict)
-			if err := fq.Order("created_at DESC").Limit(limit - len(results)).Find(&files).Error; err == nil {
-				for _, f := range files {
-					desc := ""
-					if f.FileCategory != nil {
-						desc = *f.FileCategory
-					}
-					appendResult(ContentResult{ID: f.ID, Title: f.FileName, Type: "file", Description: desc, URL: "/download/" + uintToString(f.ID)})
+				if a.Semester != nil {
+					item.Semester = a.Semester.SemesterName
 				}
+				appendResult(item)
 			}
 		}
-		return results
 	}
 
-	// Prefer precise matches (all terms present). Only fall back to loose
-	// matching when the strict pass finds nothing, so unrelated content that
-	// merely shares one common word ("الصف") never floods the results.
-	results := run(true)
-	if len(results) == 0 && len(terms) > 1 {
-		results = run(false)
+	// Posts with keywords/category-like content.
+	if len(results) < limit {
+		var posts []models.Post
+		postDB := db.Model(&models.Post{}).
+			Select("id,title,meta_description,keywords,country,views,created_at").
+			Where("is_active = ?", true).
+			Where("country = ? OR country = '' OR country IS NULL", string(cc))
+		postDB = applySmartMatch(postDB, []string{"title", "meta_description", "keywords", "content"}, expandedTerms, false)
+		if err := postDB.Order("views DESC, created_at DESC").Limit(limit * 2).Find(&posts).Error; err == nil {
+			for _, p := range posts {
+				desc := ""
+				if p.MetaDescription != nil {
+					desc = *p.MetaDescription
+				}
+				appendResult(ContentResult{ID: p.ID, Title: p.Title, Type: "post", Description: desc, URL: "/" + cc + "/posts/" + uintToString(p.ID)})
+			}
+		}
+	}
+
+	// If the first pass is too narrow, retry with strict=false and fewer core terms.
+	if len(results) == 0 && len(expandedTerms) > 1 {
+		core := coreSearchTerms(expandedTerms)
+		if len(core) > 0 && len(core) < len(expandedTerms) {
+			var articles []models.Article
+			articleDB := db.Model(&models.Article{}).
+				Preload("Subject").
+				Preload("Semester").
+				Select("id,title,meta_description,grade_level,subject_id,semester_id,visit_count,created_at").
+				Where("status = ?", 1)
+			articleDB = applySmartMatch(articleDB, []string{"title", "meta_description", "content"}, core, false)
+			if err := articleDB.Order("visit_count DESC, created_at DESC").Limit(limit).Find(&articles).Error; err == nil {
+				for _, a := range articles {
+					desc := ""
+					if a.MetaDescription != nil {
+						desc = *a.MetaDescription
+					}
+					item := ContentResult{ID: a.ID, Title: a.Title, Type: "article", Description: desc, URL: "/" + cc + "/lesson/articles/" + uintToString(a.ID), Grade: gradeNameFromArticle(&a)}
+					if a.Subject != nil {
+						item.Subject = a.Subject.SubjectName
+					}
+					if a.Semester != nil {
+						item.Semester = a.Semester.SemesterName
+					}
+					appendResult(item)
+				}
+			}
+		}
+	}
+
+	sortContentResults(results)
+	if len(results) > limit {
+		results = results[:limit]
 	}
 	return results, nil
 }
 
-// searchTerms extracts the meaningful tokens from a query, dropping stop words
-// and very short fragments. Falls back to the whole phrase when nothing useful
-// remains.
+func gradeNameFromArticle(a *models.Article) string {
+	if a == nil || a.GradeLevel == nil {
+		return ""
+	}
+	return strings.TrimSpace(*a.GradeLevel)
+}
+
+// searchTerms extracts meaningful normalized tokens from a query.
 func searchTerms(query string) []string {
-	query = strings.Join(strings.Fields(strings.TrimSpace(query)), " ")
+	query = normalizeSearchText(query)
 	if query == "" {
 		return nil
 	}
 	stop := map[string]bool{
-		"عن": true, "في": true, "من": true, "الى": true, "إلى": true, "او": true,
-		"أو": true, "و": true, "ال": true, "ل": true, "ابحث": true, "اريد": true,
-		"أريد": true, "ملف": true, "ملفات": true, "عايز": true, "بدي": true,
+		"عن": true, "في": true, "من": true, "الى": true, "إلى": true, "او": true, "أو": true,
+		"و": true, "ال": true, "ل": true, "ابحث": true, "بحث": true, "اريد": true, "أريد": true,
+		"عايز": true, "بدي": true, "لو": true, "سمحت": true, "ممكن": true, "ملف": true, "ملفات": true,
+		"للصف": true, "صف": true,
 	}
-	terms := make([]string, 0, 6)
+	terms := make([]string, 0, 10)
 	seen := map[string]bool{}
 	for _, token := range strings.Fields(query) {
 		token = strings.TrimSpace(token)
-		if token == "" || stop[token] || len([]rune(token)) < 3 {
+		if token == "" || stop[token] {
 			continue
 		}
-		// Match on the word stem so morphological variants align:
-		// "اللغة"→"لغة", "العربية"→"عربية", "امتحانات"→"امتحان".
 		stem := stemArabic(token)
-		if len([]rune(stem)) < 3 || seen[stem] {
+		if len([]rune(stem)) < 2 || seen[stem] {
 			continue
 		}
 		seen[stem] = true
 		terms = append(terms, stem)
-		if len(terms) >= 6 {
+		if len(terms) >= 10 {
 			break
 		}
 	}
@@ -256,15 +333,98 @@ func searchTerms(query string) []string {
 	return terms
 }
 
-// stemArabic trims the definite article "ال" and common plural/feminine
-// suffixes so a LIKE match catches singular/plural and article variants.
+func normalizeSearchText(query string) string {
+	query = strings.TrimSpace(query)
+	query = strings.ReplaceAll(query, "أ", "ا")
+	query = strings.ReplaceAll(query, "إ", "ا")
+	query = strings.ReplaceAll(query, "آ", "ا")
+	query = strings.ReplaceAll(query, "ة", "ه")
+	query = strings.ReplaceAll(query, "ى", "ي")
+	query = strings.ReplaceAll(query, "ؤ", "و")
+	query = strings.ReplaceAll(query, "ئ", "ي")
+	query = strings.ReplaceAll(query, "نموذج2", "نموذج 2")
+	query = strings.ReplaceAll(query, "نموذج1", "نموذج 1")
+	query = regexp.MustCompile(`[^\p{Arabic}\p{Latin}\p{N}\s]+`).ReplaceAllString(query, " ")
+	return strings.Join(strings.Fields(query), " ")
+}
+
+func expandSearchTerms(terms []string) []string {
+	out := make([]string, 0, len(terms)*2)
+	seen := map[string]bool{}
+	add := func(v string) {
+		v = strings.TrimSpace(stemArabic(normalizeSearchText(v)))
+		if v == "" || seen[v] {
+			return
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	for _, term := range terms {
+		add(term)
+		switch term {
+		case "امتحان", "امتحانات", "اختبار", "اختبارات":
+			add("اختبار")
+			add("امتحان")
+			add("نموذج")
+		case "نهائي", "نهاي":
+			add("نهائي")
+			add("نهايه")
+			add("نهاية")
+		case "فيزيا", "فزيا", "فيزياء":
+			add("فيزياء")
+			add("فيزيا")
+		case "اسلاميه", "اسلامي", "دين":
+			add("اسلاميه")
+			add("دين")
+		case "عربي", "عربية", "عربه":
+			add("عربي")
+			add("عربية")
+		case "انجليزي", "انكليزي", "english":
+			add("انجليزي")
+			add("انكليزي")
+		case "رياضيات":
+			add("رياضيات")
+			add("رياض")
+		case "ثاني", "الثاني":
+			add("ثاني")
+			add("2")
+		case "اول", "الاول":
+			add("اول")
+			add("1")
+		case "تاسع", "التاسع":
+			add("تاسع")
+			add("9")
+		case "ثامن", "الثامن":
+			add("ثامن")
+			add("8")
+		}
+	}
+	return out
+}
+
+func coreSearchTerms(terms []string) []string {
+	out := []string{}
+	for _, term := range terms {
+		if len([]rune(term)) < 3 {
+			continue
+		}
+		if term == "الصف" || term == "فصل" || term == "ملف" {
+			continue
+		}
+		out = append(out, term)
+		if len(out) >= 5 {
+			break
+		}
+	}
+	return out
+}
+
 func stemArabic(token string) string {
+	token = normalizeSearchText(token)
 	r := []rune(token)
-	// leading article "ال"
 	if len(r) > 4 && r[0] == 'ا' && r[1] == 'ل' {
 		r = r[2:]
 	}
-	// trailing plural suffixes: ات / ون / ين
 	if len(r) > 5 {
 		suffix := string(r[len(r)-2:])
 		if suffix == "ات" || suffix == "ون" || suffix == "ين" {
@@ -274,36 +434,68 @@ func stemArabic(token string) string {
 	return string(r)
 }
 
-// applyMatch adds the relevance filter. In strict mode every term must appear
-// in at least one column (AND of per-term ORs). In loose mode any term in any
-// column is enough (a single OR over everything).
-func applyMatch(db *gorm.DB, columns []string, terms []string, strict bool) *gorm.DB {
+// applySmartMatch uses AND between terms. Every term must appear in one of the selected columns.
+func applySmartMatch(db *gorm.DB, columns []string, terms []string, loose bool) *gorm.DB {
 	if len(terms) == 0 || len(columns) == 0 {
 		return db
 	}
-	if strict {
+	if loose {
+		parts := make([]string, 0, len(terms)*len(columns))
+		args := make([]interface{}, 0, len(terms)*len(columns))
 		for _, term := range terms {
 			like := "%" + term + "%"
-			parts := make([]string, 0, len(columns))
-			args := make([]interface{}, 0, len(columns))
 			for _, col := range columns {
 				parts = append(parts, col+" LIKE ?")
 				args = append(args, like)
 			}
-			db = db.Where("("+strings.Join(parts, " OR ")+")", args...)
 		}
-		return db
+		return db.Where("("+strings.Join(parts, " OR ")+")", args...)
 	}
-	parts := make([]string, 0, len(terms)*len(columns))
-	args := make([]interface{}, 0, len(terms)*len(columns))
 	for _, term := range terms {
 		like := "%" + term + "%"
+		parts := make([]string, 0, len(columns))
+		args := make([]interface{}, 0, len(columns))
 		for _, col := range columns {
 			parts = append(parts, col+" LIKE ?")
 			args = append(args, like)
 		}
+		db = db.Where("("+strings.Join(parts, " OR ")+")", args...)
 	}
-	return db.Where("("+strings.Join(parts, " OR ")+")", args...)
+	return db
+}
+
+func scoreContentResult(query string, terms []string, item ContentResult) int {
+	score := 0
+	haystack := normalizeSearchText(strings.Join([]string{item.Title, item.Description, item.Grade, item.Subject, item.Semester, item.Category}, " "))
+	title := normalizeSearchText(item.Title)
+	for _, term := range terms {
+		if strings.Contains(title, term) {
+			score += 12
+		}
+		if strings.Contains(haystack, term) {
+			score += 4
+		}
+	}
+	if item.Type == "file" {
+		score += 8
+	}
+	if strings.Contains(normalizeSearchText(query), "نموذج 2") && strings.Contains(haystack, "نموذج 2") {
+		score += 20
+	}
+	if strings.Contains(normalizeSearchText(query), "نهائي") && strings.Contains(haystack, "نهائي") {
+		score += 15
+	}
+	return score
+}
+
+func sortContentResults(items []ContentResult) {
+	for i := 0; i < len(items); i++ {
+		for j := i + 1; j < len(items); j++ {
+			if items[j].Score > items[i].Score {
+				items[i], items[j] = items[j], items[i]
+			}
+		}
+	}
 }
 
 func uintToString(id uint) string {

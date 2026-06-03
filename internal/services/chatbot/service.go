@@ -98,6 +98,60 @@ func (s *service) Reply(countryID database.CountryID, userID *uint, ip, userAgen
 	}
 	ctx := readSessionContext(session.ContextData)
 
+	if isDownloadLocationQuestion(message) {
+		intent := "download_location"
+		step := "download_location_steps"
+		confidence := 0.97
+		answer := contextualAnswer(intent, step, message, session.LastIntent)
+		metadata, _ := json.Marshal(map[string]interface{}{"page_url": req.PageURL, "step": step, "guard": "download_location"})
+		_ = s.repo.CreateMessage(countryID, &models.ChatMessage{SessionID: session.ID, Role: "user", Message: message, Intent: intent, Confidence: confidence, SourceType: "user", Metadata: string(metadata), IPAddress: ip, UserAgent: trim(userAgent, 500)})
+		actions := buildActions(intent, step, nil, searchEntities{})
+		suggestions := nextSuggestionsForStep(intent, step, searchEntities{})
+		assistantMetaJSON, _ := json.Marshal(map[string]interface{}{"step": step, "actions": actions, "guard": "download_location"})
+		assistantMsg := models.ChatMessage{SessionID: session.ID, Role: "assistant", Message: answer, Intent: intent, Confidence: confidence, SourceType: "rules", Metadata: string(assistantMetaJSON)}
+		if err := s.repo.CreateMessage(countryID, &assistantMsg); err != nil {
+			return nil, err
+		}
+		_ = s.repo.UpdateSessionState(countryID, session.ID, intent, step, map[string]interface{}{"last_user_message": message, "page_url": req.PageURL, "source_type": "rules"})
+		return &MessageResponse{SessionID: session.ID, Answer: answer, Intent: intent, Step: step, Confidence: confidence, SourceType: "rules", Actions: actions, Suggestions: suggestions, MessageID: assistantMsg.ID}, nil
+	}
+
+	if isCannotFindContentQuestion(message) {
+		intent := "search_content"
+		step := "content_refine"
+		confidence := 0.94
+		answer := "حتى أساعدك في إيجاد الملف بدقة، اكتب الطلب بهذه الصيغة:\n\nنوع الملف + المادة + الصف + الفصل\n\nمثال: اختبار نهائي فيزياء الصف التاسع الفصل الثاني.\n\nإذا كان لديك عنوان الملف كاملًا، أرسله كما هو وسأبحث عنه داخل الموقع."
+		metadata, _ := json.Marshal(map[string]interface{}{"page_url": req.PageURL, "step": step, "guard": "cannot_find_content"})
+		_ = s.repo.CreateMessage(countryID, &models.ChatMessage{SessionID: session.ID, Role: "user", Message: message, Intent: intent, Confidence: confidence, SourceType: "user", Metadata: string(metadata), IPAddress: ip, UserAgent: trim(userAgent, 500)})
+		actions := buildActions(intent, step, nil, searchEntities{})
+		suggestions := []string{"اكتب اسم الملف كاملًا", "فتح صفحة البحث", "فتح الصفوف"}
+		assistantMetaJSON, _ := json.Marshal(map[string]interface{}{"step": step, "actions": actions, "guard": "cannot_find_content"})
+		assistantMsg := models.ChatMessage{SessionID: session.ID, Role: "assistant", Message: answer, Intent: intent, Confidence: confidence, SourceType: "rules", Metadata: string(assistantMetaJSON)}
+		if err := s.repo.CreateMessage(countryID, &assistantMsg); err != nil {
+			return nil, err
+		}
+		_ = s.repo.UpdateSessionState(countryID, session.ID, intent, step, map[string]interface{}{"last_user_message": message, "page_url": req.PageURL, "source_type": "rules"})
+		return &MessageResponse{SessionID: session.ID, Answer: answer, Intent: intent, Step: step, Confidence: confidence, SourceType: "rules", Actions: actions, Suggestions: suggestions, MessageID: assistantMsg.ID}, nil
+	}
+
+	if isGenericDownloadProblemQuestion(message) {
+		intent := "download_problem"
+		step := "download_diagnosis"
+		confidence := 0.95
+		answer := contextualAnswer(intent, step, message, session.LastIntent)
+		metadata, _ := json.Marshal(map[string]interface{}{"page_url": req.PageURL, "step": step, "guard": "generic_download"})
+		_ = s.repo.CreateMessage(countryID, &models.ChatMessage{SessionID: session.ID, Role: "user", Message: message, Intent: intent, Confidence: confidence, SourceType: "user", Metadata: string(metadata), IPAddress: ip, UserAgent: trim(userAgent, 500)})
+		actions := buildActions(intent, step, nil, searchEntities{})
+		suggestions := nextSuggestionsForStep(intent, step, searchEntities{})
+		assistantMetaJSON, _ := json.Marshal(map[string]interface{}{"step": step, "actions": actions, "guard": "generic_download"})
+		assistantMsg := models.ChatMessage{SessionID: session.ID, Role: "assistant", Message: answer, Intent: intent, Confidence: confidence, SourceType: "rules", Metadata: string(assistantMetaJSON)}
+		if err := s.repo.CreateMessage(countryID, &assistantMsg); err != nil {
+			return nil, err
+		}
+		_ = s.repo.UpdateSessionState(countryID, session.ID, intent, step, map[string]interface{}{"last_user_message": message, "page_url": req.PageURL, "source_type": "rules"})
+		return &MessageResponse{SessionID: session.ID, Answer: answer, Intent: intent, Step: step, Confidence: confidence, SourceType: "rules", Actions: actions, Suggestions: suggestions, MessageID: assistantMsg.ID}, nil
+	}
+
 	if isUnsupportedPhoneOrUsernameQuestion(message) {
 		intent := "unsupported_phone_feature"
 		step := "email_only"
@@ -319,6 +373,73 @@ func readSessionContext(raw string) sessionContext {
 	return ctx
 }
 
+func isDownloadLocationQuestion(message string) bool {
+	m := normalizeArabic(strings.ToLower(message))
+	return containsAny(m,
+		"عملت تحميل ولا اجد",
+		"عملت تحميل ولا أجد",
+		"حملت ولا اجد",
+		"حملت ولا أجد",
+		"حملت وما لقيت",
+		"حملت وما لقيته",
+		"تم التحميل ولا اجد",
+		"تم التحميل ولا أجد",
+		"وين الملف بعد التحميل",
+		"وين راح الملف",
+		"وين بتنزل",
+		"وين بكون",
+		"وين الاقيه",
+		"وين ألاقيه",
+		"فين الاقيه",
+		"ما بعرف وين",
+		"اختفى الملف",
+		"ما لقيت التنزيل",
+	)
+}
+
+func isCannotFindContentQuestion(message string) bool {
+	m := normalizeArabic(strings.ToLower(message))
+	if isDownloadLocationQuestion(message) {
+		return false
+	}
+	return containsAny(m,
+		"لا استطيع ايجاد الملف",
+		"لا أستطيع إيجاد الملف",
+		"لا أستطيع ايجاد الملف",
+		"لم اجد الملف",
+		"لم أجد الملف",
+		"ما لقيت الملف",
+		"مش لاقي الملف",
+		"مش لاقيه",
+		"لا اجد الملف المطلوب",
+		"لا أجد الملف المطلوب",
+		"اين الملف",
+		"أين الملف",
+		"ابحث عن ملف",
+		"أبحث عن ملف",
+	)
+}
+
+func isGenericDownloadProblemQuestion(message string) bool {
+	m := normalizeArabic(strings.ToLower(message))
+	if isDownloadLocationQuestion(message) || isCannotFindContentQuestion(message) {
+		return false
+	}
+	return containsAny(m,
+		"لا استطيع تحميل ملف",
+		"لا أستطيع تحميل ملف",
+		"لا استطيع تحميل الملفات",
+		"لا أستطيع تحميل الملفات",
+		"مش قادر احمل",
+		"مش قادر أحمل",
+		"ما بقدر احمل",
+		"ما بقدر أحمل",
+		"التحميل لا يعمل",
+		"ما يحمل",
+		"ما بحمل",
+	)
+}
+
 func resolveFlow(message, detectedIntent, lastIntent, currentStep string, authenticated bool) flowDecision {
 	m := normalizeArabic(strings.ToLower(message))
 	contains := func(words ...string) bool {
@@ -330,11 +451,34 @@ func resolveFlow(message, detectedIntent, lastIntent, currentStep string, authen
 		return false
 	}
 
+	if contains("ما هي خدمات الموقع", "خدمات الموقع", "شو بتقدموا", "ماذا تقدم المنصة", "الخدمات التعليمية", "بنك الامتحانات", "اشتراك", "اشتراكات") {
+		return flowDecision{Intent: "site_services", Step: "site_services", Confidence: 0.95, Answer: contextualAnswer("site_services", "site_services", message, lastIntent)}
+	}
+	if contains("من نحن", "عن الموقع", "عن المنصة", "ما هو موقع الايمان", "ما هو موقع الأيمان", "موقع الايمان") {
+		return flowDecision{Intent: "about_site", Step: "about_site", Confidence: 0.94, Answer: contextualAnswer("about_site", "about_site", message, lastIntent)}
+	}
+	if contains("سياسة الخصوصية", "شروط الاستخدام", "سياسة الكوكيز", "حقوق الملكية", "إخلاء المسؤولية", "اخلاء المسؤولية", "سياسة التحرير") {
+		return flowDecision{Intent: "privacy_request", Step: "legal_pages", Confidence: 0.95, Answer: contextualAnswer("privacy_request", "legal_pages", message, lastIntent)}
+	}
+	if contains("نموذج التواصل غير مهيأ", "recaptcha", "ريكابتشا", "لا استطيع ارسال رسالة", "لا أستطيع إرسال رسالة", "نموذج التواصل لا يعمل", "اتصل بنا لا يعمل") {
+		return flowDecision{Intent: "contact_support", Step: "contact_form_not_ready", Confidence: 0.96, Answer: contextualAnswer("contact_support", "contact_form_not_ready", message, lastIntent)}
+	}
+
 	if contains("كيف استخدم الموقع", "كيف أستخدم الموقع", "طريقة استخدام الموقع", "استخدام الموقع", "كيف اتصفح", "كيف أتصفح", "كيف ابحث", "كيف أبحث") {
 		return flowDecision{Intent: "site_usage", Step: "site_usage", Confidence: 0.96, Answer: contextualAnswer("site_usage", "site_usage", message, lastIntent)}
 	}
 	if contains("عرض الصفوف التعليمية", "اعرض الصفوف", "عرض الصفوف", "الصفوف التعليمية", "تصفح الصفوف", "أريد تصفح الصفوف", "اريد تصفح الصفوف") {
 		return flowDecision{Intent: "open_classes", Step: "open_classes", Confidence: 0.97, Answer: contextualAnswer("open_classes", "open_classes", message, lastIntent)}
+	}
+
+	if isDownloadLocationQuestion(message) {
+		return flowDecision{Intent: "download_location", Step: "download_location_steps", Confidence: 0.97, Answer: contextualAnswer("download_location", "download_location_steps", message, lastIntent)}
+	}
+	if isCannotFindContentQuestion(message) {
+		return flowDecision{Intent: "search_content", Step: "content_refine", Confidence: 0.94, Answer: "حتى أساعدك في إيجاد الملف بدقة، اكتب الطلب بهذه الصيغة:\n\nنوع الملف + المادة + الصف + الفصل\n\nمثال: اختبار نهائي فيزياء الصف التاسع الفصل الثاني."}
+	}
+	if isGenericDownloadProblemQuestion(message) {
+		return flowDecision{Intent: "download_problem", Step: "download_diagnosis", Confidence: 0.95, Answer: contextualAnswer("download_problem", "download_diagnosis", message, lastIntent)}
 	}
 
 	if isNoiseOrEmojiOnly(message) {
@@ -451,6 +595,12 @@ func defaultStep(intent string) string {
 		return "privacy_safe_lookup"
 	case "contact_support":
 		return "contact_steps"
+	case "site_services":
+		return "site_services"
+	case "about_site":
+		return "about_site"
+	case "privacy_request":
+		return "legal_pages"
 	case "site_usage":
 		return "site_usage"
 	case "open_classes":
@@ -464,6 +614,18 @@ func defaultStep(intent string) string {
 	default:
 		return "answer"
 	}
+}
+
+func countryLandingPath(countryID database.CountryID) string {
+	code := strings.TrimSpace(string(database.CountryCode(countryID)))
+	if code == "" {
+		code = "jo"
+	}
+	return "/" + code
+}
+
+func siteSearchHelpAnswer() string {
+	return "للبحث داخل الموقع استخدم صيغة واضحة:\n\nنوع الملف + المادة + الصف + الفصل\n\nأمثلة:\n- اختبار نهائي فيزياء الصف التاسع الفصل الثاني\n- أوراق عمل رياضيات الصف الخامس الفصل الأول\n- تحليل محتوى لغة عربية الصف العاشر الفصل الثاني\n\nيمكنك أيضًا استخدام الفلاتر الموجودة في البحث: الصف، نوع المحتوى، المادة، والفصل الدراسي."
 }
 
 func contextualAnswer(intent, step, message, lastIntent string) string {
@@ -534,14 +696,19 @@ func contextualAnswer(intent, step, message, lastIntent string) string {
 	case "frustration":
 		return "أفهم أن المشكلة مزعجة. اكتب لي باختصار ما الذي يحدث معك: هل المشكلة في التحميل، التفعيل، تسجيل الدخول، أم البحث عن ملف؟"
 	case "open_classes":
-		return "يمكنك فتح صفحة الصفوف لاختيار الصف ثم المادة والفصل. إذا كنت تبحث عن ملف محدد، اكتب: نوع الملف + المادة + الصف + الفصل."
+		return "لعرض الصفوف التعليمية، افتح صفحة الأردن ثم اختر الصف المطلوب. بعد ذلك اختر المادة المناسبة للوصول إلى الفصول والملفات التعليمية المرتبطة بهذا الصف.\n\nإذا كنت تبحث عن ملف محدد، استخدم البحث بصيغة: نوع الملف + المادة + الصف + الفصل."
 	case "open_search":
-		return "افتح صفحة البحث واكتب كلمات محددة مثل: امتحان اللغة العربية الصف الثامن الفصل الثاني. كلما كان الطلب أدق كانت النتائج أفضل."
-
+		return siteSearchHelpAnswer()
+	case "site_services":
+		return "خدمات الموقع تشمل: محتوى تعليمي للصفوف، بنك امتحانات وملفات، أخبار ومقالات تربوية، بحث وتصفية متقدمة، وخدمات للأعضاء والمعلمين مثل طلب ملفات أو إرسال اقتراحات عبر صفحة التواصل."
+	case "about_site":
+		return "موقع الأيمان منصة تعليمية تهدف إلى توفير موارد تعليمية موثوقة ومنظمة للطلاب والمعلمين، مع التركيز على المنهاج الأردني وتسهيل الوصول إلى الصفوف والمواد والاختبارات والملفات التعليمية."
 	case "site_usage":
-		return "طريقة استخدام الموقع باختصار:\n\n1. افتح صفحة الصفوف.\n2. اختر الصف المطلوب.\n3. اختر المادة أو الفصل إن كان متاحًا.\n4. افتح الملف أو الدرس المناسب.\n5. إذا كنت تبحث عن شيء محدد، استخدم البحث واكتب: نوع الملف + المادة + الصف + الفصل.\n\nمثال: اختبار نهائي فيزياء الصف التاسع الفصل الثاني."
+		return "طريقة استخدام الموقع باختصار:\n\n1. من الصفحة الرئيسية يمكنك البحث باستخدام: الصف، نوع المحتوى، المادة، والفصل.\n2. من صفحة الأردن اختر الصف أولًا، ثم المادة، ثم الفصل أو الملف المطلوب.\n3. للبحث السريع اكتب: نوع الملف + المادة + الصف + الفصل.\n4. إذا لم تجد الملف، أرسل عنوانه الكامل أو اطلب إضافته من صفحة التواصل.\n\nمثال: اختبار نهائي فيزياء الصف التاسع الفصل الثاني."
+	case "privacy_request":
+		return "يمكنك مراجعة صفحات سياسة الخصوصية، شروط الاستخدام، سياسة الكوكيز، إخلاء المسؤولية، حقوق الملكية، وسياسة التحرير من روابط أسفل الموقع."
 	case "contact_support":
-		return "للتواصل مع الإدارة استخدم صفحة اتصل بنا فقط. اكتب: البريد المستخدم، رابط الصفحة إن وجد، وصف المشكلة، ونص رسالة الخطأ أو صورة شاشة إن كانت متاحة. لا توجد دردشة مباشرة أو صفحة FAQ خاصة بالدعم حاليًا."
+		return "للتواصل مع الإدارة استخدم صفحة اتصل بنا. اكتب: الاسم، البريد الإلكتروني، الموضوع، وصف المشكلة، ورابط الصفحة إن وجد.\n\nإذا ظهر أن نموذج التواصل غير مهيأ أو لم تتمكن من الإرسال، استخدم البريد الموجود في صفحة من نحن: info@alemancenter.com."
 	default:
 		return ruleAnswer(intent)
 	}
@@ -565,6 +732,9 @@ func requiresContextualAnswer(message, intent, lastIntent string) bool {
 		"open_classes",
 		"open_search",
 		"site_usage",
+		"site_services",
+		"about_site",
+		"privacy_request",
 		"thanks",
 		"frustration":
 		return true
@@ -623,8 +793,17 @@ func buildActions(intent, step string, links []repo.ContentResult, entities sear
 	}
 
 	switch intent {
+	case "site_services":
+		addLink("الخدمات", "/services", "primary")
+		addLink("اتصل بنا", "/contact-us", "secondary")
+	case "about_site":
+		addLink("من نحن", "/about-us", "primary")
+		addLink("اتصل بنا", "/contact-us", "secondary")
+	case "privacy_request":
+		addLink("سياسة الخصوصية", "/privacy-policy", "primary")
+		addLink("شروط الاستخدام", "/terms", "secondary")
 	case "site_usage":
-		addLink("فتح الصفوف", "/classes", "primary")
+		addLink("فتح الصفوف", "/jo", "primary")
 		addLink("فتح البحث", "/search", "secondary")
 		addMsg("مشكلة في التحميل", "لا أستطيع تحميل الملفات")
 	case "auth_login_problem":
@@ -665,12 +844,12 @@ func buildActions(intent, step string, links []repo.ContentResult, entities sear
 		addLink("فتح صفحة التواصل", "/contact-us", "secondary")
 	case "search_content", "find_grade", "find_subject", "find_semester":
 		addLink("فتح البحث بهذه الكلمات", searchURL, "primary")
-		addLink("فتح الصفوف", "/classes", "secondary")
+		addLink("فتح الصفوف", "/jo", "secondary")
 		if entities.Semester == "" && (entities.Grade != "" || entities.Subject != "") {
 			addMsg("الفصل الأول", buildSearchQuery("الفصل الأول", entities))
 			addMsg("الفصل الثاني", buildSearchQuery("الفصل الثاني", entities))
 		}
-	case "contact_support", "report_content", "request_content", "site_error", "privacy_request", "account_lookup_privacy":
+	case "contact_support", "report_content", "request_content", "site_error", "account_lookup_privacy":
 		if intent == "account_lookup_privacy" {
 			addLink("تسجيل الدخول", "/login", "primary")
 			addLink("استعادة كلمة المرور", "/forgot-password", "secondary")
@@ -696,6 +875,20 @@ func detectIntent(message string) (string, float64) {
 	}
 
 	switch {
+	case contains("ما هي خدمات الموقع", "خدمات الموقع", "شو بتقدموا", "ماذا تقدم المنصة", "الخدمات التعليمية", "بنك الامتحانات", "اشتراك", "اشتراكات"):
+		return "site_services", 0.95
+	case contains("من نحن", "عن الموقع", "عن المنصة", "ما هو موقع الايمان", "ما هو موقع الأيمان", "موقع الايمان"):
+		return "about_site", 0.94
+	case contains("سياسة الخصوصية", "شروط الاستخدام", "سياسة الكوكيز", "حقوق الملكية", "إخلاء المسؤولية", "اخلاء المسؤولية", "سياسة التحرير"):
+		return "privacy_request", 0.95
+	case contains("نموذج التواصل غير مهيأ", "recaptcha", "ريكابتشا", "لا استطيع ارسال رسالة", "لا أستطيع إرسال رسالة", "نموذج التواصل لا يعمل", "اتصل بنا لا يعمل"):
+		return "contact_support", 0.96
+	case isDownloadLocationQuestion(message):
+		return "download_location", 0.97
+	case isCannotFindContentQuestion(message):
+		return "search_content", 0.94
+	case isGenericDownloadProblemQuestion(message):
+		return "download_problem", 0.95
 
 	case contains("كيف استخدم الموقع", "كيف أستخدم الموقع", "طريقة استخدام الموقع", "استخدام الموقع", "كيف اتصفح", "كيف أتصفح", "كيف ابحث", "كيف أبحث"):
 		return "site_usage", 0.96
@@ -866,7 +1059,7 @@ func relaxedSearchQueries(message string, e searchEntities) []string {
 }
 
 func shouldRunContentSearch(intent, message string, entities searchEntities) bool {
-	if intent == "site_usage" || intent == "open_classes" || intent == "open_search" {
+	if intent == "site_usage" || intent == "site_services" || intent == "about_site" || intent == "privacy_request" || intent == "open_classes" || intent == "open_search" {
 		return false
 	}
 	if isContentIntent(intent) {
@@ -1152,7 +1345,7 @@ func buildSearchAnswer(e searchEntities, links []repo.ContentResult) string {
 		query = "طلبك"
 	}
 	if len(links) > 0 {
-		return "بحثت عن: " + query + "\n\nظهرت نتائج مطابقة أو قريبة من داخل الموقع. افتح النتيجة الأقرب لك. إذا لم تكن النتيجة المطلوبة موجودة، استخدم زر البحث أو أرسل طلب إضافة ملف للإدارة.\n\nلنتائج أدق اكتب: نوع الملف + المادة + الصف + الفصل."
+		return "بحثت عن: " + query + "\n\nوجدت نتائج من قاعدة بيانات الموقع داخل الملفات والمقالات والمنشورات. افتح النتيجة الأقرب لك، وإذا لم تكن مطابقة تمامًا اكتب العنوان الكامل أو أعد البحث بصيغة: نوع الملف + المادة + الصف + الفصل."
 	}
 	missing := []string{}
 	if e.Grade == "" {
@@ -1304,11 +1497,11 @@ func ruleAnswer(intent string) string {
 	case "profile_problem":
 		return "لتعديل بيانات الحساب، افتح صفحة الحساب أو الملف الشخصي إن كانت متاحة. إذا لم يظهر خيار التعديل، تواصل مع الإدارة واذكر البريد والبيانات المطلوب تعديلها."
 	case "privacy_request":
-		return "لطلب حذف الحساب أو البيانات، استخدم صفحة التواصل واكتب البريد المرتبط بالحساب وطلبك بوضوح. قد تحتاج الإدارة للتحقق من ملكية الحساب قبل تنفيذ الطلب."
+		return "يمكنك مراجعة صفحات سياسة الخصوصية، شروط الاستخدام، سياسة الكوكيز، إخلاء المسؤولية، حقوق الملكية، وسياسة التحرير من روابط أسفل الموقع."
 	case "report_content":
 		return "للإبلاغ عن ملف أو محتوى خاطئ، أرسل رابط الصفحة ووضح نوع المشكلة: ملف لا يفتح، تصنيف خاطئ، محتوى غير مناسب، أو ملف لا يخص الصف أو المادة."
 	case "request_content":
-		return "لطلب إضافة ملف أو درس، اكتب الدولة والصف والمادة والفصل ونوع الملف المطلوب. مثال: الأردن، الصف التاسع، رياضيات، الفصل الأول، اختبار نهائي."
+		return "لطلب إضافة ملف أو درس غير موجود، استخدم صفحة اتصل بنا واكتب بوضوح:\n\n1. الدولة أو المنهج.\n2. الصف.\n3. المادة.\n4. الفصل الدراسي.\n5. نوع الملف المطلوب مثل اختبار، ورقة عمل، خطة، تحليل محتوى.\n6. العنوان الكامل إن كان متوفرًا.\n\nكلما كان الطلب أدق، كانت مراجعته أسرع."
 	case "contact_support":
 		return "إذا بقيت المشكلة بعد تجربة الحلول، استخدم صفحة التواصل واكتب البريد المستخدم ورابط الصفحة ورسالة الخطأ الظاهرة حتى تستطيع الإدارة مراجعتها بسرعة."
 	case "find_grade", "find_subject", "find_semester", "search_content":

@@ -148,7 +148,7 @@ func shouldUseChatbotAI(message, intent, step, source string, links []repo.Conte
 		return false
 	}
 	switch intent {
-	case "contact_support", "site_usage", "open_classes", "open_search", "download_problem", "download_location", "permission_problem", "file_not_found", "email_verification_problem", "auth_login_problem", "auth_register_problem", "password_reset_problem", "social_login_problem", "request_content", "thanks", "frustration":
+	case "contact_support", "site_usage", "site_services", "about_site", "open_classes", "open_search", "download_problem", "download_location", "permission_problem", "file_not_found", "email_verification_problem", "auth_login_problem", "auth_register_problem", "password_reset_problem", "social_login_problem", "request_content", "thanks", "frustration":
 		return false
 	}
 	if source == "knowledge_base" && confidence >= 0.85 {
@@ -165,7 +165,7 @@ func shouldUseChatbotAI(message, intent, step, source string, links []repo.Conte
 
 func isSensitiveNoAI(intent string) bool {
 	switch intent {
-	case "unsupported_phone_feature", "account_lookup_privacy", "privacy_request", "contact_support", "site_usage", "open_classes", "open_search", "download_problem", "download_location", "permission_problem", "file_not_found", "email_verification_problem", "auth_login_problem", "auth_register_problem", "password_reset_problem", "social_login_problem", "request_content", "thanks", "frustration":
+	case "unsupported_phone_feature", "account_lookup_privacy", "privacy_request", "contact_support", "site_usage", "site_services", "about_site", "open_classes", "open_search", "download_problem", "download_location", "permission_problem", "file_not_found", "email_verification_problem", "auth_login_problem", "auth_register_problem", "password_reset_problem", "social_login_problem", "request_content", "thanks", "frustration":
 		return true
 	default:
 		return false
@@ -282,7 +282,7 @@ previous_intent: %s
 authenticated: %v
 entities: %s
 current_safe_answer: %s
-site_links_json: %s
+site_links_json_from_database_files_articles_posts: %s
 allowed_actions_json: %s
 
 اكتب ردًا مختصرًا ومفيدًا، منظمًا بخطوات عند الحاجة. الاقتراحات يجب أن تكون قصيرة وعملية، ولا تزيد عن 3.`, req.Message, req.Intent, req.Step, req.PreviousIntent, req.Authenticated, string(entitiesJSON), req.CurrentAnswer, string(linksJSON), string(actionsJSON))

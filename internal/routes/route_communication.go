@@ -18,6 +18,7 @@ func registerCommunicationRoutes(public, dash fiber.Router, h *Handlers) {
 
 	// Public support chatbot. OptionalAuth is already applied on the public router.
 	public.Get("/chatbot/suggestions", h.Chatbot.Suggestions)
+	public.Get("/chatbot/companion/hint", h.Chatbot.CompanionHint)
 	public.Post("/chatbot/message", h.Chatbot.Message)
 	public.Post("/chatbot/feedback", h.Chatbot.Feedback)
 
@@ -56,6 +57,7 @@ func registerCommunicationRoutes(public, dash fiber.Router, h *Handlers) {
 	// Chatbot management
 	dashChatbot := dash.Group("/chatbot", middleware.Can("manage settings"))
 	dashChatbot.Get("/sessions", h.Chatbot.DashboardSessions)
+	dashChatbot.Get("/sessions/:id", h.Chatbot.DashboardSession)
 	dashChatbot.Get("/knowledge", h.Chatbot.DashboardKnowledge)
 	dashChatbot.Post("/knowledge", h.Chatbot.StoreKnowledge)
 	dashChatbot.Put("/knowledge/:id", h.Chatbot.UpdateKnowledge)

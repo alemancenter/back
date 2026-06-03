@@ -43,6 +43,11 @@ func (h *Handler) Suggestions(c *fiber.Ctx) error {
 	return utils.Success(c, "اقتراحات المساعد", h.service.Suggestions())
 }
 
+func (h *Handler) CompanionHint(c *fiber.Ctx) error {
+	req := chatbotSvc.CompanionHintRequest{PageURL: c.Query("page_url", c.Get("Referer"))}
+	return utils.Success(c, "تلميح رفيق المنصة", h.service.CompanionHint(req))
+}
+
 func (h *Handler) Feedback(c *fiber.Ctx) error {
 	var req struct {
 		MessageID uint   `json:"message_id"`
@@ -65,6 +70,18 @@ func (h *Handler) DashboardSessions(c *fiber.Ctx) error {
 		return utils.InternalError(c)
 	}
 	return utils.Success(c, "محادثات المساعد", sessions)
+}
+
+func (h *Handler) DashboardSession(c *fiber.Ctx) error {
+	id64, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil || id64 == 0 {
+		return utils.BadRequest(c, "معرف الجلسة غير صالح")
+	}
+	session, err := h.service.GetSession(countryID(c), uint(id64))
+	if err != nil {
+		return utils.InternalError(c, "الجلسة غير موجودة")
+	}
+	return utils.Success(c, "تفاصيل المحادثة", session)
 }
 
 func (h *Handler) DashboardKnowledge(c *fiber.Ctx) error {

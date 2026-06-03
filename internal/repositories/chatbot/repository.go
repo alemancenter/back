@@ -29,6 +29,7 @@ type Repository interface {
 	SearchContent(countryID database.CountryID, query string, limit int) ([]ContentResult, error)
 	CreateFeedback(countryID database.CountryID, feedback *models.ChatFeedback) error
 	ListSessions(countryID database.CountryID, limit int) ([]models.ChatSession, error)
+	GetSessionWithMessages(countryID database.CountryID, sessionID uint) (*models.ChatSession, error)
 	ListKnowledge(countryID database.CountryID, countryCode string, limit int) ([]models.ChatKnowledgeBase, error)
 	CreateKnowledge(countryID database.CountryID, item *models.ChatKnowledgeBase) error
 	UpdateKnowledge(countryID database.CountryID, item *models.ChatKnowledgeBase) error
@@ -332,6 +333,17 @@ func (r *repository) ListSessions(countryID database.CountryID, limit int) ([]mo
 	var sessions []models.ChatSession
 	err := r.db(countryID).Preload("Messages", func(db *gorm.DB) *gorm.DB { return db.Order("created_at ASC").Limit(8) }).Order("updated_at DESC").Limit(limit).Find(&sessions).Error
 	return sessions, err
+}
+
+func (r *repository) GetSessionWithMessages(countryID database.CountryID, sessionID uint) (*models.ChatSession, error) {
+	var session models.ChatSession
+	err := r.db(countryID).
+		Preload("Messages", func(db *gorm.DB) *gorm.DB { return db.Order("created_at ASC") }).
+		First(&session, sessionID).Error
+	if err != nil {
+		return nil, err
+	}
+	return &session, nil
 }
 
 func (r *repository) ListKnowledge(countryID database.CountryID, countryCode string, limit int) ([]models.ChatKnowledgeBase, error) {

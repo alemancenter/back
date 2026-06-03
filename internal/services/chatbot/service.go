@@ -21,6 +21,18 @@ type MessageRequest struct {
 	PageURL     string `json:"page_url"`
 }
 
+type CompanionHintRequest struct {
+	PageURL string `json:"page_url"`
+}
+
+type CompanionHintResponse struct {
+	PageKind     string          `json:"page_kind"`
+	Title        string          `json:"title"`
+	Message      string          `json:"message"`
+	QuickActions []ChatbotAction `json:"quick_actions"`
+	Priority     int             `json:"priority"`
+}
+
 type ChatbotAction struct {
 	Label   string `json:"label"`
 	Type    string `json:"type"` // link, message
@@ -48,7 +60,9 @@ type Service interface {
 	Reply(countryID database.CountryID, userID *uint, ip, userAgent string, req MessageRequest) (*MessageResponse, error)
 	Feedback(countryID database.CountryID, messageID uint, rating, comment string) error
 	Suggestions() []string
+	CompanionHint(req CompanionHintRequest) CompanionHintResponse
 	ListSessions(countryID database.CountryID, limit int) ([]models.ChatSession, error)
+	GetSession(countryID database.CountryID, sessionID uint) (*models.ChatSession, error)
 	ListKnowledge(countryID database.CountryID, countryCode string, limit int) ([]models.ChatKnowledgeBase, error)
 	CreateKnowledge(countryID database.CountryID, item *models.ChatKnowledgeBase) error
 	UpdateKnowledge(countryID database.CountryID, item *models.ChatKnowledgeBase) error
@@ -238,8 +252,85 @@ func (s *service) Feedback(countryID database.CountryID, messageID uint, rating,
 func (s *service) Suggestions() []string {
 	return []string{"لا أستطيع تسجيل الدخول", "لا تصلني رسالة التفعيل", "عملت تحميل ولا أعرف أين أجد الملف", "ابحث عن امتحانات حاسوب صف ثامن فصل ثاني", "أريد خطة نمو مهني تربية فنية", "أريد التواصل مع الإدارة"}
 }
+
+func (s *service) CompanionHint(req CompanionHintRequest) CompanionHintResponse {
+	return buildCompanionHint(req.PageURL)
+}
+
+func buildCompanionHint(pageURL string) CompanionHintResponse {
+	path := strings.ToLower(strings.TrimSpace(pageURL))
+	if path == "" {
+		path = "/"
+	}
+	act := func(label, message string) ChatbotAction {
+		return ChatbotAction{Label: label, Type: "message", Message: message, Style: "primary"}
+	}
+	link := func(label, url string) ChatbotAction {
+		return ChatbotAction{Label: label, Type: "link", URL: url, Style: "secondary"}
+	}
+	resp := func(kind, message string, priority int, actions ...ChatbotAction) CompanionHintResponse {
+		return CompanionHintResponse{PageKind: kind, Title: "رفيق المنصة", Message: message, Priority: priority, QuickActions: actions}
+	}
+
+	switch {
+	case strings.Contains(path, "/login"):
+		return resp("login", "هل تواجه مشكلة في تسجيل الدخول؟ أستطيع مساعدتك بخطوات سريعة.", 95,
+			act("لا أستطيع تسجيل الدخول", "لا أستطيع تسجيل الدخول"),
+			act("نسيت كلمة المرور", "نسيت كلمة المرور"),
+			act("البريد غير مفعّل", "لا تصلني رسالة التفعيل"),
+		)
+	case strings.Contains(path, "/register") || strings.Contains(path, "/signup"):
+		return resp("register", "استخدم بريدًا صحيحًا يمكنك الوصول إليه، لأنك ستحتاج إلى تأكيده بعد إنشاء الحساب.", 94,
+			act("خطوات إنشاء الحساب", "ما هي الخطوات الصحيحة لإنشاء حساب؟"),
+			act("شرح التفعيل", "لا تصلني رسالة التفعيل"),
+		)
+	case strings.Contains(path, "verify") || strings.Contains(path, "verification") || strings.Contains(path, "email"):
+		return resp("verification", "لم تصلك رسالة التفعيل؟ افحص البريد غير الهام وتأكد من صحة البريد، ثم اضغط رابط التأكيد داخل الرسالة.", 98,
+			act("لا تصلني رسالة التفعيل", "لا تصلني رسالة التفعيل"),
+			act("كتبت البريد خطأ", "كتبت البريد الإلكتروني خطأ"),
+			act("وصلت الرسالة ماذا أفعل؟", "وصلت رسالة التفعيل، ماذا أفعل الآن؟"),
+		)
+	case strings.Contains(path, "/download") || strings.Contains(path, "/files"):
+		return resp("download", "إذا لم يعمل التحميل، تأكد أنك مسجل الدخول وأن بريدك مفعّل.", 92,
+			act("لا أستطيع التحميل", "لدي مشكلة في تحميل الملفات"),
+			act("أين أجد الملف؟", "عملت تحميل ولا أعرف أين أجد الملف"),
+			act("تظهر رسالة صلاحية", "تظهر رسالة لا تملك صلاحية"),
+		)
+	case strings.Contains(path, "/search"):
+		return resp("search", "لنتائج أفضل، اكتب: المادة + الصف + الفصل. مثال: رياضيات الصف التاسع الفصل الأول.", 80,
+			act("أريد البحث عن ملف", "أريد البحث عن ملف تعليمي"),
+			act("لا أجد الملف المطلوب", "لا أجد الملف المطلوب في الموقع ما العمل؟"),
+		)
+	case strings.Contains(path, "/classes") || strings.Contains(path, "/class"):
+		return resp("classes", "اختر الصف، ثم المادة أو الفصل للوصول إلى الملفات المناسبة بسرعة.", 70,
+			act("طريقة البحث حسب الصف", "كيف أبحث حسب الصف والمادة والفصل؟"),
+			act("لا أجد مادتي", "لا أجد المادة المطلوبة في الموقع"),
+		)
+	case strings.Contains(path, "/article") || strings.Contains(path, "/post") || strings.Contains(path, "/lesson"):
+		return resp("content", "أستطيع مساعدتك في فهم الصفحة أو إيجاد ملفات مشابهة لها.", 60,
+			act("ابحث عن ملفات مشابهة", "أريد ملفات تعليمية مشابهة لهذه الصفحة"),
+			act("مشكلة في الملف", "أريد الإبلاغ عن ملف خاطئ"),
+		)
+	case path == "/" || strings.HasSuffix(path, "/jo") || strings.HasSuffix(path, "/sa") || strings.HasSuffix(path, "/eg") || strings.HasSuffix(path, "/ps"):
+		return resp("home", "مرحبًا، أستطيع مساعدتك في الوصول إلى الصف أو المادة أو الملف المطلوب.", 50,
+			act("ابدأ البحث", "أريد البحث عن ملف تعليمي"),
+			act("مشكلة في الحساب", "لدي مشكلة في تسجيل الدخول أو تفعيل الحساب"),
+			link("فتح الصفوف", "/classes"),
+		)
+	default:
+		return resp("general", "أنا هنا إذا احتجت مساعدة في الحساب، التفعيل، التحميل، أو البحث عن الملفات.", 20,
+			act("أحتاج مساعدة", "أحتاج مساعدة في استخدام الموقع"),
+			act("أبحث عن ملف", "أريد البحث عن ملف تعليمي"),
+		)
+	}
+}
+
 func (s *service) ListSessions(countryID database.CountryID, limit int) ([]models.ChatSession, error) {
 	return s.repo.ListSessions(countryID, limit)
+}
+
+func (s *service) GetSession(countryID database.CountryID, sessionID uint) (*models.ChatSession, error) {
+	return s.repo.GetSessionWithMessages(countryID, sessionID)
 }
 func (s *service) ListKnowledge(countryID database.CountryID, countryCode string, limit int) ([]models.ChatKnowledgeBase, error) {
 	return s.repo.ListKnowledge(countryID, countryCode, limit)
@@ -577,7 +668,7 @@ func containsEmail(v string) bool {
 }
 
 func hasContentSearchWords(m string) bool {
-	words := []string{"بحث", "ابحث", "اريد", "أريد", "ابعث", "ابعثولي", "تبعتولي", "بدي", "عايز", "ارسلوا", "نموذج", "نماذج", "امتحان", "امتحانات", "اختبار", "اختبارات", "نهائي", "ملخص", "ملخصات", "ورقه عمل", "ورقة عمل", "اوراق عمل", "أوراق عمل", "درس", "شرح", "خطة", "خطه", "تحضير", "نمو مهني", "جدول مواصفات", "حلول", "اجابات", "رياضيات", "علوم", "عربي", "اللغه العربيه", "لغة عربية", "انجليزي", "دين", "اسلاميه", "حاسوب", "مهارات رقمية", "ثقافه ماليه", "تربيه فنيه", "تاسع", "ثامن", "عاشر", "اول", "الأول", "الاول", "الصف", "صف"}
+	words := []string{"بحث", "ابحث", "اريد", "أريد", "ابعث", "ابعثولي", "تبعتولي", "بدي", "عايز", "ارسلوا", "نموذج", "نماذج", "امتحان", "امتحانات", "اختبار", "اختبارات", "نهائي", "ملخص", "ملخصات", "ورقه عمل", "ورقة عمل", "اوراق عمل", "أوراق عمل", "درس", "شرح", "خطة", "خطه", "تحضير", "نمو مهني", "جدول مواصفات", "حلول", "اجابات", "رياضيات", "علوم", "عربي", "اللغه العربيه", "لغة عربية", "انجليزي", "دين", "اسلاميه", "حاسوب", "مهارات رقمية", "ثقافه ماليه", "تربيه فنيه", "تاسع", "ثامن", "عاشر", "اول", "الأول", "الاول", "الصف", "صف", "اجتماعيات", "اجتماعي", "وطني", "نهاية", "فيزياء", "كيمياء", "احياء", "جغرافيا", "تاريخ", "موسيقى", "فلسفه"}
 	for _, w := range words {
 		if strings.Contains(m, normalizeArabic(w)) {
 			return true
@@ -625,6 +716,12 @@ func extractSearchEntities(message string) searchEntities {
 
 	grades := map[string]string{
 		"الصف الاول": "الصف الأول", "اول ابتدائي": "الصف الأول", "الصف الثاني": "الصف الثاني", "الصف الثالث": "الصف الثالث", "الصف الرابع": "الصف الرابع", "الصف الخامس": "الصف الخامس", "الصف السادس": "الصف السادس", "الصف السابع": "الصف السابع", "صف سابع": "الصف السابع", "الصف الثامن": "الصف الثامن", "صف ثامن": "الصف الثامن", "ثامن": "الصف الثامن", "الصف التاسع": "الصف التاسع", "صف تاسع": "الصف التاسع", "تاسع": "الصف التاسع", "التاسع": "الصف التاسع", "الصف العاشر": "الصف العاشر", "عاشر": "الصف العاشر", "الصف الحادي عشر": "الصف الحادي عشر", "الحادي عشر": "الصف الحادي عشر", "الصف الثاني عشر": "الصف الثاني عشر", "الثاني عشر": "الصف الثاني عشر", "توجيهي": "الصف الثاني عشر",
+		// صيغ مختصرة بدون "الصف" — لا نضيف الأول/الثاني لتعارضهما مع الفصل
+		"ثالث": "الصف الثالث", "الثالث": "الصف الثالث",
+		"رابع": "الصف الرابع", "الرابع": "الصف الرابع",
+		"خامس": "الصف الخامس", "الخامس": "الصف الخامس",
+		"سادس": "الصف السادس", "السادس": "الصف السادس",
+		"سابع": "الصف السابع", "السابع": "الصف السابع",
 	}
 	for k, v := range grades {
 		if strings.Contains(m, normalizeArabic(k)) {
@@ -635,6 +732,16 @@ func extractSearchEntities(message string) searchEntities {
 
 	subjects := map[string]string{
 		"رياضيات": "رياضيات", "الرياضيات": "رياضيات", "عربي": "اللغة العربية", "لغه عربيه": "اللغة العربية", "اللغه العربيه": "اللغة العربية", "لغة عربية": "اللغة العربية", "اللغة العربية": "اللغة العربية", "انجليزي": "اللغة الإنجليزية", "انكليزي": "اللغة الإنجليزية", "انجليزيه": "اللغة الإنجليزية", "اللغة الإنجليزية": "اللغة الإنجليزية", "علوم": "علوم", "العلوم": "علوم", "فيزياء": "فيزياء", "كيمياء": "كيمياء", "احياء": "أحياء", "تاريخ": "تاريخ", "جغرافيا": "جغرافيا", "دين": "التربية الإسلامية", "تربيه اسلاميه": "التربية الإسلامية", "تربية اسلامية": "التربية الإسلامية", "اسلاميه": "التربية الإسلامية", "حاسوب": "حاسوب", "كمبيوتر": "حاسوب", "ثقافه ماليه": "الثقافة المالية", "ثقافة مالية": "الثقافة المالية", "تربيه فنيه": "التربية الفنية", "تربية فنية": "التربية الفنية", "فنية": "التربية الفنية",
+		// الدراسات الاجتماعية — المادة الأكثر بحثاً وكانت غائبة عن الخريطة
+		"اجتماعيات": "الاجتماعيات", "الاجتماعيات": "الاجتماعيات", "اجتماعي": "الاجتماعيات", "الاجتماعي": "الاجتماعيات", "اجتماع": "الاجتماعيات", "تربيه اجتماعيه": "الاجتماعيات", "تربية اجتماعية": "الاجتماعيات",
+		// التربية الوطنية والمدنية
+		"وطنيه": "التربية الوطنية", "وطني": "التربية الوطنية", "التربية الوطنية": "التربية الوطنية", "تربيه وطنيه": "التربية الوطنية", "مدنيه": "التربية المدنية", "مدني": "التربية المدنية",
+		// التربية الرياضية
+		"رياضيه": "التربية الرياضية", "التربية الرياضية": "التربية الرياضية", "تربيه رياضيه": "التربية الرياضية", "ثقافه بدنيه": "التربية الرياضية",
+		// التربية الموسيقية
+		"موسيقى": "التربية الموسيقية", "الموسيقى": "التربية الموسيقية",
+		// الفلسفة والإحصاء والاقتصاد المنزلي
+		"فلسفه": "الفلسفة", "فلسفة": "الفلسفة", "احصاء": "الإحصاء", "اقتصاد منزلي": "الاقتصاد المنزلي",
 	}
 	for k, v := range subjects {
 		if strings.Contains(m, normalizeArabic(k)) {
@@ -650,7 +757,7 @@ func extractSearchEntities(message string) searchEntities {
 	}
 
 	switch {
-	case strings.Contains(m, "امتحان") || strings.Contains(m, "امتحانات") || strings.Contains(m, "اختبار") || strings.Contains(m, "اختبارات") || strings.Contains(m, "نموذج") || strings.Contains(m, "نماذج") || strings.Contains(m, "نهائي"):
+	case strings.Contains(m, "امتحان") || strings.Contains(m, "امتحانات") || strings.Contains(m, "اختبار") || strings.Contains(m, "اختبارات") || strings.Contains(m, "نموذج") || strings.Contains(m, "نماذج") || strings.Contains(m, "نهائي") || strings.Contains(m, "نهايه"):
 		entities.ContentType = "امتحانات"
 	case strings.Contains(m, "ملخص") || strings.Contains(m, "ملخصات") || strings.Contains(m, "تلخيص"):
 		entities.ContentType = "ملخصات"

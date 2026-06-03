@@ -160,12 +160,18 @@ func (s *service) Reply(countryID database.CountryID, userID *uint, ip, userAgen
 	source := "flow"
 
 	if shouldRunContentSearch(intent, message, currentEntities) {
-		searchQuery := buildSearchQuery(message, mergedEntities)
-		links, _ = s.repo.SearchContent(countryID, searchQuery, 6)
-		links = filterSearchResultsByEntities(mergedEntities, links)
-		if len(links) == 0 && searchQuery != message {
-			links, _ = s.repo.SearchContent(countryID, message, 6)
-			links = filterSearchResultsByEntities(mergedEntities, links)
+		queries := relaxedSearchQueries(message, mergedEntities)
+		for idx, searchQuery := range queries {
+			candidateLinks, _ := s.repo.SearchContent(countryID, searchQuery, 8)
+			// First attempts are strict. Later attempts are relaxed to avoid false "not found"
+			// when the title uses قريب/مرادف مثل: اختبار بدل امتحان أو نموذج2 بدل نموذج 2.
+			if idx <= 1 {
+				candidateLinks = filterSearchResultsByEntities(mergedEntities, candidateLinks)
+			}
+			if len(candidateLinks) > 0 {
+				links = candidateLinks
+				break
+			}
 		}
 		answer = buildSearchAnswer(mergedEntities, links)
 		source = "content_search"
@@ -324,6 +330,13 @@ func resolveFlow(message, detectedIntent, lastIntent, currentStep string, authen
 		return false
 	}
 
+	if contains("كيف استخدم الموقع", "كيف أستخدم الموقع", "طريقة استخدام الموقع", "استخدام الموقع", "كيف اتصفح", "كيف أتصفح", "كيف ابحث", "كيف أبحث") {
+		return flowDecision{Intent: "site_usage", Step: "site_usage", Confidence: 0.96, Answer: contextualAnswer("site_usage", "site_usage", message, lastIntent)}
+	}
+	if contains("عرض الصفوف التعليمية", "اعرض الصفوف", "عرض الصفوف", "الصفوف التعليمية", "تصفح الصفوف", "أريد تصفح الصفوف", "اريد تصفح الصفوف") {
+		return flowDecision{Intent: "open_classes", Step: "open_classes", Confidence: 0.97, Answer: contextualAnswer("open_classes", "open_classes", message, lastIntent)}
+	}
+
 	if isNoiseOrEmojiOnly(message) {
 		return flowDecision{Intent: "general_question", Step: "unclear", Confidence: 0.97, Answer: "لم أفهم الطلب بوضوح. اكتب سؤالك بجملة قصيرة مثل: أريد امتحان رياضيات الصف التاسع الفصل الثاني، أو لا أستطيع تحميل ملف."}
 	}
@@ -438,6 +451,8 @@ func defaultStep(intent string) string {
 		return "privacy_safe_lookup"
 	case "contact_support":
 		return "contact_steps"
+	case "site_usage":
+		return "site_usage"
 	case "open_classes":
 		return "open_classes"
 	case "open_search":
@@ -522,6 +537,9 @@ func contextualAnswer(intent, step, message, lastIntent string) string {
 		return "يمكنك فتح صفحة الصفوف لاختيار الصف ثم المادة والفصل. إذا كنت تبحث عن ملف محدد، اكتب: نوع الملف + المادة + الصف + الفصل."
 	case "open_search":
 		return "افتح صفحة البحث واكتب كلمات محددة مثل: امتحان اللغة العربية الصف الثامن الفصل الثاني. كلما كان الطلب أدق كانت النتائج أفضل."
+
+	case "site_usage":
+		return "طريقة استخدام الموقع باختصار:\n\n1. افتح صفحة الصفوف.\n2. اختر الصف المطلوب.\n3. اختر المادة أو الفصل إن كان متاحًا.\n4. افتح الملف أو الدرس المناسب.\n5. إذا كنت تبحث عن شيء محدد، استخدم البحث واكتب: نوع الملف + المادة + الصف + الفصل.\n\nمثال: اختبار نهائي فيزياء الصف التاسع الفصل الثاني."
 	case "contact_support":
 		return "للتواصل مع الإدارة استخدم صفحة اتصل بنا فقط. اكتب: البريد المستخدم، رابط الصفحة إن وجد، وصف المشكلة، ونص رسالة الخطأ أو صورة شاشة إن كانت متاحة. لا توجد دردشة مباشرة أو صفحة FAQ خاصة بالدعم حاليًا."
 	default:
@@ -546,6 +564,7 @@ func requiresContextualAnswer(message, intent, lastIntent string) bool {
 		"request_content",
 		"open_classes",
 		"open_search",
+		"site_usage",
 		"thanks",
 		"frustration":
 		return true
@@ -604,6 +623,10 @@ func buildActions(intent, step string, links []repo.ContentResult, entities sear
 	}
 
 	switch intent {
+	case "site_usage":
+		addLink("فتح الصفوف", "/classes", "primary")
+		addLink("فتح البحث", "/search", "secondary")
+		addMsg("مشكلة في التحميل", "لا أستطيع تحميل الملفات")
 	case "auth_login_problem":
 		addLink("فتح صفحة تسجيل الدخول", "/login", "primary")
 		addLink("استعادة كلمة المرور", "/forgot-password", "secondary")
@@ -673,6 +696,11 @@ func detectIntent(message string) (string, float64) {
 	}
 
 	switch {
+
+	case contains("كيف استخدم الموقع", "كيف أستخدم الموقع", "طريقة استخدام الموقع", "استخدام الموقع", "كيف اتصفح", "كيف أتصفح", "كيف ابحث", "كيف أبحث"):
+		return "site_usage", 0.96
+	case contains("عرض الصفوف التعليمية", "اعرض الصفوف", "عرض الصفوف", "الصفوف التعليمية", "تصفح الصفوف", "أريد تصفح الصفوف", "اريد تصفح الصفوف"):
+		return "open_classes", 0.97
 
 	case isNoiseOrEmojiOnly(message):
 		return "general_question", 0.97
@@ -785,7 +813,62 @@ func shouldSearchContent(intent, message string) bool {
 	return isContentIntent(intent) || hasContentSearchWords(normalizeArabic(strings.ToLower(message)))
 }
 
+func relaxedSearchQueries(message string, e searchEntities) []string {
+	queries := []string{}
+
+	add := func(q string) {
+		q = strings.TrimSpace(q)
+		if q == "" {
+			return
+		}
+		for _, existing := range queries {
+			if normalizeArabic(existing) == normalizeArabic(q) {
+				return
+			}
+		}
+		queries = append(queries, q)
+	}
+
+	// Full structured search first.
+	add(buildSearchQuery(message, e))
+
+	// Raw message as typed by the visitor.
+	add(message)
+
+	// Core entity combinations. This helps when the stored title has "اختبار" instead of "امتحان"
+	// or "نموذج 2" instead of "نموذج2".
+	if e.Subject != "" && e.Grade != "" && e.Semester != "" {
+		add(strings.Join([]string{e.Subject, e.Grade, e.Semester}, " "))
+		add(strings.Join([]string{"اختبار", e.Subject, e.Grade, e.Semester}, " "))
+		add(strings.Join([]string{"امتحان", e.Subject, e.Grade, e.Semester}, " "))
+		add(strings.Join([]string{"نهائي", e.Subject, e.Grade, e.Semester}, " "))
+		add(strings.Join([]string{"اختبار نهائي", e.Subject, e.Grade, e.Semester}, " "))
+	}
+
+	if e.Subject != "" && e.Grade != "" {
+		add(strings.Join([]string{e.Subject, e.Grade}, " "))
+		add(strings.Join([]string{"اختبار", e.Subject, e.Grade}, " "))
+		add(strings.Join([]string{"امتحان", e.Subject, e.Grade}, " "))
+	}
+
+	// Handle "نموذج2" vs "نموذج 2".
+	m := normalizeArabic(message)
+	if strings.Contains(m, "نموذج2") || strings.Contains(m, "نموذج 2") {
+		add(strings.ReplaceAll(message, "نموذج2", "نموذج 2"))
+		add(strings.ReplaceAll(message, "نموذج 2", "نموذج2"))
+	}
+	if strings.Contains(m, "نهائي") && e.Subject != "" && e.Grade != "" && e.Semester != "" {
+		add(strings.Join([]string{"اختبار نهائي", e.Subject, e.Grade, e.Semester, "نموذج 2"}, " "))
+		add(strings.Join([]string{"امتحان نهائي", e.Subject, e.Grade, e.Semester, "نموذج2"}, " "))
+	}
+
+	return queries
+}
+
 func shouldRunContentSearch(intent, message string, entities searchEntities) bool {
+	if intent == "site_usage" || intent == "open_classes" || intent == "open_search" {
+		return false
+	}
 	if isContentIntent(intent) {
 		return true
 	}
@@ -838,7 +921,7 @@ func extractSearchEntities(message string) searchEntities {
 	}
 
 	subjects := map[string]string{
-		"رياضيات": "رياضيات", "الرياضيات": "رياضيات", "عربي": "اللغة العربية", "لغه عربيه": "اللغة العربية", "اللغه العربيه": "اللغة العربية", "لغة عربية": "اللغة العربية", "اللغة العربية": "اللغة العربية", "انجليزي": "اللغة الإنجليزية", "انكليزي": "اللغة الإنجليزية", "انجليزيه": "اللغة الإنجليزية", "اللغة الإنجليزية": "اللغة الإنجليزية", "علوم": "علوم", "العلوم": "علوم", "فيزياء": "فيزياء", "كيمياء": "كيمياء", "احياء": "أحياء", "تاريخ": "تاريخ", "جغرافيا": "جغرافيا", "دين": "التربية الإسلامية", "تربيه اسلاميه": "التربية الإسلامية", "تربية اسلامية": "التربية الإسلامية", "اسلاميه": "التربية الإسلامية", "حاسوب": "حاسوب", "كمبيوتر": "حاسوب", "ثقافه ماليه": "الثقافة المالية", "ثقافة مالية": "الثقافة المالية", "تربيه فنيه": "التربية الفنية", "تربية فنية": "التربية الفنية", "فنية": "التربية الفنية",
+		"رياضيات": "رياضيات", "الرياضيات": "رياضيات", "عربي": "اللغة العربية", "لغه عربيه": "اللغة العربية", "اللغه العربيه": "اللغة العربية", "لغة عربية": "اللغة العربية", "اللغة العربية": "اللغة العربية", "انجليزي": "اللغة الإنجليزية", "انكليزي": "اللغة الإنجليزية", "انجليزيه": "اللغة الإنجليزية", "اللغة الإنجليزية": "اللغة الإنجليزية", "علوم": "علوم", "العلوم": "علوم", "فيزياء": "فيزياء", "الفيزياء": "فيزياء", "فزيا": "فيزياء", "فيزيا": "فيزياء", "كيمياء": "كيمياء", "احياء": "أحياء", "تاريخ": "تاريخ", "جغرافيا": "جغرافيا", "دين": "التربية الإسلامية", "تربيه اسلاميه": "التربية الإسلامية", "تربية اسلامية": "التربية الإسلامية", "اسلاميه": "التربية الإسلامية", "حاسوب": "حاسوب", "كمبيوتر": "حاسوب", "ثقافه ماليه": "الثقافة المالية", "ثقافة مالية": "الثقافة المالية", "تربيه فنيه": "التربية الفنية", "تربية فنية": "التربية الفنية", "فنية": "التربية الفنية",
 		// الدراسات الاجتماعية — المادة الأكثر بحثاً وكانت غائبة عن الخريطة
 		"اجتماعيات": "الاجتماعيات", "الاجتماعيات": "الاجتماعيات", "اجتماعي": "الاجتماعيات", "الاجتماعي": "الاجتماعيات", "اجتماع": "الاجتماعيات", "تربيه اجتماعيه": "الاجتماعيات", "تربية اجتماعية": "الاجتماعيات",
 		// التربية الوطنية والمدنية
@@ -1087,7 +1170,7 @@ func buildSearchAnswer(e searchEntities, links []repo.ContentResult) string {
 	if len(missing) > 0 {
 		return "لم أجد نتائج واضحة حتى الآن. لتحسين البحث، أرسل التفاصيل بهذه الصيغة:\n\nنوع الملف + المادة + الصف + الفصل\n\nمثال: امتحانات اللغة العربية الصف التاسع الفصل الأول.\n\nالبيانات الناقصة غالبًا: " + strings.Join(missing, "، ") + "."
 	}
-	return "لم أجد نتيجة مطابقة لهذا البحث داخل الموقع. جرّب كلمات أبسط أو افتح صفحة البحث، ويمكنك إرسال طلب إضافة ملف للإدارة إذا كان المحتوى غير متوفر."
+	return "لم تظهر نتيجة مطابقة في البحث السريع داخل الدردشة. هذا لا يعني بالضرورة أن الملف غير موجود. جرّب فتح صفحة البحث بهذه الكلمات أو اكتب العنوان الكامل كما يظهر في الموقع. إذا كان الملف موجودًا ولم يظهر هنا، أرسل رابط الصفحة أو العنوان للإدارة ليتم تحسين الفهرسة."
 }
 
 func isUnsupportedPhoneOrUsernameQuestion(message string) bool {

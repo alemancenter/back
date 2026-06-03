@@ -43,11 +43,6 @@ func (h *Handler) Suggestions(c *fiber.Ctx) error {
 	return utils.Success(c, "اقتراحات المساعد", h.service.Suggestions())
 }
 
-func (h *Handler) CompanionHint(c *fiber.Ctx) error {
-	req := chatbotSvc.CompanionHintRequest{PageURL: c.Query("page_url", c.Get("Referer"))}
-	return utils.Success(c, "تلميح رفيق المنصة", h.service.CompanionHint(req))
-}
-
 func (h *Handler) Feedback(c *fiber.Ctx) error {
 	var req struct {
 		MessageID uint   `json:"message_id"`

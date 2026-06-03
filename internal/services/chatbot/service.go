@@ -21,18 +21,6 @@ type MessageRequest struct {
 	PageURL     string `json:"page_url"`
 }
 
-type CompanionHintRequest struct {
-	PageURL string `json:"page_url"`
-}
-
-type CompanionHintResponse struct {
-	PageKind     string          `json:"page_kind"`
-	Title        string          `json:"title"`
-	Message      string          `json:"message"`
-	QuickActions []ChatbotAction `json:"quick_actions"`
-	Priority     int             `json:"priority"`
-}
-
 type ChatbotAction struct {
 	Label   string `json:"label"`
 	Type    string `json:"type"` // link, message
@@ -60,7 +48,6 @@ type Service interface {
 	Reply(countryID database.CountryID, userID *uint, ip, userAgent string, req MessageRequest) (*MessageResponse, error)
 	Feedback(countryID database.CountryID, messageID uint, rating, comment string) error
 	Suggestions() []string
-	CompanionHint(req CompanionHintRequest) CompanionHintResponse
 	ListSessions(countryID database.CountryID, limit int) ([]models.ChatSession, error)
 	GetSession(countryID database.CountryID, sessionID uint) (*models.ChatSession, error)
 	ListKnowledge(countryID database.CountryID, countryCode string, limit int) ([]models.ChatKnowledgeBase, error)
@@ -111,6 +98,36 @@ func (s *service) Reply(countryID database.CountryID, userID *uint, ip, userAgen
 	}
 	ctx := readSessionContext(session.ContextData)
 
+	if isUnsupportedPhoneOrUsernameQuestion(message) {
+		intent := "unsupported_phone_feature"
+		step := "email_only"
+		confidence := 0.98
+		answer := unsupportedFeatureAnswer()
+		metadata, _ := json.Marshal(map[string]interface{}{"page_url": req.PageURL, "step": step, "feature_guard": true})
+		_ = s.repo.CreateMessage(countryID, &models.ChatMessage{SessionID: session.ID, Role: "user", Message: message, Intent: intent, Confidence: confidence, SourceType: "user", Metadata: string(metadata), IPAddress: ip, UserAgent: trim(userAgent, 500)})
+
+		actions := buildActions(intent, step, nil, searchEntities{})
+		suggestions := []string{"لدي مشكلة في البريد", "كتبت البريد خطأ", "أريد التواصل مع الإدارة"}
+		assistantMeta := map[string]interface{}{"step": step, "actions": actions, "feature_guard": true}
+		assistantMetaJSON, _ := json.Marshal(assistantMeta)
+		assistantMsg := models.ChatMessage{SessionID: session.ID, Role: "assistant", Message: answer, Intent: intent, Confidence: confidence, SourceType: "rules", Metadata: string(assistantMetaJSON)}
+		if err := s.repo.CreateMessage(countryID, &assistantMsg); err != nil {
+			return nil, err
+		}
+
+		ctx.LastUserMessage = message
+		ctx.PageURL = req.PageURL
+		ctx.SourceType = "rules"
+		_ = s.repo.UpdateSessionState(countryID, session.ID, intent, step, map[string]interface{}{
+			"last_user_message": ctx.LastUserMessage,
+			"page_url":          ctx.PageURL,
+			"source_type":       ctx.SourceType,
+			"feature_guard":     true,
+		})
+
+		return &MessageResponse{SessionID: session.ID, Answer: answer, Intent: intent, Step: step, Confidence: confidence, SourceType: "rules", Actions: actions, Suggestions: suggestions, MessageID: assistantMsg.ID}, nil
+	}
+
 	detectedIntent, confidence := detectIntent(message)
 	flow := resolveFlow(message, detectedIntent, session.LastIntent, session.CurrentStep, userID != nil)
 	if flow.Intent != "" && flow.Intent != detectedIntent && flow.Confidence > confidence {
@@ -145,8 +162,10 @@ func (s *service) Reply(countryID database.CountryID, userID *uint, ip, userAgen
 	if shouldRunContentSearch(intent, message, currentEntities) {
 		searchQuery := buildSearchQuery(message, mergedEntities)
 		links, _ = s.repo.SearchContent(countryID, searchQuery, 6)
+		links = filterSearchResultsByEntities(mergedEntities, links)
 		if len(links) == 0 && searchQuery != message {
 			links, _ = s.repo.SearchContent(countryID, message, 6)
+			links = filterSearchResultsByEntities(mergedEntities, links)
 		}
 		answer = buildSearchAnswer(mergedEntities, links)
 		source = "content_search"
@@ -206,6 +225,8 @@ func (s *service) Reply(countryID database.CountryID, userID *uint, ip, userAgen
 		}
 	}
 
+	answer = sanitizeUnsupportedFeatures(answer)
+
 	assistantMeta := map[string]interface{}{"step": step, "actions": actions, "entities": mergedEntities, "ai_used": aiResult.Used, "ai_model": aiResult.Model}
 	if len(links) > 0 {
 		assistantMeta["links"] = links
@@ -252,79 +273,6 @@ func (s *service) Feedback(countryID database.CountryID, messageID uint, rating,
 func (s *service) Suggestions() []string {
 	return []string{"لا أستطيع تسجيل الدخول", "لا تصلني رسالة التفعيل", "عملت تحميل ولا أعرف أين أجد الملف", "ابحث عن امتحانات حاسوب صف ثامن فصل ثاني", "أريد خطة نمو مهني تربية فنية", "أريد التواصل مع الإدارة"}
 }
-
-func (s *service) CompanionHint(req CompanionHintRequest) CompanionHintResponse {
-	return buildCompanionHint(req.PageURL)
-}
-
-func buildCompanionHint(pageURL string) CompanionHintResponse {
-	path := strings.ToLower(strings.TrimSpace(pageURL))
-	if path == "" {
-		path = "/"
-	}
-	act := func(label, message string) ChatbotAction {
-		return ChatbotAction{Label: label, Type: "message", Message: message, Style: "primary"}
-	}
-	link := func(label, url string) ChatbotAction {
-		return ChatbotAction{Label: label, Type: "link", URL: url, Style: "secondary"}
-	}
-	resp := func(kind, message string, priority int, actions ...ChatbotAction) CompanionHintResponse {
-		return CompanionHintResponse{PageKind: kind, Title: "رفيق المنصة", Message: message, Priority: priority, QuickActions: actions}
-	}
-
-	switch {
-	case strings.Contains(path, "/login"):
-		return resp("login", "هل تواجه مشكلة في تسجيل الدخول؟ أستطيع مساعدتك بخطوات سريعة.", 95,
-			act("لا أستطيع تسجيل الدخول", "لا أستطيع تسجيل الدخول"),
-			act("نسيت كلمة المرور", "نسيت كلمة المرور"),
-			act("البريد غير مفعّل", "لا تصلني رسالة التفعيل"),
-		)
-	case strings.Contains(path, "/register") || strings.Contains(path, "/signup"):
-		return resp("register", "استخدم بريدًا صحيحًا يمكنك الوصول إليه، لأنك ستحتاج إلى تأكيده بعد إنشاء الحساب.", 94,
-			act("خطوات إنشاء الحساب", "ما هي الخطوات الصحيحة لإنشاء حساب؟"),
-			act("شرح التفعيل", "لا تصلني رسالة التفعيل"),
-		)
-	case strings.Contains(path, "verify") || strings.Contains(path, "verification") || strings.Contains(path, "email"):
-		return resp("verification", "لم تصلك رسالة التفعيل؟ افحص البريد غير الهام وتأكد من صحة البريد، ثم اضغط رابط التأكيد داخل الرسالة.", 98,
-			act("لا تصلني رسالة التفعيل", "لا تصلني رسالة التفعيل"),
-			act("كتبت البريد خطأ", "كتبت البريد الإلكتروني خطأ"),
-			act("وصلت الرسالة ماذا أفعل؟", "وصلت رسالة التفعيل، ماذا أفعل الآن؟"),
-		)
-	case strings.Contains(path, "/download") || strings.Contains(path, "/files"):
-		return resp("download", "إذا لم يعمل التحميل، تأكد أنك مسجل الدخول وأن بريدك مفعّل.", 92,
-			act("لا أستطيع التحميل", "لدي مشكلة في تحميل الملفات"),
-			act("أين أجد الملف؟", "عملت تحميل ولا أعرف أين أجد الملف"),
-			act("تظهر رسالة صلاحية", "تظهر رسالة لا تملك صلاحية"),
-		)
-	case strings.Contains(path, "/search"):
-		return resp("search", "لنتائج أفضل، اكتب: المادة + الصف + الفصل. مثال: رياضيات الصف التاسع الفصل الأول.", 80,
-			act("أريد البحث عن ملف", "أريد البحث عن ملف تعليمي"),
-			act("لا أجد الملف المطلوب", "لا أجد الملف المطلوب في الموقع ما العمل؟"),
-		)
-	case strings.Contains(path, "/classes") || strings.Contains(path, "/class"):
-		return resp("classes", "اختر الصف، ثم المادة أو الفصل للوصول إلى الملفات المناسبة بسرعة.", 70,
-			act("طريقة البحث حسب الصف", "كيف أبحث حسب الصف والمادة والفصل؟"),
-			act("لا أجد مادتي", "لا أجد المادة المطلوبة في الموقع"),
-		)
-	case strings.Contains(path, "/article") || strings.Contains(path, "/post") || strings.Contains(path, "/lesson"):
-		return resp("content", "أستطيع مساعدتك في فهم الصفحة أو إيجاد ملفات مشابهة لها.", 60,
-			act("ابحث عن ملفات مشابهة", "أريد ملفات تعليمية مشابهة لهذه الصفحة"),
-			act("مشكلة في الملف", "أريد الإبلاغ عن ملف خاطئ"),
-		)
-	case path == "/" || strings.HasSuffix(path, "/jo") || strings.HasSuffix(path, "/sa") || strings.HasSuffix(path, "/eg") || strings.HasSuffix(path, "/ps"):
-		return resp("home", "مرحبًا، أستطيع مساعدتك في الوصول إلى الصف أو المادة أو الملف المطلوب.", 50,
-			act("ابدأ البحث", "أريد البحث عن ملف تعليمي"),
-			act("مشكلة في الحساب", "لدي مشكلة في تسجيل الدخول أو تفعيل الحساب"),
-			link("فتح الصفوف", "/classes"),
-		)
-	default:
-		return resp("general", "أنا هنا إذا احتجت مساعدة في الحساب، التفعيل، التحميل، أو البحث عن الملفات.", 20,
-			act("أحتاج مساعدة", "أحتاج مساعدة في استخدام الموقع"),
-			act("أبحث عن ملف", "أريد البحث عن ملف تعليمي"),
-		)
-	}
-}
-
 func (s *service) ListSessions(countryID database.CountryID, limit int) ([]models.ChatSession, error) {
 	return s.repo.ListSessions(countryID, limit)
 }
@@ -374,6 +322,40 @@ func resolveFlow(message, detectedIntent, lastIntent, currentStep string, authen
 			}
 		}
 		return false
+	}
+
+	if isNoiseOrEmojiOnly(message) {
+		return flowDecision{Intent: "general_question", Step: "unclear", Confidence: 0.97, Answer: "لم أفهم الطلب بوضوح. اكتب سؤالك بجملة قصيرة مثل: أريد امتحان رياضيات الصف التاسع الفصل الثاني، أو لا أستطيع تحميل ملف."}
+	}
+	if isThanksMessage(message) {
+		return flowDecision{Intent: "thanks", Step: "thanks", Confidence: 0.98, Answer: "العفو، يسعدنا خدمتك. إذا احتجت ملفًا أو واجهت مشكلة في التفعيل أو التحميل، اكتب طلبك مباشرة."}
+	}
+	if isProfanityOrFrustration(message) {
+		return flowDecision{Intent: "frustration", Step: "calm_support", Confidence: 0.96, Answer: "أفهم أن المشكلة مزعجة. اكتب لي باختصار ما الذي يحدث معك: هل المشكلة في التحميل، التفعيل، تسجيل الدخول، أم البحث عن ملف؟"}
+	}
+	if contains("اتصل بالدعم", "اتصل بدعم", "اتصل بفريق الدعم", "دعم الموقع", "الدعم الفني", "تواصل مع الدعم", "تواصل مع الإدارة", "اتصل بنا") {
+		return flowDecision{Intent: "contact_support", Step: "contact_steps", Confidence: 0.96, Answer: contextualAnswer("contact_support", "contact_steps", message, lastIntent)}
+	}
+	if contains("فتح الصفوف", "افتح الصفوف", "صفحة الصفوف", "افتح صفحة الصفوف") {
+		return flowDecision{Intent: "open_classes", Step: "open_classes", Confidence: 0.96, Answer: contextualAnswer("open_classes", "open_classes", message, lastIntent)}
+	}
+	if contains("فتح البحث", "افتح البحث", "فتح البحث بهذه الكلمات", "ابحث بهذه الكلمات") {
+		return flowDecision{Intent: "open_search", Step: "open_search", Confidence: 0.94, Answer: contextualAnswer("open_search", "open_search", message, lastIntent)}
+	}
+	if contains("طلب إضافة ملف", "اضافة ملف", "إضافة ملف", "اضافة درس", "إضافة درس", "طلب ملف", "ملف غير متوفر") {
+		return flowDecision{Intent: "request_content", Step: "request_content", Confidence: 0.95, Answer: contextualAnswer("request_content", "request_content", message, lastIntent)}
+	}
+	if contains("لا تملك صلاحية", "ما عندي صلاحية", "عدم وجود صلاحية", "غير مصرح", "غير مسموح") {
+		return flowDecision{Intent: "permission_problem", Step: "permission_denied", Confidence: 0.96, Answer: contextualAnswer("permission_problem", "permission_denied", message, lastIntent)}
+	}
+	if contains("رابط التحقق منتهي", "رابط التحقق منتهي الصلاحيه", "رابط التفعيل منتهي", "انتهت صلاحية رابط", "منتهي الصلاحية") {
+		return flowDecision{Intent: "email_verification_problem", Step: "expired_verification_link", Confidence: 0.96, Answer: contextualAnswer("email_verification_problem", "expired_verification_link", message, lastIntent)}
+	}
+	if contains("حملت ملف واحد", "ماطلع الثاني", "وما طلع الثاني", "احمل ملف ثاني", "احمل ملف ثاين", "وثالث", "كل الملفات", "ودي احمل كل الملفات", "احمل كل الملفات") {
+		return flowDecision{Intent: "download_problem", Step: "multiple_downloads", Confidence: 0.95, Answer: contextualAnswer("download_problem", "multiple_downloads", message, lastIntent)}
+	}
+	if contains("ساعه استنى", "ساعة استنى", "استنى فيه يحمل", "لسه يحمل", "يعلق التحميل", "تحميل معلق") {
+		return flowDecision{Intent: "download_problem", Step: "download_stuck", Confidence: 0.95, Answer: contextualAnswer("download_problem", "download_stuck", message, lastIntent)}
 	}
 
 	if hasContentSearchWords(m) && contains("تفعيل", "غير مفعل", "غير مفعّل", "يفعل البريد", "تفعيل البريد") {
@@ -432,6 +414,17 @@ func resolveFlow(message, detectedIntent, lastIntent, currentStep string, authen
 
 func defaultStep(intent string) string {
 	switch intent {
+	case "open_classes":
+		addLink("فتح الصفوف", "/classes", "primary")
+		addLink("فتح البحث", "/search", "secondary")
+	case "open_search":
+		addLink("فتح البحث", searchURL, "primary")
+		addLink("فتح الصفوف", "/classes", "secondary")
+	case "thanks", "frustration":
+		addMsg("أريد البحث عن ملف", "أريد البحث عن ملف تعليمي")
+		addMsg("لدي مشكلة في التحميل", "لا أستطيع تحميل الملفات")
+	case "unsupported_phone_feature":
+		return "email_only"
 	case "auth_login_problem":
 		return "login_diagnosis"
 	case "auth_register_problem":
@@ -439,8 +432,17 @@ func defaultStep(intent string) string {
 	case "password_reset_problem":
 		return "password_reset_steps"
 	case "email_verification_problem":
+		if step == "expired_verification_link" {
+			return "إذا ظهرت رسالة أن رابط التحقق منتهي الصلاحية، فهذا يعني أن الرابط القديم لم يعد صالحًا.\n\nالحل الصحيح:\n\n1. افتح صفحة تسجيل الدخول.\n2. سجّل الدخول بالبريد وكلمة المرور.\n3. اضغط إعادة إرسال رسالة التفعيل مرة واحدة فقط.\n4. افتح أحدث رسالة وصلت إلى بريدك، وليس الرسائل القديمة.\n5. اضغط رابط التحقق الجديد خلال وقت قصير.\n\nإذا تكررت المشكلة، تواصل مع الإدارة واذكر البريد ووقت آخر محاولة."
+		}
 		return "verification_steps"
 	case "download_problem":
+		if step == "multiple_downloads" {
+			return "إذا حمّلت ملفًا واحدًا وتريد تحميل ملف ثانٍ أو ثالث، اتبع التالي:\n\n1. انتظر حتى يكتمل تحميل الملف الأول بالكامل.\n2. افتح صفحة الملف الثاني من داخل الموقع، ولا تستخدم رابط تحميل قديم.\n3. اضغط زر التحميل مرة واحدة فقط.\n4. إذا لم يبدأ التحميل، حدّث الصفحة وجرب من Chrome أو Safari.\n5. لا تضغط أزرار التحميل بسرعة متتالية حتى لا يعتبر النظام الطلبات مكررة."
+		}
+		if step == "download_stuck" {
+			return "إذا بقي الملف فترة طويلة دون أن ينزل، فغالبًا التحميل عالق أو المتصفح منع التنزيل.\n\nجرّب بالترتيب:\n\n1. أوقف التحميل العالق من المتصفح.\n2. حدّث صفحة الملف الأصلية.\n3. اضغط تحميل مرة واحدة وانتظر.\n4. جرّب Chrome أو Safari بدل متصفح فيسبوك/إنستغرام.\n5. إذا بقيت المشكلة، أرسل رابط صفحة الملف للإدارة."
+		}
 		return "download_diagnosis"
 	case "download_location":
 		return "download_location_steps"
@@ -460,6 +462,8 @@ func requiresContextualAnswer(message, intent, lastIntent string) bool {
 
 func contextualAnswer(intent, step, message, lastIntent string) string {
 	switch intent {
+	case "unsupported_phone_feature":
+		return unsupportedFeatureAnswer()
 	case "account_lookup_privacy":
 		return "لحماية خصوصية المستخدمين، لا أستطيع تأكيد هل بريد إلكتروني معيّن موجود في النظام من داخل الدردشة.\n\nإذا كان البريد يخصك:\n\n1. جرّب تسجيل الدخول.\n2. إذا نسيت كلمة المرور، استخدم استعادة كلمة المرور.\n3. إذا وصلك بريد استعادة كلمة المرور فهذا يعني أن البريد مرتبط بحساب.\n4. إذا لم يصلك شيء، تواصل مع الإدارة لمراجعة الحالة يدويًا."
 	case "auth_register_problem":
@@ -498,6 +502,9 @@ func contextualAnswer(intent, step, message, lastIntent string) string {
 	case "social_login_problem":
 		return "إذا تعذر الدخول عبر Google أو Facebook:\n\n1. جرّب فتح صفحة تسجيل الدخول من متصفح حديث مثل Chrome أو Safari.\n2. اسمح للنوافذ المنبثقة وملفات الارتباط، لأن مزود الدخول يحتاج نافذة تحقق خارجية.\n3. إذا كان الحساب مرتبطًا ببريدك، جرّب الدخول بالبريد وكلمة المرور.\n4. إذا أنشأت الحساب عبر Google أو Facebook ولا تعرف كلمة المرور، استخدم استعادة كلمة المرور للبريد نفسه.\n5. إذا بقيت المشكلة، تواصل مع الإدارة واذكر البريد المستخدم وطريقة الدخول التي جربتها."
 	case "permission_problem":
+		if step == "permission_denied" {
+			return "إذا ظهرت رسالة: لا تملك صلاحية، فهذا غالبًا بسبب واحد من هذه الأسباب:\n\n1. لم يتم تسجيل الدخول من نفس المتصفح.\n2. البريد الإلكتروني غير مفعّل بعد.\n3. الملف يحتاج صلاحية أو تم تغيير تصنيفه.\n4. الرابط قديم أو منسوخ من مكان آخر.\n\nالحل: سجّل الدخول، فعّل البريد، ثم افتح صفحة الملف الأصلية واضغط تحميل. إذا بقيت الرسالة، أرسل رابط الملف للإدارة."
+		}
 		return "إذا ظهرت رسالة عدم وجود صلاحية، تأكد من تسجيل الدخول وتفعيل البريد. إذا بقيت الرسالة، أرسل رابط الملف للإدارة حتى تتم مراجعة الصلاحية أو التصنيف."
 	case "file_not_found":
 		return "إذا ظهر لك عند الضغط على رابط التحميل: عدم الوصول، المرفق غير موجود، أو أن الرابط لا يفتح، فغالبًا الرابط قديم أو انتهت صلاحيته أو تم نقل الملف.\n\nالحل الصحيح:\n\n1. لا تستخدم رابطًا منسوخًا أو قديمًا.\n2. افتح صفحة الملف الأصلية من داخل الموقع.\n3. اضغط تحميل من جديد.\n4. إذا بقي الخطأ، استخدم البحث باسم الامتحان أو الصف والمادة.\n5. إذا لم يظهر الملف، أرسل رابط الصفحة للإدارة حتى تتم مراجعة المرفق."
@@ -506,8 +513,17 @@ func contextualAnswer(intent, step, message, lastIntent string) string {
 			return "إذا ظهرت نتائج غير مناسبة أو لم تظهر نتائج، استخدم صيغة بحث أدق:\n\n1. اكتب نوع الملف: امتحان، ملخص، ورقة عمل، خطة.\n2. اكتب المادة بوضوح.\n3. اكتب الصف.\n4. اكتب الفصل الأول أو الفصل الثاني.\n\nمثال قوي: امتحان اللغة العربية الصف الأول الفصل الثاني.\n\nإذا لم يظهر الملف بعد ذلك، أرسل طلب إضافة ملف للإدارة مع نفس التفاصيل."
 		}
 		return "للبحث بشكل صحيح، اكتب الصف والمادة والفصل ونوع الملف. مثال: رياضيات الصف التاسع الفصل الأول اختبار، أو ملخص علوم الصف السابع. إذا عرفت الدولة أو المنهج، اذكره أيضًا."
+
+	case "thanks":
+		return "العفو، يسعدنا خدمتك. إذا احتجت ملفًا أو واجهت مشكلة في التفعيل أو التحميل، اكتب طلبك مباشرة."
+	case "frustration":
+		return "أفهم أن المشكلة مزعجة. اكتب لي باختصار ما الذي يحدث معك: هل المشكلة في التحميل، التفعيل، تسجيل الدخول، أم البحث عن ملف؟"
+	case "open_classes":
+		return "يمكنك فتح صفحة الصفوف لاختيار الصف ثم المادة والفصل. إذا كنت تبحث عن ملف محدد، اكتب: نوع الملف + المادة + الصف + الفصل."
+	case "open_search":
+		return "افتح صفحة البحث واكتب كلمات محددة مثل: امتحان اللغة العربية الصف الثامن الفصل الثاني. كلما كان الطلب أدق كانت النتائج أفضل."
 	case "contact_support":
-		return "للتواصل مع الإدارة، افتح صفحة التواصل واكتب: البريد المستخدم، رابط الصفحة إن وجد، وصف المشكلة، ورسالة الخطأ أو صورة شاشة إن كانت متاحة."
+		return "للتواصل مع الإدارة استخدم صفحة اتصل بنا فقط. اكتب: البريد المستخدم، رابط الصفحة إن وجد، وصف المشكلة، ونص رسالة الخطأ أو صورة شاشة إن كانت متاحة. لا توجد دردشة مباشرة أو صفحة FAQ خاصة بالدعم حاليًا."
 	default:
 		return ruleAnswer(intent)
 	}
@@ -531,6 +547,10 @@ func buildActions(intent, step string, links []repo.ContentResult, entities sear
 		addLink("فتح صفحة تسجيل الدخول", "/login", "primary")
 		addLink("استعادة كلمة المرور", "/forgot-password", "secondary")
 		addMsg("لا تصلني رسالة التفعيل", "لا تصلني رسالة التفعيل")
+	case "unsupported_phone_feature":
+		addLink("فتح صفحة تسجيل الدخول", "/login", "primary")
+		addLink("إنشاء حساب ببريد إلكتروني", "/register", "secondary")
+		addLink("فتح صفحة التواصل", "/contact-us", "secondary")
 	case "auth_register_problem":
 		addLink("إنشاء حساب جديد", "/register", "primary")
 		addLink("فتح صفحة تسجيل الدخول", "/login", "secondary")
@@ -587,7 +607,30 @@ func detectIntent(message string) (string, float64) {
 		return false
 	}
 
+	if isUnsupportedPhoneOrUsernameQuestion(message) {
+		return "unsupported_phone_feature", 0.98
+	}
+
 	switch {
+
+	case isNoiseOrEmojiOnly(message):
+		return "general_question", 0.97
+	case isThanksMessage(message):
+		return "thanks", 0.98
+	case isProfanityOrFrustration(message):
+		return "frustration", 0.96
+	case contains("اتصل بالدعم", "اتصل بدعم", "اتصل بفريق الدعم", "دعم الموقع", "الدعم الفني", "تواصل مع الدعم", "تواصل مع الإدارة", "اتصل بنا"):
+		return "contact_support", 0.96
+	case contains("فتح الصفوف", "افتح الصفوف", "صفحة الصفوف", "افتح صفحة الصفوف"):
+		return "open_classes", 0.96
+	case contains("فتح البحث", "افتح البحث", "فتح البحث بهذه الكلمات", "ابحث بهذه الكلمات"):
+		return "open_search", 0.94
+	case contains("طلب إضافة ملف", "اضافة ملف", "إضافة ملف", "اضافة درس", "إضافة درس", "طلب ملف", "ملف غير متوفر"):
+		return "request_content", 0.95
+	case contains("لا تملك صلاحية", "ما عندي صلاحية", "عدم وجود صلاحية", "غير مصرح", "غير مسموح"):
+		return "permission_problem", 0.96
+	case contains("عملت تحميل ولا اجد", "عملت تحميل ولا أجد", "لا اجد الملف", "لا أجد الملف", "تم التحميل ولا", "حملت ولا لقيت", "حملت وما لقيت", "وين الملف بعد التحميل"):
+		return "download_location", 0.95
 	case containsEmail(message) && contains("افحص", "فحص", "هل متواجد", "هل موجود", "موجود", "مسجل", "تحقق", "لديكم", "عندكم"):
 		return "account_lookup_privacy", 0.97
 	case contains("هل البريد", "البريد الالكتروني متواجد", "البريد الإلكتروني متواجد", "الايميل متواجد", "حسابي موجود", "هل عندكم حساب"):
@@ -713,6 +756,7 @@ func shouldKeepContentContext(intent, lastIntent string, current, previous searc
 func extractSearchEntities(message string) searchEntities {
 	m := normalizeArabic(strings.ToLower(message))
 	entities := searchEntities{RawQuery: message}
+	isNonSchoolHistoricalPhrase := strings.Contains(m, "التاسع عشر") || strings.Contains(m, "القرن التاسع") || strings.Contains(m, "الميلادي")
 
 	grades := map[string]string{
 		"الصف الاول": "الصف الأول", "اول ابتدائي": "الصف الأول", "الصف الثاني": "الصف الثاني", "الصف الثالث": "الصف الثالث", "الصف الرابع": "الصف الرابع", "الصف الخامس": "الصف الخامس", "الصف السادس": "الصف السادس", "الصف السابع": "الصف السابع", "صف سابع": "الصف السابع", "الصف الثامن": "الصف الثامن", "صف ثامن": "الصف الثامن", "ثامن": "الصف الثامن", "الصف التاسع": "الصف التاسع", "صف تاسع": "الصف التاسع", "تاسع": "الصف التاسع", "التاسع": "الصف التاسع", "الصف العاشر": "الصف العاشر", "عاشر": "الصف العاشر", "الصف الحادي عشر": "الصف الحادي عشر", "الحادي عشر": "الصف الحادي عشر", "الصف الثاني عشر": "الصف الثاني عشر", "الثاني عشر": "الصف الثاني عشر", "توجيهي": "الصف الثاني عشر",
@@ -723,10 +767,12 @@ func extractSearchEntities(message string) searchEntities {
 		"سادس": "الصف السادس", "السادس": "الصف السادس",
 		"سابع": "الصف السابع", "السابع": "الصف السابع",
 	}
-	for k, v := range grades {
-		if strings.Contains(m, normalizeArabic(k)) {
-			entities.Grade = v
-			break
+	if !isNonSchoolHistoricalPhrase {
+		for k, v := range grades {
+			if strings.Contains(m, normalizeArabic(k)) {
+				entities.Grade = v
+				break
+			}
 		}
 	}
 
@@ -827,13 +873,142 @@ func containsAnyNormalized(v string, words ...string) bool {
 	return false
 }
 
+func normalizeForMatch(v string) string {
+	return normalizeArabic(strings.ToLower(v))
+}
+
+func entityMatchTerms(kind, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	switch kind {
+	case "grade":
+		switch value {
+		case "الصف الأول":
+			return []string{"الصف الأول", "صف أول", "اول ابتدائي"}
+		case "الصف الثاني":
+			return []string{"الصف الثاني", "صف ثاني"}
+		case "الصف الثالث":
+			return []string{"الصف الثالث", "صف ثالث"}
+		case "الصف الرابع":
+			return []string{"الصف الرابع", "صف رابع"}
+		case "الصف الخامس":
+			return []string{"الصف الخامس", "صف خامس"}
+		case "الصف السادس":
+			return []string{"الصف السادس", "صف سادس"}
+		case "الصف السابع":
+			return []string{"الصف السابع", "صف سابع", "سابع"}
+		case "الصف الثامن":
+			return []string{"الصف الثامن", "صف ثامن", "ثامن"}
+		case "الصف التاسع":
+			return []string{"الصف التاسع", "صف تاسع", "تاسع"}
+		case "الصف العاشر":
+			return []string{"الصف العاشر", "صف عاشر", "عاشر"}
+		}
+	case "subject":
+		switch value {
+		case "اللغة العربية":
+			return []string{"اللغة العربية", "لغه عربيه", "لغة عربية", "عربي"}
+		case "اللغة الإنجليزية":
+			return []string{"اللغة الإنجليزية", "لغة انجليزية", "انجليزي", "انكليزي", "english"}
+		case "الاجتماعيات":
+			return []string{"الاجتماعيات", "اجتماعيات", "تربية اجتماعية", "تربيه اجتماعيه", "الدراسات الاجتماعية"}
+		case "التربية الإسلامية":
+			return []string{"التربية الإسلامية", "تربية اسلامية", "دين", "اسلامية"}
+		case "رياضيات":
+			return []string{"رياضيات", "الرياضيات"}
+		case "علوم":
+			return []string{"علوم", "العلوم"}
+		}
+	case "semester":
+		switch value {
+		case "الفصل الأول":
+			return []string{"الفصل الأول", "فصل أول", "الفصل الاول", "فصل الاول"}
+		case "الفصل الثاني":
+			return []string{"الفصل الثاني", "فصل ثاني", "الفصل الثانى", "فصل ناني", "الفصل الثاني"}
+		}
+	case "content":
+		switch value {
+		case "امتحانات":
+			return []string{"امتحان", "اختبار", "اختبارات", "امتحانات", "نهائي", "نهنئي"}
+		case "خطط":
+			return []string{"خطة", "خطط", "تحضير"}
+		case "تقرير":
+			return []string{"تقرير", "تقارير", "أداء", "اداء"}
+		}
+	}
+	return []string{value}
+}
+
+func textHasAnyTerm(text string, terms []string) bool {
+	m := normalizeForMatch(text)
+	for _, term := range terms {
+		if strings.Contains(m, normalizeForMatch(term)) {
+			return true
+		}
+	}
+	return false
+}
+
+func filterSearchResultsByEntities(e searchEntities, links []repo.ContentResult) []repo.ContentResult {
+	if len(links) == 0 {
+		return links
+	}
+	filtered := make([]repo.ContentResult, 0, len(links))
+	for _, link := range links {
+		haystack := strings.Join([]string{link.Title, link.Description, link.URL, link.Type}, " ")
+		if e.Grade != "" && !textHasAnyTerm(haystack, entityMatchTerms("grade", e.Grade)) {
+			continue
+		}
+		if e.Subject != "" && !textHasAnyTerm(haystack, entityMatchTerms("subject", e.Subject)) {
+			continue
+		}
+		if e.Semester != "" && !textHasAnyTerm(haystack, entityMatchTerms("semester", e.Semester)) {
+			continue
+		}
+		if e.ContentType != "" && !textHasAnyTerm(haystack, entityMatchTerms("content", e.ContentType)) {
+			continue
+		}
+		filtered = append(filtered, link)
+	}
+	return filtered
+}
+
+func isNoiseOrEmojiOnly(message string) bool {
+	m := strings.TrimSpace(message)
+	if m == "" {
+		return true
+	}
+	letterCount := 0
+	for _, r := range m {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= 'ء' && r <= 'ي') || (r >= 'أ' && r <= 'ئ') {
+			letterCount++
+		}
+	}
+	if letterCount == 0 {
+		return true
+	}
+	return utf8.RuneCountInString(m) <= 4 && letterCount <= 2
+}
+
+func isThanksMessage(message string) bool {
+	m := normalizeForMatch(message)
+	return containsAny(m, "شكرا", "شكراً", "مشكور", "مشكورين", "جزاكم الله", "الله يعطيكم", "يعطيكم العافيه", "يعطيكم العافية")
+}
+
+func isProfanityOrFrustration(message string) bool {
+	m := normalizeForMatch(message)
+	return containsAny(m, "خرا", "زفت", "قرف", "غبي", "سيء جدا", "مش راضي")
+}
+
 func buildSearchAnswer(e searchEntities, links []repo.ContentResult) string {
 	query := buildSearchQuery("", e)
 	if query == "" {
 		query = "طلبك"
 	}
 	if len(links) > 0 {
-		return "بحثت عن: " + query + "\n\nوجدت نتائج مناسبة من داخل الموقع. افتح النتيجة الأقرب لك، أو استخدم زر البحث لمشاهدة نتائج أكثر.\n\nإذا لم تكن النتائج دقيقة، اكتب الصف + المادة + الفصل + نوع الملف."
+		return "بحثت عن: " + query + "\n\nظهرت نتائج مطابقة أو قريبة من داخل الموقع. افتح النتيجة الأقرب لك. إذا لم تكن النتيجة المطلوبة موجودة، استخدم زر البحث أو أرسل طلب إضافة ملف للإدارة.\n\nلنتائج أدق اكتب: نوع الملف + المادة + الصف + الفصل."
 	}
 	missing := []string{}
 	if e.Grade == "" {
@@ -854,8 +1029,112 @@ func buildSearchAnswer(e searchEntities, links []repo.ContentResult) string {
 	return "لم أجد نتيجة مطابقة لهذا البحث داخل الموقع. جرّب كلمات أبسط أو افتح صفحة البحث، ويمكنك إرسال طلب إضافة ملف للإدارة إذا كان المحتوى غير متوفر."
 }
 
+func isUnsupportedPhoneOrUsernameQuestion(message string) bool {
+	msg := normalizeArabic(strings.ToLower(message))
+	if containsAny(msg,
+		"بدون بريد",
+		"بدون الايميل",
+		"بدون الإيميل",
+		"بدون ايميل",
+		"بدون إيميل",
+		"بدون email",
+		"اسم المستخدم",
+		"username",
+		"user name",
+	) {
+		return true
+	}
+
+	mentionsPhoneChannel := containsAny(msg,
+		"رقم الهاتف",
+		"رقم تلفون",
+		"رقم الموبايل",
+		"برقم الهاتف",
+		"بالهاتف",
+		"عبر الهاتف",
+		"تفعيل الهاتف",
+		"كود على الهاتف",
+		"sms",
+		"رسالة نصية",
+		"واتساب",
+		"الواتساب",
+		"whatsapp",
+	)
+	if !mentionsPhoneChannel {
+		return false
+	}
+
+	// لا نمنع عبارات مثل: "تحميل من الهاتف" أو "الموقع لا يعمل على الهاتف".
+	// المنع فقط عندما يكون الحديث عن إنشاء حساب/تفعيل/دخول/استعادة عبر الهاتف أو واتساب/SMS.
+	return containsAny(msg,
+		"تسجيل",
+		"دخول",
+		"انشاء حساب",
+		"إنشاء حساب",
+		"حساب",
+		"تفعيل",
+		"رمز",
+		"كود",
+		"استعاده",
+		"استعادة",
+		"كلمه المرور",
+		"كلمة المرور",
+		"بدون بريد",
+	)
+}
+
+func unsupportedFeatureAnswer() string {
+	return "حاليًا لا تدعم المنصة إنشاء الحساب أو تفعيل الحساب أو تسجيل الدخول عبر رقم الهاتف أو WhatsApp أو SMS أو اسم المستخدم.\n\nالطريقة المتاحة الآن هي البريد الإلكتروني فقط:\n\n1. استخدم بريدًا صحيحًا يمكنك الوصول إليه.\n2. افتح رسالة التفعيل التي تصلك على البريد.\n3. اضغط على رابط تأكيد البريد الإلكتروني داخل الرسالة.\n\nإذا كان البريد مكتوبًا خطأ أو لا تستطيع الوصول إليه، تواصل مع الإدارة واذكر البريد الخاطئ والبريد الصحيح المطلوب اعتماده."
+}
+
+func sanitizeUnsupportedFeatures(answer string) string {
+	if strings.TrimSpace(answer) == "" {
+		return answer
+	}
+
+	normalized := normalizeArabic(answer)
+	blocked := containsAny(normalized,
+		"تسجيل الدخول باستخدام رقم الهاتف",
+		"إنشاء الحساب عبر رقم الهاتف",
+		"انشاء الحساب عبر رقم الهاتف",
+		"تفعيل الحساب عبر رقم الهاتف",
+		"إعادة تعيينها عبر رقم الهاتف",
+		"استعادة كلمة المرور عبر رقم الهاتف",
+		"الهاتف المرتبط بحسابك",
+		"عبر رقم الهاتف",
+		"عبر الهاتف أو",
+		"رسالة نصية",
+		"sms",
+		"واتساب",
+		"الواتساب",
+		"whatsapp",
+		"اسم المستخدم",
+		"username",
+		"وسائل التواصل الاجتماعي",
+		"حسابك على وسائل التواصل",
+		"إعادة تعيينها عبر رقم الهاتف",
+	)
+
+	if blocked {
+		return unsupportedFeatureAnswer()
+	}
+
+	return answer
+}
+
+func containsAny(text string, needles ...string) bool {
+	for _, needle := range needles {
+		if strings.Contains(text, normalizeArabic(needle)) {
+			return true
+		}
+	}
+	return false
+}
+
 func ruleAnswer(intent string) string {
 	switch intent {
+	case "unsupported_phone_feature":
+		return unsupportedFeatureAnswer()
 	case "auth_login_problem":
 		return "لحل مشكلة تسجيل الدخول: تأكد من كتابة البريد وكلمة المرور بدون مسافات زائدة، ثم جرّب تسجيل الدخول مرة أخرى. إذا ظهرت رسالة أن البريد غير مفعّل، فعّل البريد أولًا. وإذا نسيت كلمة المرور، استخدم خيار استعادة كلمة المرور."
 	case "password_reset_problem":
@@ -897,6 +1176,8 @@ func ruleAnswer(intent string) string {
 
 func nextSuggestionsForStep(intent, step string, entities searchEntities) []string {
 	switch intent {
+	case "unsupported_phone_feature":
+		return []string{"لدي مشكلة في البريد", "كتبت البريد خطأ", "أريد التواصل مع الإدارة"}
 	case "download_problem":
 		if step == "in_app_browser_download" {
 			return []string{"فتحت الصفحة من Chrome", "التحميل لا يزال لا يعمل", "أريد التواصل مع الإدارة"}

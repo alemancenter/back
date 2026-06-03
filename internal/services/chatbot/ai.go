@@ -141,27 +141,31 @@ func shouldUseChatbotAI(message, intent, step, source string, links []repo.Conte
 		return false
 	}
 	m := normalizeArabic(strings.ToLower(message))
+	if isNoiseOrEmojiOnly(message) || isThanksMessage(message) || isProfanityOrFrustration(message) {
+		return false
+	}
 	if strings.Contains(m, "api") || strings.Contains(m, "jwt") || strings.Contains(m, "token") || strings.Contains(m, "redis") || strings.Contains(m, "database") {
 		return false
 	}
-	if source == "knowledge_base" && confidence >= 0.9 {
+	switch intent {
+	case "contact_support", "open_classes", "open_search", "download_problem", "download_location", "permission_problem", "file_not_found", "email_verification_problem", "auth_login_problem", "auth_register_problem", "password_reset_problem", "social_login_problem", "request_content", "thanks", "frustration":
+		return false
+	}
+	if source == "knowledge_base" && confidence >= 0.85 {
+		return false
+	}
+	if source == "content_search" && len(links) == 0 {
 		return false
 	}
 	if len(links) > 0 {
 		return true
 	}
-	if intent == "general_question" || intent == "search_content" || intent == "find_grade" || intent == "find_subject" || intent == "find_semester" {
-		return true
-	}
-	if strings.Contains(m, "ممكن") || strings.Contains(m, "لو سمحت") || strings.Contains(m, "لو سمحتو") || strings.Contains(m, "السلام عليكم") || strings.Contains(m, "وين") || strings.Contains(m, "كيف") || strings.Contains(m, "what") || strings.Contains(m, "how") || strings.Contains(m, "ich") || strings.Contains(m, "bitte") {
-		return true
-	}
-	return step == "content_refine" || step == "content_results"
+	return false
 }
 
 func isSensitiveNoAI(intent string) bool {
 	switch intent {
-	case "account_lookup_privacy", "privacy_request":
+	case "unsupported_phone_feature", "account_lookup_privacy", "privacy_request", "contact_support", "open_classes", "open_search", "download_problem", "download_location", "permission_problem", "file_not_found", "email_verification_problem", "auth_login_problem", "auth_register_problem", "password_reset_problem", "social_login_problem", "request_content", "thanks", "frustration":
 		return true
 	default:
 		return false
@@ -262,9 +266,13 @@ func buildChatbotAIPrompt(req chatbotAIRequest) (string, string) {
 - أجب بنفس لغة أو لهجة المستخدم قدر الإمكان.
 - استخدم فقط المعلومات والروابط الموجودة في السياق المرسل لك.
 - ممنوع اختراع روابط، صفحات، أسماء ملفات، أو نتائج غير موجودة في links.
+- لا تذكر صفحة دعم، FAQ، دردشة مباشرة، إشعار داخل الموقع، أو live chat. المتاح فقط: صفحة التواصل /contact-us وروابط actions/links المرسلة.
 - ممنوع تأكيد وجود أو عدم وجود أي بريد إلكتروني أو حساب مستخدم.
 - ممنوع طلب كلمة المرور أو رموز التفعيل أو كشف معلومات داخلية مثل API/JWT/Redis/Database/مسارات السيرفر.
 - إذا كانت المشكلة تقنية أو حسابية، أعط خطوات آمنة وواضحة.
+- المنصة حاليًا لا تدعم إنشاء الحساب أو التفعيل أو تسجيل الدخول أو استعادة كلمة المرور عبر رقم الهاتف أو SMS أو WhatsApp أو اسم المستخدم.
+- لا تذكر رقم الهاتف أو WhatsApp أو SMS أو اسم المستخدم كطريقة تسجيل/تفعيل/استعادة. الطريقة المتاحة حاليًا هي البريد الإلكتروني فقط، مع Google/Facebook إذا كانت الأزرار ظاهرة في صفحة الدخول.
+- إذا سأل المستخدم هل يمكن بدون بريد أو عبر الهاتف/واتساب/SMS، قل بوضوح إن هذا غير مدعوم حاليًا وأن البريد الإلكتروني مطلوب.
 - إذا توجد نتائج بحث، اذكر أنها نتائج مقترحة من الموقع ولا تدّعي أنها الوحيدة.
 - أعد JSON فقط بالشكل: {"answer":"...","suggestions":["...","...","..."]}`
 	user := fmt.Sprintf(`سؤال المستخدم: %s
@@ -322,6 +330,9 @@ func (c chatbotAIClient) callTogether(ctx context.Context, model, systemPrompt, 
 func sanitizeAIAnswer(answer string, links []repo.ContentResult) string {
 	_ = links
 	answer = trim(strings.TrimSpace(answer), 1600)
+	if strings.HasPrefix(strings.TrimSpace(answer), "{\"answer\"") || strings.Contains(answer, "\"suggestions\"") {
+		return ""
+	}
 	if answer == "" {
 		return ""
 	}
@@ -332,6 +343,7 @@ func sanitizeAIAnswer(answer string, links []repo.ContentResult) string {
 			return ""
 		}
 	}
+	answer = sanitizeUnsupportedFeatures(answer)
 	// Remove raw external links. The UI renders safe links from backend actions/results only.
 	answer = regexpHTTP.ReplaceAllString(answer, "")
 	return strings.TrimSpace(answer)

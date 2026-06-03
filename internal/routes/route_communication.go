@@ -18,7 +18,6 @@ func registerCommunicationRoutes(public, dash fiber.Router, h *Handlers) {
 
 	// Public support chatbot. OptionalAuth is already applied on the public router.
 	public.Get("/chatbot/suggestions", h.Chatbot.Suggestions)
-	public.Get("/chatbot/companion/hint", h.Chatbot.CompanionHint)
 	public.Post("/chatbot/message", h.Chatbot.Message)
 	public.Post("/chatbot/feedback", h.Chatbot.Feedback)
 

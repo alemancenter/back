@@ -414,15 +414,6 @@ func resolveFlow(message, detectedIntent, lastIntent, currentStep string, authen
 
 func defaultStep(intent string) string {
 	switch intent {
-	case "open_classes":
-		addLink("فتح الصفوف", "/classes", "primary")
-		addLink("فتح البحث", "/search", "secondary")
-	case "open_search":
-		addLink("فتح البحث", searchURL, "primary")
-		addLink("فتح الصفوف", "/classes", "secondary")
-	case "thanks", "frustration":
-		addMsg("أريد البحث عن ملف", "أريد البحث عن ملف تعليمي")
-		addMsg("لدي مشكلة في التحميل", "لا أستطيع تحميل الملفات")
 	case "unsupported_phone_feature":
 		return "email_only"
 	case "auth_login_problem":
@@ -432,32 +423,32 @@ func defaultStep(intent string) string {
 	case "password_reset_problem":
 		return "password_reset_steps"
 	case "email_verification_problem":
-		if step == "expired_verification_link" {
-			return "إذا ظهرت رسالة أن رابط التحقق منتهي الصلاحية، فهذا يعني أن الرابط القديم لم يعد صالحًا.\n\nالحل الصحيح:\n\n1. افتح صفحة تسجيل الدخول.\n2. سجّل الدخول بالبريد وكلمة المرور.\n3. اضغط إعادة إرسال رسالة التفعيل مرة واحدة فقط.\n4. افتح أحدث رسالة وصلت إلى بريدك، وليس الرسائل القديمة.\n5. اضغط رابط التحقق الجديد خلال وقت قصير.\n\nإذا تكررت المشكلة، تواصل مع الإدارة واذكر البريد ووقت آخر محاولة."
-		}
 		return "verification_steps"
 	case "download_problem":
-		if step == "multiple_downloads" {
-			return "إذا حمّلت ملفًا واحدًا وتريد تحميل ملف ثانٍ أو ثالث، اتبع التالي:\n\n1. انتظر حتى يكتمل تحميل الملف الأول بالكامل.\n2. افتح صفحة الملف الثاني من داخل الموقع، ولا تستخدم رابط تحميل قديم.\n3. اضغط زر التحميل مرة واحدة فقط.\n4. إذا لم يبدأ التحميل، حدّث الصفحة وجرب من Chrome أو Safari.\n5. لا تضغط أزرار التحميل بسرعة متتالية حتى لا يعتبر النظام الطلبات مكررة."
-		}
-		if step == "download_stuck" {
-			return "إذا بقي الملف فترة طويلة دون أن ينزل، فغالبًا التحميل عالق أو المتصفح منع التنزيل.\n\nجرّب بالترتيب:\n\n1. أوقف التحميل العالق من المتصفح.\n2. حدّث صفحة الملف الأصلية.\n3. اضغط تحميل مرة واحدة وانتظر.\n4. جرّب Chrome أو Safari بدل متصفح فيسبوك/إنستغرام.\n5. إذا بقيت المشكلة، أرسل رابط صفحة الملف للإدارة."
-		}
 		return "download_diagnosis"
 	case "download_location":
 		return "download_location_steps"
-	case "search_content", "find_grade", "find_subject", "find_semester":
+	case "permission_problem":
+		return "permission_denied"
+	case "file_not_found":
+		return "broken_download_link"
+	case "search_content", "find_grade", "find_subject", "find_semester", "request_content":
 		return "collect_search_details"
 	case "account_lookup_privacy":
 		return "privacy_safe_lookup"
+	case "contact_support":
+		return "contact_steps"
+	case "open_classes":
+		return "open_classes"
+	case "open_search":
+		return "open_search"
+	case "thanks":
+		return "thanks"
+	case "frustration":
+		return "calm_support"
 	default:
 		return "answer"
 	}
-}
-
-func requiresContextualAnswer(message, intent, lastIntent string) bool {
-	m := normalizeArabic(strings.ToLower(message))
-	return intent == "account_lookup_privacy" || (lastIntent != "" && (strings.Contains(m, "الخطوات") || strings.Contains(m, "خطوات") || strings.Contains(m, "بشكل صحيح") || strings.Contains(m, "مكتوب صحيح") || strings.Contains(m, "فحصت"))) || strings.Contains(m, "صفحه") || strings.Contains(m, "صفحة") || strings.Contains(m, "رابط")
 }
 
 func contextualAnswer(intent, step, message, lastIntent string) string {
@@ -476,6 +467,9 @@ func contextualAnswer(intent, step, message, lastIntent string) string {
 	case "password_reset_problem":
 		return "خطوات استعادة كلمة المرور:\n\n1. افتح صفحة استعادة كلمة المرور.\n2. اكتب البريد المرتبط بحسابك.\n3. افحص البريد الوارد وSpam/Junk.\n4. افتح رابط الاستعادة واضبط كلمة مرور جديدة.\n5. إذا لم تصل الرسالة، تأكد من البريد ثم تواصل مع الإدارة."
 	case "email_verification_problem":
+		if step == "expired_verification_link" {
+			return "إذا ظهرت رسالة أن رابط التحقق منتهي الصلاحية، فهذا يعني أن الرابط القديم لم يعد صالحًا.\n\nالحل الصحيح:\n\n1. افتح صفحة تسجيل الدخول.\n2. سجّل الدخول بالبريد وكلمة المرور.\n3. اضغط إعادة إرسال رسالة التفعيل مرة واحدة فقط.\n4. افتح أحدث رسالة وصلت إلى بريدك، وليس الرسائل القديمة.\n5. اضغط رابط التحقق الجديد خلال وقت قصير.\n\nإذا تكررت المشكلة، تواصل مع الإدارة واذكر البريد ووقت آخر محاولة."
+		}
 		if step == "wrong_email" {
 			return "إذا كان البريد مكتوبًا بشكل خاطئ فلن تصلك رسالة التفعيل.\n\nاتبع الحل المناسب:\n\n1. إذا تستطيع الدخول إلى الحساب، افتح الملف الشخصي أو إعدادات الحساب وحاول تعديل البريد.\n2. إذا لا تستطيع تعديل البريد، استخدم صفحة التواصل.\n3. اكتب للإدارة البريد الخاطئ كما سجلته والبريد الصحيح الذي تريد اعتماده.\n4. لا تنشئ حسابات كثيرة بنفس البيانات حتى لا تتداخل المحاولات.\n\nبعد تصحيح البريد اطلب إعادة إرسال رسالة التفعيل مرة واحدة ثم افحص Inbox وSpam/Junk."
 		}
@@ -490,6 +484,12 @@ func contextualAnswer(intent, step, message, lastIntent string) string {
 		}
 		return "خطوات حل مشكلة عدم وصول رسالة التفعيل:\n\n1. تأكد أن البريد مكتوب بشكل صحيح.\n2. افحص البريد غير الهام Spam/Junk والرسائل الترويجية.\n3. افتح صفحة تسجيل الدخول وسجّل الدخول.\n4. إذا ظهر خيار إعادة إرسال التفعيل، اضغط عليه مرة واحدة.\n5. انتظر من 2 إلى 5 دقائق.\n6. إذا لم تصل الرسالة، تواصل مع الإدارة مع ذكر البريد ووقت المحاولة."
 	case "download_problem":
+		if step == "multiple_downloads" {
+			return "إذا حمّلت ملفًا واحدًا وتريد تحميل ملف ثانٍ أو ثالث، اتبع التالي:\n\n1. انتظر حتى يكتمل تحميل الملف الأول بالكامل.\n2. افتح صفحة الملف الثاني من داخل الموقع، ولا تستخدم رابط تحميل قديم.\n3. اضغط زر التحميل مرة واحدة فقط.\n4. إذا لم يبدأ التحميل، حدّث الصفحة وجرب من Chrome أو Safari.\n5. لا تضغط أزرار التحميل بسرعة متتالية حتى لا يعتبر النظام الطلبات مكررة."
+		}
+		if step == "download_stuck" {
+			return "إذا بقي الملف فترة طويلة دون أن ينزل، فغالبًا التحميل عالق أو المتصفح منع التنزيل.\n\nجرّب بالترتيب:\n\n1. أوقف التحميل العالق من المتصفح.\n2. حدّث صفحة الملف الأصلية.\n3. اضغط تحميل مرة واحدة وانتظر.\n4. جرّب Chrome أو Safari بدل متصفح فيسبوك/إنستغرام.\n5. إذا بقيت المشكلة، أرسل رابط صفحة الملف للإدارة."
+		}
 		if step == "in_app_browser_download" {
 			return "المشكلة غالبًا من متصفح التطبيق داخل Facebook أو Instagram؛ هذه المتصفحات قد تمنع تحميل الملفات.\n\nالحل:\n\n1. انسخ رابط الصفحة.\n2. افتحه في Chrome أو Safari خارج التطبيق.\n3. سجّل الدخول مرة أخرى إذا طُلب منك ذلك.\n4. اضغط تحميل من صفحة الملف الأصلية.\n5. بعد التحميل افتح Downloads / التنزيلات أو تطبيق الملفات.\n\nإذا بقي الخطأ، أرسل رابط صفحة الملف ونوع جهازك للإدارة."
 		}
@@ -527,6 +527,67 @@ func contextualAnswer(intent, step, message, lastIntent string) string {
 	default:
 		return ruleAnswer(intent)
 	}
+}
+
+func requiresContextualAnswer(message, intent, lastIntent string) bool {
+	m := normalizeArabic(strings.ToLower(message))
+
+	// هذه الحالات تحتاج ردًا سياقيًا ثابتًا، ولا يجب أخذ أول جواب من قاعدة المعرفة
+	// لأن قاعدة المعرفة قد تكون عامة وتسبب ردودًا خاطئة مثل ربط الصلاحية بتفعيل البريد.
+	switch intent {
+	case "unsupported_phone_feature",
+		"account_lookup_privacy",
+		"auth_register_problem",
+		"email_verification_problem",
+		"download_location",
+		"permission_problem",
+		"file_not_found",
+		"contact_support",
+		"request_content",
+		"open_classes",
+		"open_search",
+		"thanks",
+		"frustration":
+		return true
+	}
+
+	if containsAny(m,
+		"كتبت البريد خطأ",
+		"البريد خطأ",
+		"الايميل غلط",
+		"رابط التحقق منتهي",
+		"رابط التفعيل منتهي",
+		"لا تملك صلاحية",
+		"عدم وجود صلاحية",
+		"عملت تحميل ولا أجد",
+		"وين الملف",
+		"وين بتنزل",
+		"اتصل بالدعم",
+		"الدعم الفني",
+		"طلب إضافة ملف",
+		"إضافة درس",
+	) {
+		return true
+	}
+
+	if isContentIntent(lastIntent) && containsAny(m,
+		"الفصل الأول",
+		"الفصل الاول",
+		"الفصل الثاني",
+		"فصل ثاني",
+		"نهائي",
+		"امتحان نهائي",
+		"اختبار نهائي",
+		"علوم",
+		"رياضيات",
+		"لغة عربية",
+		"انجليزي",
+		"تربية اجتماعية",
+	) {
+		return true
+	}
+
+	return false
 }
 
 func buildActions(intent, step string, links []repo.ContentResult, entities searchEntities) []ChatbotAction {

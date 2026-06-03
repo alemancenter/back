@@ -5,6 +5,7 @@ import (
 	"github.com/alemancenter/fiber-api/internal/models"
 	"github.com/alemancenter/fiber-api/internal/utils"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type ArticleRepository interface {
@@ -189,7 +190,7 @@ func (r *articleRepository) Create(countryID database.CountryID, article *models
 }
 
 func (r *articleRepository) Update(countryID database.CountryID, article *models.Article) error {
-	return r.GetDB(countryID).Save(article).Error
+	return r.GetDB(countryID).Omit(clause.Associations).Save(article).Error
 }
 
 func (r *articleRepository) Delete(countryID database.CountryID, article *models.Article) error {

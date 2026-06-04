@@ -417,6 +417,10 @@ func isCannotFindContentQuestion(message string) bool {
 		"أين الملف",
 		"ابحث عن ملف",
 		"أبحث عن ملف",
+		"اريد البحث عن ملف",
+		"أريد البحث عن ملف",
+		"اريد البحث عن ملف تعليمي",
+		"أريد البحث عن ملف تعليمي",
 	)
 }
 
@@ -437,7 +441,104 @@ func isGenericDownloadProblemQuestion(message string) bool {
 		"التحميل لا يعمل",
 		"ما يحمل",
 		"ما بحمل",
+		"لما اضغط على زر التحميل",
+		"لما أضغط على زر التحميل",
+		"اضغط على زر التحميل مايفوت",
+		"اضغط على زر التحميل ما يفوت",
+		"زر التحميل مايفتح",
+		"زر التحميل ما يفتح",
+		"مو راضي يفتح",
+		"ليه ما يفوت",
+		"ما يفوت",
+		"ما فتح",
+		"مش رضي الملف ينزل",
+		"مش راضي الملف ينزل",
 	)
+}
+
+func isOpenSearchHelpQuestion(message string) bool {
+	m := normalizeArabic(strings.ToLower(message))
+	return containsAny(m,
+		"اريد البحث عن ملف تعليمي",
+		"أريد البحث عن ملف تعليمي",
+		"ابحث عن ملف تعليمي",
+		"أبحث عن ملف تعليمي",
+		"كيف ابحث عن ملف",
+		"كيف أبحث عن ملف",
+		"طريقة البحث عن ملف",
+		"فتح البحث بهذه الكلمات",
+	)
+}
+
+func isContentShortFollowUp(message string) bool {
+	m := normalizeArabic(strings.ToLower(message))
+	return containsAny(m,
+		"نهائي",
+		"نهايي",
+		"نهاءي",
+		"نهاي",
+		"فصل ثاني",
+		"الفصل الثاني",
+		"ف ٢",
+		"ف٢",
+		"فصل اول",
+		"فصل أول",
+		"الفصل الاول",
+		"الفصل الأول",
+		"نموذج",
+		"نموذج 2",
+		"نموذج2",
+	)
+}
+
+func isEducationalContentPhrase(message string) bool {
+	m := normalizeArabic(strings.ToLower(message))
+	return containsAny(m,
+		"توجيهي",
+		"المنهاج القديم",
+		"دفتر علامات",
+		"سجل علامات",
+		"تقييم مساعد مدير",
+		"خطة نمو مهني",
+		"شرح انجليزي",
+		"الماده كامله",
+		"المادة كاملة",
+		"ورقة عمل",
+		"اوراق عمل",
+		"أوراق عمل",
+		"تحليل محتوى",
+		"خطة علاجية",
+		"ثقافة ماليه",
+		"ثقافة مالية",
+	)
+}
+
+func isPaymentQuestion(message string) bool {
+	m := normalizeArabic(strings.ToLower(message))
+	return containsAny(m,
+		"هل يجب علي ان ادفع",
+		"هل يجب علي أن أدفع",
+		"هل الموقع مجاني",
+		"هل التحميل مجاني",
+		"بدفع مال",
+		"ادفع المال",
+		"اشتراك مدفوع",
+		"بفلوس",
+	)
+}
+
+func isOpenArticleCommand(message string) bool {
+	m := strings.TrimSpace(message)
+	n := normalizeArabic(strings.ToLower(m))
+	return strings.Contains(n, "فتح المقال") || strings.Contains(n, "/jo/lesson/articles/")
+}
+
+func genericHelpfulAnswer() string {
+	return "أستطيع مساعدتك في البحث عن الملفات التعليمية، اختيار الصف والمادة، حل مشاكل التحميل، تسجيل الدخول، وتفعيل البريد.\n\nاكتب طلبك بشكل واضح مثل: اختبار نهائي فيزياء الصف التاسع الفصل الثاني."
+}
+
+func paymentAnswer() string {
+	return "المحتوى المتاح في الموقع يمكن تصفحه من الصفحات والبحث. إذا ظهر لك طلب تسجيل دخول أو تفعيل بريد، فهذا لا يعني وجود دفع مالي، بل قد يكون مطلوبًا لحماية التحميلات وتنظيم الوصول.\n\nإذا ظهرت لك صفحة دفع أو رسالة غير واضحة، أرسل نص الرسالة أو رابط الصفحة للإدارة للتأكد."
 }
 
 func resolveFlow(message, detectedIntent, lastIntent, currentStep string, authenticated bool) flowDecision {
@@ -449,6 +550,22 @@ func resolveFlow(message, detectedIntent, lastIntent, currentStep string, authen
 			}
 		}
 		return false
+	}
+
+	if isOpenSearchHelpQuestion(message) {
+		return flowDecision{Intent: "open_search", Step: "open_search", Confidence: 0.97, Answer: contextualAnswer("open_search", "open_search", message, lastIntent)}
+	}
+	if isPaymentQuestion(message) {
+		return flowDecision{Intent: "payment_question", Step: "payment_info", Confidence: 0.96, Answer: contextualAnswer("payment_question", "payment_info", message, lastIntent)}
+	}
+	if isOpenArticleCommand(message) {
+		return flowDecision{Intent: "open_article", Step: "open_article", Confidence: 0.94, Answer: contextualAnswer("open_article", "open_article", message, lastIntent)}
+	}
+	if isContentShortFollowUp(message) && isContentIntent(lastIntent) {
+		return flowDecision{Intent: "search_content", Step: "content_followup", Confidence: 0.9}
+	}
+	if isEducationalContentPhrase(message) {
+		return flowDecision{Intent: "search_content", Step: "content_refine", Confidence: 0.88}
 	}
 
 	if contains("ما هي خدمات الموقع", "خدمات الموقع", "شو بتقدموا", "ماذا تقدم المنصة", "الخدمات التعليمية", "بنك الامتحانات", "اشتراك", "اشتراكات") {
@@ -595,6 +712,10 @@ func defaultStep(intent string) string {
 		return "privacy_safe_lookup"
 	case "contact_support":
 		return "contact_steps"
+	case "payment_question":
+		return "payment_info"
+	case "open_article":
+		return "open_article"
 	case "site_services":
 		return "site_services"
 	case "about_site":
@@ -698,7 +819,11 @@ func contextualAnswer(intent, step, message, lastIntent string) string {
 	case "open_classes":
 		return "لعرض الصفوف التعليمية، افتح صفحة الأردن ثم اختر الصف المطلوب. بعد ذلك اختر المادة المناسبة للوصول إلى الفصول والملفات التعليمية المرتبطة بهذا الصف.\n\nإذا كنت تبحث عن ملف محدد، استخدم البحث بصيغة: نوع الملف + المادة + الصف + الفصل."
 	case "open_search":
-		return siteSearchHelpAnswer()
+		return "استخدم صفحة البحث للعثور على الملفات التعليمية. اكتب كلمات واضحة مثل:\n\nاختبار نهائي فيزياء الصف التاسع الفصل الثاني\n\nأو اختر من الفلاتر: الصف، نوع المحتوى، المادة، والفصل. إذا كنت لا تعرف العنوان، اكتب المادة والصف فقط."
+	case "payment_question":
+		return paymentAnswer()
+	case "open_article":
+		return "إذا كان لديك رابط مقال من الموقع، افتحه مباشرة من الرابط. وإذا لم يفتح، انسخ الرابط كاملًا وأرسله للإدارة مع وصف المشكلة.\n\nإذا كنت تبحث عن ملف داخل المقال، اكتب اسم الملف أو المادة والصف والفصل."
 	case "site_services":
 		return "خدمات الموقع تشمل: محتوى تعليمي للصفوف، بنك امتحانات وملفات، أخبار ومقالات تربوية، بحث وتصفية متقدمة، وخدمات للأعضاء والمعلمين مثل طلب ملفات أو إرسال اقتراحات عبر صفحة التواصل."
 	case "about_site":
@@ -736,7 +861,11 @@ func requiresContextualAnswer(message, intent, lastIntent string) bool {
 		"about_site",
 		"privacy_request",
 		"thanks",
-		"frustration":
+		"frustration",
+		"general_question",
+		"download_problem",
+		"payment_question",
+		"open_article":
 		return true
 	}
 
@@ -755,6 +884,11 @@ func requiresContextualAnswer(message, intent, lastIntent string) bool {
 		"الدعم الفني",
 		"طلب إضافة ملف",
 		"إضافة درس",
+		"اريد البحث عن ملف تعليمي",
+		"أريد البحث عن ملف تعليمي",
+		"كيف افعل البريد الالكتروني",
+		"كيف أفعل البريد الإلكتروني",
+		"هل يجب علي ان ادفع المال",
 	) {
 		return true
 	}
@@ -793,6 +927,11 @@ func buildActions(intent, step string, links []repo.ContentResult, entities sear
 	}
 
 	switch intent {
+	case "payment_question":
+		addLink("فتح صفحة التواصل", "/contact-us", "secondary")
+	case "open_article":
+		addLink("فتح البحث", "/search", "primary")
+		addLink("فتح صفحة التواصل", "/contact-us", "secondary")
 	case "site_services":
 		addLink("الخدمات", "/services", "primary")
 		addLink("اتصل بنا", "/contact-us", "secondary")
@@ -875,6 +1014,14 @@ func detectIntent(message string) (string, float64) {
 	}
 
 	switch {
+	case isOpenSearchHelpQuestion(message):
+		return "open_search", 0.97
+	case isPaymentQuestion(message):
+		return "payment_question", 0.96
+	case isOpenArticleCommand(message):
+		return "open_article", 0.94
+	case isEducationalContentPhrase(message):
+		return "search_content", 0.88
 	case contains("ما هي خدمات الموقع", "خدمات الموقع", "شو بتقدموا", "ماذا تقدم المنصة", "الخدمات التعليمية", "بنك الامتحانات", "اشتراك", "اشتراكات"):
 		return "site_services", 0.95
 	case contains("من نحن", "عن الموقع", "عن المنصة", "ما هو موقع الايمان", "ما هو موقع الأيمان", "موقع الايمان"):
@@ -1059,7 +1206,7 @@ func relaxedSearchQueries(message string, e searchEntities) []string {
 }
 
 func shouldRunContentSearch(intent, message string, entities searchEntities) bool {
-	if intent == "site_usage" || intent == "site_services" || intent == "about_site" || intent == "privacy_request" || intent == "open_classes" || intent == "open_search" {
+	if intent == "payment_question" || intent == "open_article" || intent == "site_usage" || intent == "site_services" || intent == "about_site" || intent == "privacy_request" || intent == "open_classes" || intent == "open_search" {
 		return false
 	}
 	if isContentIntent(intent) {
@@ -1506,6 +1653,12 @@ func ruleAnswer(intent string) string {
 		return "إذا بقيت المشكلة بعد تجربة الحلول، استخدم صفحة التواصل واكتب البريد المستخدم ورابط الصفحة ورسالة الخطأ الظاهرة حتى تستطيع الإدارة مراجعتها بسرعة."
 	case "find_grade", "find_subject", "find_semester", "search_content":
 		return "اكتب اسم الصف والمادة والفصل أو نوع الملف الذي تريده، مثال: رياضيات الصف التاسع الفصل الأول اختبار، وسأبحث لك داخل محتوى الموقع."
+	case "general_question":
+		return genericHelpfulAnswer()
+	case "payment_question":
+		return paymentAnswer()
+	case "open_article":
+		return contextualAnswer("open_article", "open_article", "", "")
 	default:
 		return "لم أفهم نوع المشكلة بدقة. اكتب المشكلة بجملة قصيرة مثل: لا أستطيع تحميل ملف، لم تصلني رسالة التفعيل، نسيت كلمة المرور، أو أريد ملف رياضيات للصف التاسع."
 	}

@@ -148,7 +148,7 @@ func shouldUseChatbotAI(message, intent, step, source string, links []repo.Conte
 		return false
 	}
 	switch intent {
-	case "contact_support", "site_usage", "site_services", "about_site", "open_classes", "open_search", "download_problem", "download_location", "permission_problem", "file_not_found", "email_verification_problem", "auth_login_problem", "auth_register_problem", "password_reset_problem", "social_login_problem", "request_content", "thanks", "frustration":
+	case "contact_support", "general_question", "payment_question", "open_article", "site_usage", "site_services", "about_site", "open_classes", "open_search", "download_problem", "download_location", "permission_problem", "file_not_found", "email_verification_problem", "auth_login_problem", "auth_register_problem", "password_reset_problem", "social_login_problem", "request_content", "thanks", "frustration":
 		return false
 	}
 	if source == "knowledge_base" && confidence >= 0.85 {
@@ -165,7 +165,7 @@ func shouldUseChatbotAI(message, intent, step, source string, links []repo.Conte
 
 func isSensitiveNoAI(intent string) bool {
 	switch intent {
-	case "unsupported_phone_feature", "account_lookup_privacy", "privacy_request", "contact_support", "site_usage", "site_services", "about_site", "open_classes", "open_search", "download_problem", "download_location", "permission_problem", "file_not_found", "email_verification_problem", "auth_login_problem", "auth_register_problem", "password_reset_problem", "social_login_problem", "request_content", "thanks", "frustration":
+	case "unsupported_phone_feature", "account_lookup_privacy", "privacy_request", "contact_support", "general_question", "payment_question", "open_article", "site_usage", "site_services", "about_site", "open_classes", "open_search", "download_problem", "download_location", "permission_problem", "file_not_found", "email_verification_problem", "auth_login_problem", "auth_register_problem", "password_reset_problem", "social_login_problem", "request_content", "thanks", "frustration":
 		return true
 	default:
 		return false

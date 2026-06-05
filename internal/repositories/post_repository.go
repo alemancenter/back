@@ -16,6 +16,7 @@ type PostRepository interface {
 	Update(countryID database.CountryID, post *models.Post) error
 	Delete(countryID database.CountryID, id uint64) error
 	UpdateKeywords(countryID database.CountryID, postID uint64, keywordsStr string) error
+	GetFileByID(countryID database.CountryID, id uint64) (*models.File, error)
 }
 
 type postRepository struct{}
@@ -119,6 +120,13 @@ func (r *postRepository) Update(countryID database.CountryID, post *models.Post)
 func (r *postRepository) Delete(countryID database.CountryID, id uint64) error {
 	db := r.getDB(countryID)
 	return db.Delete(&models.Post{}, id).Error
+}
+
+func (r *postRepository) GetFileByID(countryID database.CountryID, id uint64) (*models.File, error) {
+	db := r.getDB(countryID)
+	var file models.File
+	err := db.First(&file, id).Error
+	return &file, err
 }
 
 func (r *postRepository) UpdateKeywords(countryID database.CountryID, postID uint64, keywordsStr string) error {

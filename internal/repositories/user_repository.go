@@ -6,6 +6,7 @@ import (
 	"github.com/alemancenter/fiber-api/internal/database"
 	"github.com/alemancenter/fiber-api/internal/models"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // UserRepository handles database operations for users
@@ -149,8 +150,7 @@ func (r *userRepository) FindByEmailOrFacebookID(email string, facebookID string
 }
 
 func (r *userRepository) Update(user *models.User) error {
-	db := r.GetDB()
-	return db.Save(user).Error
+	return r.GetDB().Omit(clause.Associations).Save(user).Error
 }
 
 func (r *userRepository) UpdateFields(id uint, fields map[string]interface{}) error {

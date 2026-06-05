@@ -322,6 +322,11 @@ func (h *Handler) GetAll(c *fiber.Ctx) error {
 			m[k] = v
 		}
 	}
+	// Download-gate defaults. The key is DB-only (not env-backed) so a brand-new
+	// install still shows "require login" as the current behavior.
+	if _, ok := m["require_login_for_download"]; !ok {
+		m["require_login_for_download"] = "true"
+	}
 	return utils.Success(c, "success", m)
 }
 

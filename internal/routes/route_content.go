@@ -9,8 +9,8 @@ import (
 // Articles, Posts, Categories, Comments, Files, Keywords, and AI.
 func registerContentRoutes(api, public, dash fiber.Router, h *Handlers) {
 	authM := middleware.Auth()
-	verifiedM := middleware.RequireVerifiedEmail()
 	activityM := middleware.UpdateLastActivity()
+	downloadGateM := middleware.DownloadAuthGate(h.SettingsSvc)
 
 	// =====================
 	// PUBLIC ROUTES
@@ -22,13 +22,15 @@ func registerContentRoutes(api, public, dash fiber.Router, h *Handlers) {
 	public.Get("/articles/download", h.Articles.DownloadFileSigned)
 	public.Get("/articles/by-class/:grade_level", h.Articles.ByClass)
 	public.Get("/articles/by-keyword/:keyword", h.Articles.ByKeyword)
-	public.Get("/articles/file/:id/download", authM, verifiedM, activityM, h.Articles.DownloadFile)
-	public.Get("/articles/file/:id/download-url", authM, verifiedM, activityM, h.Articles.GetDownloadToken)
+	public.Get("/articles/file/:id/download", downloadGateM, activityM, h.Articles.DownloadFile)
+	public.Get("/articles/file/:id/download-url", downloadGateM, activityM, h.Articles.GetDownloadToken)
 	public.Get("/articles/:id", h.Articles.Show)
 	public.Get("/articles/:id/ad-status", h.ContentAudit.PublicAdStatus)
 
 	// Posts
 	public.Get("/posts", h.Posts.List)
+	public.Get("/posts/download", h.Posts.DownloadFileSigned)
+	public.Get("/posts/file/:id/download-url", downloadGateM, activityM, h.Posts.GetDownloadToken)
 	public.Get("/posts/:id", h.Posts.Show)
 	public.Post("/posts/:id/increment-view", h.Posts.IncrementView)
 

@@ -66,6 +66,10 @@ type Handlers struct {
 	EmailVerify     *emailverification.Handler
 	EmailBounce     *emailbounce.Handler
 	BounceReader    *services.BounceIMAPReader
+
+	// SettingsSvc is exposed so middlewares (e.g. download auth gate) can read
+	// settings at request time without re-instantiating the service.
+	SettingsSvc services.SettingService
 }
 
 func NewDependencies() *Handlers {
@@ -91,7 +95,7 @@ func NewDependencies() *Handlers {
 	commentRepo := repositories.NewCommentRepository()
 	commentSvc := services.NewCommentService(commentRepo)
 	postRepo := repositories.NewPostRepository()
-	postSvc := services.NewPostService(postRepo, cacheSvc)
+	postSvc := services.NewPostService(postRepo, fileSvc, cacheSvc)
 
 	gradeRepo := repositories.NewGradeRepository()
 	gradeSvc := services.NewGradeService(gradeRepo, cacheSvc)
@@ -185,5 +189,6 @@ func NewDependencies() *Handlers {
 		EmailVerify:     emailverification.New(emailVerifySvc),
 		EmailBounce:     emailbounce.New(bounceReader),
 		BounceReader:    bounceReader,
+		SettingsSvc:     settingSvc,
 	}
 }

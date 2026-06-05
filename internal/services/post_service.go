@@ -18,6 +18,8 @@ type PostService interface {
 	Create(countryID database.CountryID, countryCode string, userID *uint, req *CreatePostRequest, imagePath string) (*models.Post, error)
 	Update(countryID database.CountryID, id uint64, req *UpdatePostRequest, callerID uint, callerIsAdmin bool) (*models.Post, error)
 	Delete(countryID database.CountryID, id uint64, callerID uint, callerIsAdmin bool) error
+	GetSignedDownloadToken(countryID database.CountryID, fileID uint64) (string, error)
+	GetFileBySignedToken(token string) (*models.File, string, error)
 }
 
 type CreatePostRequest struct {
@@ -44,14 +46,50 @@ type UpdatePostRequest struct {
 }
 
 type postService struct {
-	repo  repositories.PostRepository
-	cache CacheService
+	repo    repositories.PostRepository
+	fileSvc *FileService
+	cache   CacheService
 }
 
 var unsafePostTextBlocks = regexp.MustCompile(`(?is)<\s*(script|style|object|embed|iframe|link|meta)\b[^>]*>.*?<\s*/\s*(script|style|object|embed|iframe|link|meta)\s*>|<\s*(script|style|object|embed|iframe|link|meta)\b[^>]*\/?>`)
 
-func NewPostService(repo repositories.PostRepository, cache CacheService) PostService {
-	return &postService{repo: repo, cache: cache}
+func NewPostService(repo repositories.PostRepository, fileSvc *FileService, cache CacheService) PostService {
+	return &postService{repo: repo, fileSvc: fileSvc, cache: cache}
+}
+
+func (s *postService) GetSignedDownloadToken(countryID database.CountryID, fileID uint64) (string, error) {
+	if _, err := s.repo.GetFileByID(countryID, fileID); err != nil {
+		return "", MapError(err)
+	}
+	jwtSvc := NewJWTService()
+	return jwtSvc.GenerateDownloadToken(fileID, uint(countryID))
+}
+
+func (s *postService) GetFileBySignedToken(token string) (*models.File, string, error) {
+	jwtSvc := NewJWTService()
+	claims, err := jwtSvc.ValidateDownloadToken(token)
+	if err != nil {
+		return nil, "", MapError(err)
+	}
+
+	countryID := database.CountryID(claims.CountryID)
+	file, err := s.repo.GetFileByID(countryID, claims.FileID)
+	if err != nil {
+		return nil, "", MapError(err)
+	}
+
+	var absPath string
+	if s.fileSvc != nil {
+		absPath = s.fileSvc.GetAbsPath(file.FilePath)
+	} else {
+		absPath = file.FilePath
+	}
+
+	go func() {
+		_ = IncrementFileDownload(countryID, claims.FileID)
+	}()
+
+	return file, absPath, nil
 }
 
 func applyPendingPostViews(countryID database.CountryID, posts []models.Post) []models.Post {

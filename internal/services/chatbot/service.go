@@ -421,6 +421,8 @@ func isCannotFindContentQuestion(message string) bool {
 		"أريد البحث عن ملف",
 		"اريد البحث عن ملف تعليمي",
 		"أريد البحث عن ملف تعليمي",
+		"اريد البحث عن ملف تعليمي",
+		"أريد البحث عن ملف تعليمي",
 	)
 }
 
@@ -434,6 +436,10 @@ func isGenericDownloadProblemQuestion(message string) bool {
 		"لا أستطيع تحميل ملف",
 		"لا استطيع تحميل الملفات",
 		"لا أستطيع تحميل الملفات",
+		"رابط التحميل لا يعمل",
+		"رابط التحميل لا يفتح",
+		"سجلت الدخول لكن التحميل لا يعمل",
+		"سجلت دخول لكن التحميل لا يعمل",
 		"مش قادر احمل",
 		"مش قادر أحمل",
 		"ما بقدر احمل",
@@ -541,6 +547,80 @@ func paymentAnswer() string {
 	return "المحتوى المتاح في الموقع يمكن تصفحه من الصفحات والبحث. إذا ظهر لك طلب تسجيل دخول أو تفعيل بريد، فهذا لا يعني وجود دفع مالي، بل قد يكون مطلوبًا لحماية التحميلات وتنظيم الوصول.\n\nإذا ظهرت لك صفحة دفع أو رسالة غير واضحة، أرسل نص الرسالة أو رابط الصفحة للإدارة للتأكد."
 }
 
+func isSimilarContentQuestion(message string) bool {
+	m := normalizeArabic(strings.ToLower(message))
+	return containsAny(m,
+		"اريد ملفات مشابهة لهذا المحتوى",
+		"أريد ملفات مشابهة لهذا المحتوى",
+		"ملفات مشابهة",
+		"محتوى مشابه",
+		"دروس مشابهة",
+		"مقالات مشابهة",
+		"ملفات نفس الموضوع",
+		"نفس المحتوى",
+	)
+}
+
+func isDownloadLinkBrokenQuestion(message string) bool {
+	m := normalizeArabic(strings.ToLower(message))
+	return containsAny(m,
+		"رابط التحميل لا يعمل",
+		"رابط التحميل لا يفتح",
+		"رابط لا يعمل",
+		"الرابط لا يعمل",
+		"الرابط لا يفتح",
+		"المرفق غير موجود",
+		"عدم الوصول",
+		"الملف غير موجود",
+		"رابط المرفق",
+		"بيعطي عدم الوصول",
+	)
+}
+
+func isLoggedInDownloadStillFails(message string) bool {
+	m := normalizeArabic(strings.ToLower(message))
+	return containsAny(m,
+		"سجلت الدخول لكن التحميل لا يعمل",
+		"سجلت دخول لكن التحميل لا يعمل",
+		"انا مسجل دخول والتحميل لا يعمل",
+		"أنا مسجل دخول والتحميل لا يعمل",
+		"دخلت الحساب وما يحمل",
+		"مسجل دخول وما بحمل",
+		"مسجل الدخول وما بقدر احمل",
+		"مسجل دخول لكن ما بقدر احمل",
+	)
+}
+
+func isResendVerificationQuestion(message string) bool {
+	m := normalizeArabic(strings.ToLower(message))
+	return containsAny(m,
+		"اعادة ارسال التفعيل",
+		"إعادة إرسال التفعيل",
+		"اعادة ارسال رسالة التفعيل",
+		"إعادة إرسال رسالة التفعيل",
+		"ارسل التفعيل مرة ثانية",
+		"ارسال كود التفعيل",
+		"كود التفعيل",
+		"رسالة التحقق لم تصل",
+		"رسالة التحقق لم تصل الى بريدي",
+		"لم تصلني رسالة التحقق",
+		"لم تصلني رسالة التفعيل",
+	)
+}
+
+func isShortGreeting(message string) bool {
+	m := normalizeArabic(strings.ToLower(strings.TrimSpace(message)))
+	return m == "مرحبا" || m == "اهلا" || m == "أهلا" || m == "هاي" || m == "السلام عليكم" || m == "هلا"
+}
+
+func isFullEducationalSearchQuery(message string) bool {
+	m := normalizeArabic(strings.ToLower(message))
+	hasContent := hasContentSearchWords(m) || isEducationalContentPhrase(message)
+	hasGrade := strings.Contains(m, "صف") || strings.Contains(m, "الصف") || strings.Contains(m, "خامس") || strings.Contains(m, "سادس") || strings.Contains(m, "سابع") || strings.Contains(m, "ثامن") || strings.Contains(m, "تاسع") || strings.Contains(m, "عاشر") || strings.Contains(m, "توجيهي")
+	hasSubject := strings.Contains(m, "عربي") || strings.Contains(m, "انجليزي") || strings.Contains(m, "انكليزي") || strings.Contains(m, "رياضيات") || strings.Contains(m, "علوم") || strings.Contains(m, "اسلام") || strings.Contains(m, "دين") || strings.Contains(m, "فيزياء") || strings.Contains(m, "كيمياء") || strings.Contains(m, "اجتماعيات") || strings.Contains(m, "ثقافه ماليه") || strings.Contains(m, "ثقافة مالية")
+	return hasContent && (hasGrade || hasSubject)
+}
+
 func resolveFlow(message, detectedIntent, lastIntent, currentStep string, authenticated bool) flowDecision {
 	m := normalizeArabic(strings.ToLower(message))
 	contains := func(words ...string) bool {
@@ -550,6 +630,25 @@ func resolveFlow(message, detectedIntent, lastIntent, currentStep string, authen
 			}
 		}
 		return false
+	}
+
+	if isShortGreeting(message) {
+		return flowDecision{Intent: "general_question", Step: "welcome", Confidence: 0.98, Answer: "مرحبًا بك. كيف أستطيع مساعدتك؟ يمكنك كتابة طلب مثل: أريد امتحان رياضيات الصف التاسع الفصل الثاني، أو لا أستطيع تحميل ملف."}
+	}
+	if isSimilarContentQuestion(message) {
+		return flowDecision{Intent: "similar_content", Step: "similar_content", Confidence: 0.96, Answer: contextualAnswer("similar_content", "similar_content", message, lastIntent)}
+	}
+	if isDownloadLinkBrokenQuestion(message) {
+		return flowDecision{Intent: "file_not_found", Step: "broken_download_link", Confidence: 0.97, Answer: contextualAnswer("file_not_found", "broken_download_link", message, lastIntent)}
+	}
+	if isLoggedInDownloadStillFails(message) {
+		return flowDecision{Intent: "download_problem", Step: "logged_in_download_issue", Confidence: 0.97, Answer: contextualAnswer("download_problem", "logged_in_download_issue", message, lastIntent)}
+	}
+	if isResendVerificationQuestion(message) {
+		return flowDecision{Intent: "email_verification_problem", Step: "resend_verification", Confidence: 0.97, Answer: contextualAnswer("email_verification_problem", "resend_verification", message, lastIntent)}
+	}
+	if isFullEducationalSearchQuery(message) {
+		return flowDecision{Intent: "search_content", Step: "content_followup", Confidence: 0.93}
 	}
 
 	if isOpenSearchHelpQuestion(message) {
@@ -716,6 +815,8 @@ func defaultStep(intent string) string {
 		return "payment_info"
 	case "open_article":
 		return "open_article"
+	case "similar_content":
+		return "similar_content"
 	case "site_services":
 		return "site_services"
 	case "about_site":
@@ -765,6 +866,10 @@ func contextualAnswer(intent, step, message, lastIntent string) string {
 	case "password_reset_problem":
 		return "خطوات استعادة كلمة المرور:\n\n1. افتح صفحة استعادة كلمة المرور.\n2. اكتب البريد المرتبط بحسابك.\n3. افحص البريد الوارد وSpam/Junk.\n4. افتح رابط الاستعادة واضبط كلمة مرور جديدة.\n5. إذا لم تصل الرسالة، تأكد من البريد ثم تواصل مع الإدارة."
 	case "email_verification_problem":
+		if step == "resend_verification" {
+			return "لإعادة إرسال رسالة التفعيل بشكل صحيح:\n\n1. افتح صفحة تسجيل الدخول.\n2. أدخل البريد وكلمة المرور.\n3. إذا ظهر خيار إعادة إرسال التفعيل، اضغطه مرة واحدة فقط.\n4. انتظر من 2 إلى 5 دقائق.\n5. افحص Inbox وSpam/Junk والرسائل الترويجية.\n6. افتح أحدث رسالة وصلت واضغط رابط تأكيد البريد.\n\nلا تضغط إعادة الإرسال مرات كثيرة حتى لا تصل رسائل متعددة وتستخدم رابطًا قديمًا."
+		}
+
 		if step == "expired_verification_link" {
 			return "إذا ظهرت رسالة أن رابط التحقق منتهي الصلاحية، فهذا يعني أن الرابط القديم لم يعد صالحًا.\n\nالحل الصحيح:\n\n1. افتح صفحة تسجيل الدخول.\n2. سجّل الدخول بالبريد وكلمة المرور.\n3. اضغط إعادة إرسال رسالة التفعيل مرة واحدة فقط.\n4. افتح أحدث رسالة وصلت إلى بريدك، وليس الرسائل القديمة.\n5. اضغط رابط التحقق الجديد خلال وقت قصير.\n\nإذا تكررت المشكلة، تواصل مع الإدارة واذكر البريد ووقت آخر محاولة."
 		}
@@ -782,6 +887,10 @@ func contextualAnswer(intent, step, message, lastIntent string) string {
 		}
 		return "خطوات حل مشكلة عدم وصول رسالة التفعيل:\n\n1. تأكد أن البريد مكتوب بشكل صحيح.\n2. افحص البريد غير الهام Spam/Junk والرسائل الترويجية.\n3. افتح صفحة تسجيل الدخول وسجّل الدخول.\n4. إذا ظهر خيار إعادة إرسال التفعيل، اضغط عليه مرة واحدة.\n5. انتظر من 2 إلى 5 دقائق.\n6. إذا لم تصل الرسالة، تواصل مع الإدارة مع ذكر البريد ووقت المحاولة."
 	case "download_problem":
+		if step == "logged_in_download_issue" {
+			return "إذا كنت مسجل الدخول لكن التحميل لا يعمل، جرّب بالترتيب:\n\n1. تأكد أن البريد الإلكتروني مفعّل، وليس مجرد تسجيل دخول فقط.\n2. افتح صفحة الملف الأصلية من داخل الموقع، ولا تستخدم رابط تحميل قديم.\n3. اضغط زر التحميل مرة واحدة وانتظر انتهاء أي عدّاد.\n4. إذا كنت داخل متصفح فيسبوك أو إنستغرام، افتح الصفحة في Chrome أو Safari.\n5. إذا بقيت المشكلة، أرسل رابط الصفحة ورسالة الخطأ للإدارة."
+		}
+
 		if step == "multiple_downloads" {
 			return "إذا حمّلت ملفًا واحدًا وتريد تحميل ملف ثانٍ أو ثالث، اتبع التالي:\n\n1. انتظر حتى يكتمل تحميل الملف الأول بالكامل.\n2. افتح صفحة الملف الثاني من داخل الموقع، ولا تستخدم رابط تحميل قديم.\n3. اضغط زر التحميل مرة واحدة فقط.\n4. إذا لم يبدأ التحميل، حدّث الصفحة وجرب من Chrome أو Safari.\n5. لا تضغط أزرار التحميل بسرعة متتالية حتى لا يعتبر النظام الطلبات مكررة."
 		}
@@ -824,6 +933,8 @@ func contextualAnswer(intent, step, message, lastIntent string) string {
 		return paymentAnswer()
 	case "open_article":
 		return "إذا كان لديك رابط مقال من الموقع، افتحه مباشرة من الرابط. وإذا لم يفتح، انسخ الرابط كاملًا وأرسله للإدارة مع وصف المشكلة.\n\nإذا كنت تبحث عن ملف داخل المقال، اكتب اسم الملف أو المادة والصف والفصل."
+	case "similar_content":
+		return "للعثور على ملفات مشابهة، استخدم عنوان الصفحة الحالية أو المادة والصف في البحث.\n\nاكتب مثلًا: نوع الملف + المادة + الصف + الفصل.\n\nإذا كنت داخل مقال محدد، انسخ عنوان المقال أو رابط الصفحة وأرسله لي حتى أساعدك بكلمات بحث أدق."
 	case "site_services":
 		return "خدمات الموقع تشمل: محتوى تعليمي للصفوف، بنك امتحانات وملفات، أخبار ومقالات تربوية، بحث وتصفية متقدمة، وخدمات للأعضاء والمعلمين مثل طلب ملفات أو إرسال اقتراحات عبر صفحة التواصل."
 	case "about_site":
@@ -863,6 +974,7 @@ func requiresContextualAnswer(message, intent, lastIntent string) bool {
 		"thanks",
 		"frustration",
 		"general_question",
+		"similar_content",
 		"download_problem",
 		"payment_question",
 		"open_article":
@@ -889,6 +1001,11 @@ func requiresContextualAnswer(message, intent, lastIntent string) bool {
 		"كيف افعل البريد الالكتروني",
 		"كيف أفعل البريد الإلكتروني",
 		"هل يجب علي ان ادفع المال",
+		"مرحبا",
+		"رسالة التحقق لم تصل",
+		"سجلت الدخول لكن التحميل لا يعمل",
+		"رابط التحميل لا يعمل",
+		"أريد ملفات مشابهة لهذا المحتوى",
 	) {
 		return true
 	}
@@ -927,6 +1044,9 @@ func buildActions(intent, step string, links []repo.ContentResult, entities sear
 	}
 
 	switch intent {
+	case "similar_content":
+		addLink("فتح البحث", "/search", "primary")
+		addLink("فتح الصفوف", "/jo", "secondary")
 	case "payment_question":
 		addLink("فتح صفحة التواصل", "/contact-us", "secondary")
 	case "open_article":
@@ -1014,6 +1134,18 @@ func detectIntent(message string) (string, float64) {
 	}
 
 	switch {
+	case isShortGreeting(message):
+		return "general_question", 0.98
+	case isSimilarContentQuestion(message):
+		return "similar_content", 0.96
+	case isDownloadLinkBrokenQuestion(message):
+		return "file_not_found", 0.97
+	case isLoggedInDownloadStillFails(message):
+		return "download_problem", 0.97
+	case isResendVerificationQuestion(message):
+		return "email_verification_problem", 0.97
+	case isFullEducationalSearchQuery(message):
+		return "search_content", 0.93
 	case isOpenSearchHelpQuestion(message):
 		return "open_search", 0.97
 	case isPaymentQuestion(message):
@@ -1206,7 +1338,7 @@ func relaxedSearchQueries(message string, e searchEntities) []string {
 }
 
 func shouldRunContentSearch(intent, message string, entities searchEntities) bool {
-	if intent == "payment_question" || intent == "open_article" || intent == "site_usage" || intent == "site_services" || intent == "about_site" || intent == "privacy_request" || intent == "open_classes" || intent == "open_search" {
+	if intent == "similar_content" || intent == "payment_question" || intent == "open_article" || intent == "site_usage" || intent == "site_services" || intent == "about_site" || intent == "privacy_request" || intent == "open_classes" || intent == "open_search" {
 		return false
 	}
 	if isContentIntent(intent) {
@@ -1508,9 +1640,9 @@ func buildSearchAnswer(e searchEntities, links []repo.ContentResult) string {
 		missing = append(missing, "نوع الملف")
 	}
 	if len(missing) > 0 {
-		return "لم أجد نتائج واضحة حتى الآن. لتحسين البحث، أرسل التفاصيل بهذه الصيغة:\n\nنوع الملف + المادة + الصف + الفصل\n\nمثال: امتحانات اللغة العربية الصف التاسع الفصل الأول.\n\nالبيانات الناقصة غالبًا: " + strings.Join(missing, "، ") + "."
+		return "لم أجد نتيجة دقيقة حتى الآن. لتحسين البحث، أرسل التفاصيل بهذه الصيغة:\n\nنوع الملف + المادة + الصف + الفصل\n\nمثال: امتحانات اللغة العربية الصف التاسع الفصل الأول.\n\nالبيانات الناقصة غالبًا: " + strings.Join(missing, "، ") + "."
 	}
-	return "لم تظهر نتيجة مطابقة في البحث السريع داخل الدردشة. هذا لا يعني بالضرورة أن الملف غير موجود. جرّب فتح صفحة البحث بهذه الكلمات أو اكتب العنوان الكامل كما يظهر في الموقع. إذا كان الملف موجودًا ولم يظهر هنا، أرسل رابط الصفحة أو العنوان للإدارة ليتم تحسين الفهرسة."
+	return "لم أجد نتيجة دقيقة داخل الدردشة. جرّب فتح البحث بنفس الكلمات، أو اكتب العنوان كاملًا مع الصف والمادة والفصل. إذا كان الملف موجودًا في الموقع ولم يظهر هنا، أرسل رابط الصفحة للإدارة لتحسين الفهرسة."
 }
 
 func isUnsupportedPhoneOrUsernameQuestion(message string) bool {
@@ -1651,6 +1783,8 @@ func ruleAnswer(intent string) string {
 		return "لطلب إضافة ملف أو درس غير موجود، استخدم صفحة اتصل بنا واكتب بوضوح:\n\n1. الدولة أو المنهج.\n2. الصف.\n3. المادة.\n4. الفصل الدراسي.\n5. نوع الملف المطلوب مثل اختبار، ورقة عمل، خطة، تحليل محتوى.\n6. العنوان الكامل إن كان متوفرًا.\n\nكلما كان الطلب أدق، كانت مراجعته أسرع."
 	case "contact_support":
 		return "إذا بقيت المشكلة بعد تجربة الحلول، استخدم صفحة التواصل واكتب البريد المستخدم ورابط الصفحة ورسالة الخطأ الظاهرة حتى تستطيع الإدارة مراجعتها بسرعة."
+	case "similar_content":
+		return contextualAnswer("similar_content", "similar_content", "", "")
 	case "find_grade", "find_subject", "find_semester", "search_content":
 		return "اكتب اسم الصف والمادة والفصل أو نوع الملف الذي تريده، مثال: رياضيات الصف التاسع الفصل الأول اختبار، وسأبحث لك داخل محتوى الموقع."
 	case "general_question":

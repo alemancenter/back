@@ -103,6 +103,14 @@ func main() {
 		&models.ContentAISuggestion{},
 		&models.ContentAIFixPreview{},
 		&models.ContentAIApprovalLog{},
+		&models.SubscriptionPlan{},
+		&models.TeacherProfile{},
+		&models.TeacherSubscription{},
+		&models.SubscriptionOrder{},
+		&models.TeacherDevice{},
+		&models.TeacherLibraryItem{},
+		&models.TeacherPremiumDownload{},
+		&models.TeacherAIGeneration{},
 	}
 	seen := make(map[*gorm.DB]bool)
 	for _, id := range []database.CountryID{database.CountryJordan, database.CountrySaudi, database.CountryEgypt, database.CountryPalestine} {
@@ -119,8 +127,28 @@ func main() {
 			logger.Warn("auto-migrate failed", zap.String("country", database.CountryCode(id)), zap.Error(err))
 		}
 		ensureContentAISchema(db, database.CountryCode(id))
+		if err := services.EnsureTeacherSubscriptionDatabase(db); err != nil {
+			logger.Warn("teacher subscription database bootstrap failed", zap.String("country", database.CountryCode(id)), zap.Error(err))
+		}
 	}
 	ensurePermission("manage content audit")
+	ensurePermission("manage teacher subscriptions")
+	ensurePermission("teacher.subscription.plans.view")
+	ensurePermission("teacher.subscription.orders.review")
+	ensurePermission("teacher.usage.view")
+	ensurePermission("teacher.devices.manage")
+	ensurePermission("teacher.library.access")
+	ensurePermission("teacher.ai.remedial_plan.generate")
+	ensurePermission("teacher.ai.worksheet.generate")
+	ensurePermission("teacher.ai.answer_key.generate")
+	ensurePermission("teacher.ai.exam.generate")
+	ensurePermission("teacher.files.word_pdf.export")
+	ensurePermission("teacher.files.premium.download")
+	ensurePermission("teacher.subscription.access")
+
+	if err := services.EnsureTeacherSubscriptionDatabase(database.DB()); err != nil {
+		logger.Warn("teacher subscription main database bootstrap failed", zap.Error(err))
+	}
 
 	// Initialize Redis
 	logger.Info("Connecting to Redis...")

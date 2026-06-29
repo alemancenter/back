@@ -96,11 +96,17 @@ type File struct {
 	FileSize     int64   `json:"file_size"`
 	MimeType     string  `gorm:"type:varchar(100)" json:"mime_type"`
 	// ViewCount is the modern file view counter column. Some legacy databases still use views_count.
-	ViewCount     int       `gorm:"column:view_count;default:0" json:"view_count"`
-	ViewsCount    int       `gorm:"column:views_count;default:0" json:"views_count"`
-	DownloadCount int       `gorm:"column:download_count;default:0" json:"download_count"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ViewCount                   int       `gorm:"column:view_count;default:0" json:"view_count"`
+	ViewsCount                  int       `gorm:"column:views_count;default:0" json:"views_count"`
+	DownloadCount               int       `gorm:"column:download_count;default:0" json:"download_count"`
+	IsPremium                   bool      `gorm:"column:is_premium;default:false;index" json:"is_premium"`
+	PremiumAudience             string    `gorm:"column:premium_audience;type:varchar(50);default:'';index" json:"premium_audience"`
+	PremiumCategory             string    `gorm:"column:premium_category;type:varchar(80);default:'';index" json:"premium_category"`
+	PremiumRequiresSubscription bool      `gorm:"column:premium_requires_subscription;default:false;index" json:"premium_requires_subscription"`
+	PremiumSubject              string    `gorm:"column:premium_subject;type:varchar(255);default:'';index" json:"premium_subject"`
+	PremiumDownloadCount        int       `gorm:"column:premium_download_count;default:0" json:"premium_download_count"`
+	CreatedAt                   time.Time `json:"created_at"`
+	UpdatedAt                   time.Time `json:"updated_at"`
 
 	Article *Article `gorm:"foreignKey:ArticleID" json:"article,omitempty"`
 	Post    *Post    `gorm:"foreignKey:PostID" json:"post,omitempty"`

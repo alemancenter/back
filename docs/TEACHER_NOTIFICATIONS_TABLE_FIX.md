@@ -1,0 +1,1 @@
+Fix for missing teacher_notifications table. Backend now AutoMigrates teacher_notifications and teacher_payment_settings before use. Frontend catches teacher notification page errors.

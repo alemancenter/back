@@ -1,0 +1,21 @@
+{
+  "source_file": "back01(4).zip",
+  "consolidation": "Teacher Pro v1",
+  "checked_at": "2026-06-07 16:52:25",
+  "checks": {
+    "gofmt_ok": true,
+    "service_interface_missing_methods": [],
+    "repository_interface_missing_methods": [],
+    "service_duplicate_methods": [],
+    "repository_duplicate_methods": [],
+    "bootstrap_safe_no_models_file_automigrate": true,
+    "bootstrap_auth_tables_guard": true,
+    "notification_table_auto_migrate": true,
+    "payment_settings_auto_migrate": true,
+    "archived_at_not_used_on_teacher_devices": true,
+    "teacher_pro_models": true,
+    "reports_routes": true,
+    "ai_routes": true
+  },
+  "go_build_note": "Not executed successfully in sandbox because Go 1.25 toolchain download is blocked by no internet; run locally/server with Go 1.25 installed."
+}

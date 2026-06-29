@@ -197,7 +197,8 @@ func applyEnvAndConfigUpdates(updates map[string]string) {
 
 var (
 	adsenseClientRe  = regexp.MustCompile(`^ca-pub-\d+$`)
-	adAllowedKeys    = map[string]bool{"ad_slot": true, "format": true, "responsive": true}
+	adSafeValueRe    = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+	adAllowedKeys    = map[string]bool{"ad_slot": true, "format": true, "responsive": true, "ad_layout": true, "ad_layout_key": true, "ad_type": true}
 	adForbiddenWords = []string{"<script", "<iframe", "javascript:", "data:", "vbscript:"}
 )
 
@@ -235,6 +236,19 @@ func validateAdUpdates(updates map[string]string) error {
 		slot, ok := parsed["ad_slot"].(string)
 		if !ok || strings.TrimSpace(slot) == "" {
 			return fmt.Errorf("%s: ad_slot must be a non-empty string", key)
+		}
+		for _, field := range []string{"format", "ad_layout", "ad_layout_key", "ad_type"} {
+			raw, ok := parsed[field]
+			if !ok || raw == nil {
+				continue
+			}
+			value, ok := raw.(string)
+			if !ok || strings.TrimSpace(value) == "" || !adSafeValueRe.MatchString(strings.TrimSpace(value)) {
+				return fmt.Errorf("%s: %s must be a safe string", key, field)
+			}
+		}
+		if adType, ok := parsed["ad_type"].(string); ok && adType != "" && adType != "display" && adType != "in_article" {
+			return fmt.Errorf("%s: ad_type must be display or in_article", key)
 		}
 	}
 	return nil
@@ -641,7 +655,6 @@ func firstSetting(settings map[string]string, keys ...string) string {
 	}
 	return ""
 }
-
 
 // invalidateAllCountrySettingsCache clears the Redis settings cache for every
 // country database. Call this whenever a setting that must be globally consistent

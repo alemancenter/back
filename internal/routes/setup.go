@@ -81,6 +81,7 @@ func Setup(app *fiber.App) *Handlers {
 	registerCommunicationRoutes(public, dash, deps)
 	registerSystemRoutes(api, public, dash, deps)
 	registerAnalyticsRoutes(public, dash, deps)
+	registerTeacherSubscriptionRoutes(api, dash, deps)
 
 	return deps
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/alemancenter/fiber-api/internal/handlers/security"
 	"github.com/alemancenter/fiber-api/internal/handlers/settings"
 	"github.com/alemancenter/fiber-api/internal/handlers/sitemap"
+	"github.com/alemancenter/fiber-api/internal/handlers/teacher_subscription"
 	"github.com/alemancenter/fiber-api/internal/handlers/users"
 	"github.com/alemancenter/fiber-api/internal/repositories"
 	chatbotRepo "github.com/alemancenter/fiber-api/internal/repositories/chatbot"
@@ -38,34 +39,35 @@ import (
 )
 
 type Handlers struct {
-	Dashboard       *dashboard.Handler
-	Auth            *auth.Handler
-	Articles        *articles.Handler
-	Posts           *posts.Handler
-	Users           *users.Handler
-	Files           *files.Handler
-	Comments        *comments.Handler
-	Categories      *categories.Handler
-	Grades          *grades.Handler
-	Calendar        *calendar.Handler
-	Notifications   *notifications.Handler
-	Messages        *messages.Handler
-	ContactMessages *contactmsgHandler.Handler
-	Chatbot         *chatbotHandler.Handler
-	Security        *security.Handler
-	Settings        *settings.Handler
-	Sitemap         *sitemap.Handler
-	Analytics       *analytics.Handler
-	Roles           *roles.Handler
-	Redis           *redisHandler.Handler
-	Health          *health.Handler
-	Home            *home.Handler
-	Keywords        *keywords.Handler
-	AI              *ai.Handler
-	ContentAudit    *contentauditHandler.Handler
-	EmailVerify     *emailverification.Handler
-	EmailBounce     *emailbounce.Handler
-	BounceReader    *services.BounceIMAPReader
+	Dashboard           *dashboard.Handler
+	Auth                *auth.Handler
+	Articles            *articles.Handler
+	Posts               *posts.Handler
+	Users               *users.Handler
+	Files               *files.Handler
+	Comments            *comments.Handler
+	Categories          *categories.Handler
+	Grades              *grades.Handler
+	Calendar            *calendar.Handler
+	Notifications       *notifications.Handler
+	Messages            *messages.Handler
+	ContactMessages     *contactmsgHandler.Handler
+	Chatbot             *chatbotHandler.Handler
+	Security            *security.Handler
+	Settings            *settings.Handler
+	Sitemap             *sitemap.Handler
+	Analytics           *analytics.Handler
+	Roles               *roles.Handler
+	Redis               *redisHandler.Handler
+	Health              *health.Handler
+	Home                *home.Handler
+	Keywords            *keywords.Handler
+	AI                  *ai.Handler
+	ContentAudit        *contentauditHandler.Handler
+	EmailVerify         *emailverification.Handler
+	EmailBounce         *emailbounce.Handler
+	TeacherSubscription *teacher_subscription.Handler
+	BounceReader        *services.BounceIMAPReader
 
 	// SettingsSvc is exposed so middlewares (e.g. download auth gate) can read
 	// settings at request time without re-instantiating the service.
@@ -152,6 +154,10 @@ func NewDependencies() *Handlers {
 	keywordRepo := repositories.NewKeywordRepository()
 	keywordSvc := services.NewKeywordService(keywordRepo)
 
+	teacherSubRepo := repositories.NewTeacherSubscriptionRepository()
+	teacherSubSvc := services.NewTeacherSubscriptionService(teacherSubRepo)
+	_, _ = teacherSubSvc.EnsureDefaultPlan()
+
 	contentAuditRepo := repositories.NewContentAuditRepository()
 	aiSvc := services.NewAIService(config.Load().AI.TogetherAPIKey)
 	contentAuditSvc := contentauditService.NewServiceWithAIAndNotifications(contentAuditRepo, contentauditService.Options{}, aiSvc, notificationSvc)
@@ -161,34 +167,35 @@ func NewDependencies() *Handlers {
 	bounceReader := services.NewBounceIMAPReader(services.NewBounceProcessorService())
 
 	return &Handlers{
-		Dashboard:       dashboard.New(dashboardSvc),
-		Auth:            auth.New(authSvc),
-		Articles:        articles.New(articleSvc, notificationSvc),
-		Posts:           posts.New(postSvc, notificationSvc),
-		Users:           users.New(userSvc, notificationSvc),
-		Files:           files.New(fileSvc),
-		Comments:        comments.New(commentSvc),
-		Categories:      categories.New(categorySvc),
-		Grades:          grades.New(gradeSvc, fileSvc),
-		Calendar:        calendar.New(calendarSvc),
-		Notifications:   notifications.New(notificationSvc),
-		Messages:        messages.New(messageSvc, notificationSvc),
-		ContactMessages: contactmsgHandler.New(contactMsgSvc),
-		Chatbot:         chatbotHandler.New(chatbotService),
-		Security:        security.New(securitySvc),
-		Settings:        settings.New(settingSvc, notificationSvc),
-		Sitemap:         sitemap.New(sitemapSvc),
-		Analytics:       analytics.New(analyticsSvc),
-		Roles:           roles.New(roleSvc),
-		Redis:           redisHandler.New(redisSvc),
-		Health:          health.New(healthSvc),
-		Home:            home.New(homeSvc),
-		Keywords:        keywords.New(keywordSvc),
-		AI:              ai.New(aiSvc),
-		ContentAudit:    contentauditHandler.New(contentAuditSvc),
-		EmailVerify:     emailverification.New(emailVerifySvc),
-		EmailBounce:     emailbounce.New(bounceReader),
-		BounceReader:    bounceReader,
-		SettingsSvc:     settingSvc,
+		Dashboard:           dashboard.New(dashboardSvc),
+		Auth:                auth.New(authSvc),
+		Articles:            articles.New(articleSvc, notificationSvc),
+		Posts:               posts.New(postSvc, notificationSvc),
+		Users:               users.New(userSvc, notificationSvc),
+		Files:               files.New(fileSvc),
+		Comments:            comments.New(commentSvc),
+		Categories:          categories.New(categorySvc),
+		Grades:              grades.New(gradeSvc, fileSvc),
+		Calendar:            calendar.New(calendarSvc),
+		Notifications:       notifications.New(notificationSvc),
+		Messages:            messages.New(messageSvc, notificationSvc),
+		ContactMessages:     contactmsgHandler.New(contactMsgSvc),
+		Chatbot:             chatbotHandler.New(chatbotService),
+		Security:            security.New(securitySvc),
+		Settings:            settings.New(settingSvc, notificationSvc),
+		Sitemap:             sitemap.New(sitemapSvc),
+		Analytics:           analytics.New(analyticsSvc),
+		Roles:               roles.New(roleSvc),
+		Redis:               redisHandler.New(redisSvc),
+		Health:              health.New(healthSvc),
+		Home:                home.New(homeSvc),
+		Keywords:            keywords.New(keywordSvc),
+		AI:                  ai.New(aiSvc),
+		ContentAudit:        contentauditHandler.New(contentAuditSvc),
+		EmailVerify:         emailverification.New(emailVerifySvc),
+		EmailBounce:         emailbounce.New(bounceReader),
+		TeacherSubscription: teacher_subscription.New(teacherSubSvc),
+		BounceReader:        bounceReader,
+		SettingsSvc:         settingSvc,
 	}
 }

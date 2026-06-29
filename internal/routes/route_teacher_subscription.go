@@ -1,0 +1,61 @@
+package routes
+
+import (
+	"github.com/alemancenter/fiber-api/internal/middleware"
+	"github.com/gofiber/fiber/v2"
+)
+
+// registerTeacherSubscriptionRoutes handles the paid teacher semester subscription MVP.
+func registerTeacherSubscriptionRoutes(api, dash fiber.Router, h *Handlers) {
+	teacher := api.Group("/teacher-subscription")
+	teacher.Get("/plan", h.TeacherSubscription.Plan)
+	teacher.Get("/design", h.TeacherSubscription.PlanDesign)
+	teacher.Get("/payment-settings", h.TeacherSubscription.PaymentSettings)
+
+	secure := teacher.Group("", middleware.Auth(), middleware.RequireVerifiedEmail(), middleware.UpdateLastActivity())
+	secure.Get("/me", h.TeacherSubscription.Me)
+	secure.Get("/access", h.TeacherSubscription.Access)
+	secure.Get("/workspace", h.TeacherSubscription.Workspace)
+	secure.Get("/files", h.TeacherSubscription.PremiumFiles)
+	secure.Get("/premium-files/:id/download", h.TeacherSubscription.DownloadPremiumVaultFile)
+	secure.Get("/library", h.TeacherSubscription.Library)
+	secure.Post("/library", h.TeacherSubscription.SaveLibraryItem)
+	secure.Get("/downloads", h.TeacherSubscription.Downloads)
+	secure.Get("/ai-generations", h.TeacherSubscription.AIGenerations)
+	secure.Post("/ai/generate", h.TeacherSubscription.GenerateAI)
+	secure.Get("/ai-generations/:id/export", h.TeacherSubscription.ExportAI)
+	secure.Get("/notifications", h.TeacherSubscription.TeacherNotifications)
+	secure.Post("/orders", h.TeacherSubscription.CreateOrder)
+	secure.Post("/orders/with-proof", h.TeacherSubscription.CreateOrderWithProof)
+	secure.Get("/devices", h.TeacherSubscription.MyDevices)
+	secure.Delete("/devices/:id", h.TeacherSubscription.DeactivateMyDevice)
+
+	admin := dash.Group("/teacher-subscriptions", middleware.Can("manage teacher subscriptions"))
+	admin.Get("/dashboard", h.TeacherSubscription.AdminDashboard)
+	admin.Get("/reports/finance", h.TeacherSubscription.AdminFinancialReport)
+	admin.Get("/reports/analytics", h.TeacherSubscription.AdminUsageAnalytics)
+	admin.Post("/maintenance/expire", h.TeacherSubscription.AdminRunExpiryMaintenance)
+	admin.Get("/audit-logs", h.TeacherSubscription.AdminListAuditLogs)
+	admin.Get("/premium-files", h.TeacherSubscription.AdminListPremiumVaultFiles)
+	admin.Get("/premium-files/:id/detail", h.TeacherSubscription.AdminGetPremiumVaultFileDetail)
+	admin.Post("/premium-files/:id/archive", h.TeacherSubscription.AdminArchivePremiumVaultFile)
+	admin.Post("/premium-files/upload", h.TeacherSubscription.AdminCreatePremiumVaultFile)
+	admin.Post("/premium-files/:id", h.TeacherSubscription.AdminUpdatePremiumVaultFile)
+	admin.Post("/premium-files/:id/disable", h.TeacherSubscription.AdminDisablePremiumVaultFile)
+	admin.Get("/subscriptions", h.TeacherSubscription.AdminListSubscriptions)
+	admin.Post("/subscriptions/:id/cancel", h.TeacherSubscription.AdminCancelSubscription)
+	admin.Post("/subscriptions/:id/renew", h.TeacherSubscription.AdminRenewSubscription)
+	admin.Post("/subscriptions/:id/reactivate", h.TeacherSubscription.AdminReactivateSubscription)
+	admin.Get("/teachers", h.TeacherSubscription.AdminListTeachers)
+	admin.Get("/teachers/:userID/detail", h.TeacherSubscription.AdminTeacherDetail)
+	admin.Post("/teachers/:userID/remove-membership", h.TeacherSubscription.AdminRemoveTeacherMembership)
+	admin.Get("/devices", h.TeacherSubscription.AdminListDevices)
+	admin.Post("/devices/:id/deactivate", h.TeacherSubscription.AdminDeactivateTeacherDevice)
+	admin.Get("/downloads", h.TeacherSubscription.AdminListPremiumDownloads)
+	admin.Get("/ai-generations", h.TeacherSubscription.AdminListAIGenerations)
+	admin.Get("/orders", h.TeacherSubscription.AdminListOrders)
+	admin.Get("/orders/:id", h.TeacherSubscription.AdminGetOrderDetail)
+	admin.Get("/orders/:id/proof", h.TeacherSubscription.AdminDownloadOrderProof)
+	admin.Post("/orders/:id/approve", h.TeacherSubscription.AdminApproveOrder)
+	admin.Post("/orders/:id/reject", h.TeacherSubscription.AdminRejectOrder)
+}

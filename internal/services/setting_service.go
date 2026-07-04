@@ -28,6 +28,55 @@ func NewSettingService(repo repositories.SettingRepository) SettingService {
 	return &settingService{repo: repo}
 }
 
+var publicSettingKeys = map[string]bool{
+	"adsense_client":       true,
+	"canonical_url":        true,
+	"cookieyes_id":         true,
+	"date_format":          true,
+	"enable_notifications": true,
+	"enable_registration":  true,
+	"facebook_pixel_id":    true,
+	"footer_text":          true,
+	"recaptcha_site_key":   true,
+	"twitter_handle":       true,
+}
+
+var privateSettingMarkers = []string{
+	"bounce_",
+	"client_secret",
+	"imap",
+	"mail_",
+	"password",
+	"private",
+	"secret",
+	"smtp",
+	"token",
+	"_api_key",
+}
+
+func isPublicSettingKey(key string) bool {
+	lowerKey := strings.ToLower(key)
+	for _, marker := range privateSettingMarkers {
+		if strings.Contains(lowerKey, marker) {
+			return false
+		}
+	}
+	if publicSettingKeys[key] {
+		return true
+	}
+	for _, prefix := range []string{
+		"contact_",
+		"google_ads_",
+		"site_",
+		"social_",
+	} {
+		if strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *settingService) GetAll(ctx context.Context, countryID database.CountryID) (map[string]string, error) {
 	rows, err := s.repo.GetAll(ctx, countryID)
 	if err != nil {
@@ -57,7 +106,7 @@ func (s *settingService) GetPublic(ctx context.Context, countryID database.Count
 
 		m := make(map[string]string, len(rows))
 		for _, row := range rows {
-			if row.Value != nil {
+			if row.Value != nil && isPublicSettingKey(row.Key) {
 				m[row.Key] = strings.ReplaceAll(*row.Value, "\\", "/")
 			}
 		}
@@ -76,7 +125,7 @@ func (s *settingService) GetPublic(ctx context.Context, countryID database.Count
 	}
 
 	// ── canonical_url / site_url fallback ──
-	
+
 	frontendURL := strings.TrimSpace(config.Get().Frontend.URL)
 	if frontendURL != "" {
 		if strings.TrimSpace(result["canonical_url"]) == "" {

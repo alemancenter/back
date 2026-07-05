@@ -154,12 +154,13 @@ func NewDependencies() *Handlers {
 	keywordRepo := repositories.NewKeywordRepository()
 	keywordSvc := services.NewKeywordService(keywordRepo)
 
+	aiSvc := services.NewAIService(config.Load().AI.TogetherAPIKey)
+
 	teacherSubRepo := repositories.NewTeacherSubscriptionRepository()
-	teacherSubSvc := services.NewTeacherSubscriptionService(teacherSubRepo)
+	teacherSubSvc := services.NewTeacherSubscriptionService(teacherSubRepo, aiSvc)
 	_, _ = teacherSubSvc.EnsureDefaultPlan()
 
 	contentAuditRepo := repositories.NewContentAuditRepository()
-	aiSvc := services.NewAIService(config.Load().AI.TogetherAPIKey)
 	contentAuditSvc := contentauditService.NewServiceWithAIAndNotifications(contentAuditRepo, contentauditService.Options{}, aiSvc, notificationSvc)
 
 	homeSvc := services.NewHomeService(articleRepo, postRepo, categoryRepo, gradeRepo, cacheSvc, settingSvc)

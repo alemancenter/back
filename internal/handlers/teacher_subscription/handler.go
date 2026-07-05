@@ -341,8 +341,18 @@ func (h *Handler) CreateOrderWithProof(c *fiber.Ctx) error {
 		proofURL = "private://" + proofPath
 	}
 
+	// The multipart form sends subjects as a comma-separated string (e.g.
+	// "رياضيات,علوم,لغة عربية") since HTML forms don't carry JSON arrays.
+	var subjects []string
+	for _, s := range strings.Split(c.FormValue("subjects"), ",") {
+		if v := strings.TrimSpace(s); v != "" {
+			subjects = append(subjects, v)
+		}
+	}
+
 	req := services.CreateTeacherOrderRequest{
 		Subject:         c.FormValue("subject"),
+		Subjects:        subjects,
 		School:          c.FormValue("school"),
 		City:            c.FormValue("city"),
 		Phone:           c.FormValue("phone"),

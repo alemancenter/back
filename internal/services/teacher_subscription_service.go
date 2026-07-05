@@ -9,6 +9,7 @@ import (
 	"html"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -27,7 +28,95 @@ var (
 const (
 	TeacherSemesterPlanCode = "teacher_semester"
 	TeacherProRoleName      = "Teacher Pro"
+	// MaxTeacherSubjects caps how many subjects a single teacher subscription
+	// may cover. Was previously hard-limited to exactly one subject.
+	MaxTeacherSubjects = 3
 )
+
+// normalizeTeacherSubjects trims, dedupes (case-insensitive), and caps a
+// requested subject list at MaxTeacherSubjects. If the list is empty it falls
+// back to fallbackSingle (legacy single-subject callers/payloads).
+func normalizeTeacherSubjects(list []string, fallbackSingle string) []string {
+	seen := make(map[string]bool, MaxTeacherSubjects)
+	result := make([]string, 0, MaxTeacherSubjects)
+	add := func(raw string) {
+		v := strings.TrimSpace(raw)
+		if v == "" || len(result) >= MaxTeacherSubjects {
+			return
+		}
+		key := strings.ToLower(v)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		result = append(result, v)
+	}
+	for _, s := range list {
+		add(s)
+	}
+	if len(result) == 0 && strings.TrimSpace(fallbackSingle) != "" {
+		add(fallbackSingle)
+	}
+	return result
+}
+
+// encodeTeacherSubjects serializes a subject list into the JSON string stored
+// in TeacherProfile.Subjects.
+func encodeTeacherSubjects(subjects []string) string {
+	if len(subjects) == 0 {
+		return "[]"
+	}
+	encoded, err := json.Marshal(subjects)
+	if err != nil {
+		return "[]"
+	}
+	return string(encoded)
+}
+
+// decodeTeacherSubjects parses TeacherProfile.Subjects back into a slice.
+// Falls back to treating the raw value as a single legacy subject string if
+// it isn't valid JSON (covers rows written before this field existed).
+func decodeTeacherSubjects(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var list []string
+	if err := json.Unmarshal([]byte(raw), &list); err == nil {
+		return list
+	}
+	return []string{raw}
+}
+
+// teacherProfileSubjects returns the effective subject list for a profile,
+// preferring the new multi-subject field and falling back to the legacy
+// single Subject column for older rows.
+func teacherProfileSubjects(profile *models.TeacherProfile) []string {
+	if profile == nil {
+		return nil
+	}
+	if strings.TrimSpace(profile.Subjects) != "" {
+		if list := decodeTeacherSubjects(profile.Subjects); len(list) > 0 {
+			return list
+		}
+	}
+	if strings.TrimSpace(profile.Subject) != "" {
+		return []string{strings.TrimSpace(profile.Subject)}
+	}
+	return nil
+}
+
+// teacherHasSubject reports whether any of the teacher's registered subjects
+// matches the given subject (using the same loose substring comparison as
+// subjectsMatch).
+func teacherHasSubject(profile *models.TeacherProfile, subject string) bool {
+	for _, s := range teacherProfileSubjects(profile) {
+		if subjectsMatch(s, subject) {
+			return true
+		}
+	}
+	return false
+}
 
 var TeacherSemesterPermissions = []string{
 	"teacher.subscription.access",
@@ -49,6 +138,7 @@ var TeacherAdminPermissions = []string{
 }
 
 var TeacherSemesterFeatures = []string{
+	"اختر حتى 3 مواد دراسية ضمن الاشتراك الواحد",
 	"نماذج امتحانات حديثة ومتنوعة",
 	"خطط فصلية وتحليل محتوى",
 	"أوراق عمل وخطط علاجية",
@@ -81,7 +171,9 @@ type TeacherAccessResult struct {
 }
 
 type TeacherWorkspaceSummary struct {
+	// Subject is deprecated (first entry of Subjects), kept for backward compatibility.
 	Subject      string                      `json:"subject"`
+	Subjects     []string                    `json:"subjects"`
 	Subscription *models.TeacherSubscription `json:"subscription,omitempty"`
 	Usage        map[string]int64            `json:"usage"`
 	Limits       map[string]int              `json:"limits"`
@@ -234,7 +326,11 @@ type TeacherAdminDashboard struct {
 }
 
 type CreateTeacherOrderRequest struct {
-	Subject         string `json:"subject"`
+	// Subject is deprecated (kept for backward compatibility with older
+	// clients). Subjects is the canonical field going forward and accepts up
+	// to MaxTeacherSubjects entries.
+	Subject         string   `json:"subject"`
+	Subjects        []string `json:"subjects"`
 	School          string `json:"school"`
 	City            string `json:"city"`
 	Phone           string `json:"phone"`
@@ -257,10 +353,13 @@ type TeacherOrderDetail struct {
 }
 
 type TeacherSubscriptionSummary struct {
-	Plan           *models.SubscriptionPlan    `json:"plan"`
-	Subscription   *models.TeacherSubscription `json:"subscription,omitempty"`
-	Profile        *models.TeacherProfile      `json:"profile,omitempty"`
-	Orders         []models.SubscriptionOrder  `json:"orders"`
+	Plan         *models.SubscriptionPlan    `json:"plan"`
+	Subscription *models.TeacherSubscription `json:"subscription,omitempty"`
+	Profile      *models.TeacherProfile      `json:"profile,omitempty"`
+	// Subjects is the decoded, ready-to-render subject list (up to
+	// MaxTeacherSubjects) — a convenience over parsing Profile.Subjects JSON.
+	Subjects       []string                   `json:"subjects"`
+	Orders         []models.SubscriptionOrder `json:"orders"`
 	Devices        []models.TeacherDevice      `json:"devices,omitempty"`
 	Usage          map[string]int64            `json:"usage"`
 	HasActive      bool                        `json:"has_active"`
@@ -392,10 +491,14 @@ type TeacherSubscriptionService interface {
 
 type teacherSubscriptionService struct {
 	repo repositories.TeacherSubscriptionRepository
+	// ai is optional (may be nil in tests/older wiring). When present,
+	// GenerateTeacherAI tries it first and only falls back to the static
+	// template if the call errors or the service isn't configured.
+	ai AIService
 }
 
-func NewTeacherSubscriptionService(repo repositories.TeacherSubscriptionRepository) TeacherSubscriptionService {
-	return &teacherSubscriptionService{repo: repo}
+func NewTeacherSubscriptionService(repo repositories.TeacherSubscriptionRepository, ai AIService) TeacherSubscriptionService {
+	return &teacherSubscriptionService{repo: repo, ai: ai}
 }
 
 func (s *teacherSubscriptionService) EnsureTeacherProRole() (*models.Role, error) {
@@ -459,6 +562,7 @@ func (s *teacherSubscriptionService) PlanDesign() TeacherPlanDesign {
 			"premium_downloads": 300,
 			"ai_generations":    100,
 			"exports":           100,
+			"subjects":          MaxTeacherSubjects,
 		},
 	}
 }
@@ -574,6 +678,7 @@ func (s *teacherSubscriptionService) MySummary(userID uint) (*TeacherSubscriptio
 		Plan:           plan,
 		Subscription:   sub,
 		Profile:        profile,
+		Subjects:       teacherProfileSubjects(profile),
 		Orders:         orders,
 		Devices:        devices,
 		Usage:          usage,
@@ -585,7 +690,8 @@ func (s *teacherSubscriptionService) MySummary(userID uint) (*TeacherSubscriptio
 }
 
 func (s *teacherSubscriptionService) CreateOrder(user *models.User, req CreateTeacherOrderRequest) (*models.SubscriptionOrder, error) {
-	if strings.TrimSpace(req.Subject) == "" {
+	subjects := normalizeTeacherSubjects(req.Subjects, req.Subject)
+	if len(subjects) == 0 {
 		return nil, errors.New("teacher subject is required")
 	}
 	plan, err := s.PublicPlan()
@@ -593,11 +699,12 @@ func (s *teacherSubscriptionService) CreateOrder(user *models.User, req CreateTe
 		return nil, err
 	}
 	profile := &models.TeacherProfile{
-		UserID:  user.ID,
-		Subject: strings.TrimSpace(req.Subject),
-		School:  strings.TrimSpace(req.School),
-		City:    strings.TrimSpace(req.City),
-		Phone:   strings.TrimSpace(req.Phone),
+		UserID:   user.ID,
+		Subject:  subjects[0],
+		Subjects: encodeTeacherSubjects(subjects),
+		School:   strings.TrimSpace(req.School),
+		City:     strings.TrimSpace(req.City),
+		Phone:    strings.TrimSpace(req.Phone),
 	}
 	if err := s.repo.CreateOrUpdateProfile(profile); err != nil {
 		return nil, err
@@ -631,7 +738,7 @@ func (s *teacherSubscriptionService) CreateOrder(user *models.User, req CreateTe
 	_ = s.repo.CreateTeacherNotification(&models.TeacherNotification{
 		Type:    "admin_new_subscription_order",
 		Title:   "طلب اشتراك معلم جديد",
-		Message: fmt.Sprintf("طلب جديد من %s لمادة %s", user.Name, profile.Subject),
+		Message: fmt.Sprintf("طلب جديد من %s لمواد: %s", user.Name, strings.Join(subjects, "، ")),
 		URL:     "/dashboard/teacher-subscriptions/orders",
 	})
 	return s.repo.GetOrder(order.ID)
@@ -758,12 +865,9 @@ func (s *teacherSubscriptionService) PremiumVaultFiles(userID uint, countryID da
 	}
 
 	profile, _ := s.repo.GetProfile(userID)
-	subject := ""
-	if profile != nil {
-		subject = strings.TrimSpace(profile.Subject)
-	}
+	subjects := teacherProfileSubjects(profile)
 
-	files, total, err := s.repo.ListTeacherPremiumFiles(countryID, subject, strings.TrimSpace(category), strings.TrimSpace(query), limit, offset)
+	files, total, err := s.repo.ListTeacherPremiumFiles(countryID, subjects, strings.TrimSpace(category), strings.TrimSpace(query), limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -785,11 +889,11 @@ func (s *teacherSubscriptionService) GetPremiumVaultFileForDownload(userID uint,
 	}
 
 	profile, _ := s.repo.GetProfile(userID)
-	subject := ""
-	if profile != nil {
-		subject = strings.TrimSpace(profile.Subject)
-	}
-	if !subjectsMatch(subject, file.SubjectName) {
+	teacherSubjects := teacherProfileSubjects(profile)
+	// Preserve the old lenient behaviour (allow when the teacher has no
+	// subject on file yet), but otherwise require a match against ANY of the
+	// teacher's up-to-3 registered subjects.
+	if len(teacherSubjects) > 0 && !teacherHasSubject(profile, file.SubjectName) {
 		return nil, nil, ErrTeacherPlanNotFound
 	}
 
@@ -1237,22 +1341,38 @@ func (s *teacherSubscriptionService) GenerateTeacherAI(userID uint, req TeacherA
 		title = "مخرج AI للمعلم"
 	}
 	profile, _ := s.repo.GetProfile(userID)
-	subject := ""
-	if profile != nil {
-		subject = strings.TrimSpace(profile.Subject)
-	}
-	if subject == "" {
+	subjects := teacherProfileSubjects(profile)
+	if len(subjects) == 0 {
 		return nil, ErrTeacherPlanNotFound
 	}
+	// Teacher may now hold up to MaxTeacherSubjects subjects; let them pick
+	// which one this generation is for, defaulting to the first and
+	// ignoring any subject that isn't actually part of their subscription.
+	subject := strings.TrimSpace(req.Subject)
+	if subject == "" || !teacherHasSubject(profile, subject) {
+		subject = subjects[0]
+	}
 
-	output := buildTeacherAIOutput(tool, title, strings.TrimSpace(req.Prompt), strings.TrimSpace(req.Grade), subject, strings.TrimSpace(req.Semester))
+	grade := strings.TrimSpace(req.Grade)
+	semester := strings.TrimSpace(req.Semester)
+	promptText := strings.TrimSpace(req.Prompt)
+
+	// Try real AI-generated content first; gracefully fall back to the
+	// static template on any failure (missing API key, timeout, provider
+	// error) so this feature never breaks the teacher's workflow.
+	output, model, aiErr := s.generateRealTeacherAIOutput(tool, title, promptText, grade, subject, semester)
+	if aiErr != nil {
+		output = buildTeacherAIOutput(tool, title, promptText, grade, subject, semester)
+		model = "alemancenter-template-v1"
+	}
+
 	item := &models.TeacherAIGeneration{
 		UserID:         userID,
 		SubscriptionID: access.Subscription.ID,
 		ToolType:       tool,
 		Title:          title,
-		Model:          "alemancenter-template-v1",
-		Prompt:         strings.TrimSpace(req.Prompt),
+		Model:          model,
+		Prompt:         promptText,
 		Output:         output,
 	}
 	if err := s.repo.CreateTeacherAIGeneration(item); err != nil {
@@ -1333,7 +1453,13 @@ func (s *teacherSubscriptionService) notifyTeachersAboutPremiumFile(file *models
 	if strings.TrimSpace(file.SubjectName) == "" {
 		return
 	}
-	if err := s.repo.DB().Where("subject LIKE ? OR ? LIKE CONCAT('%', subject, '%')", like, file.SubjectName).Find(&profiles).Error; err != nil {
+	// Match against BOTH the legacy single `subject` column and the new
+	// multi-subject `subjects` JSON column (a teacher may now hold up to 3
+	// subjects, and the new file's subject could be any one of them).
+	if err := s.repo.DB().Where(
+		"subject LIKE ? OR ? LIKE CONCAT('%', subject, '%') OR subjects LIKE ?",
+		like, file.SubjectName, like,
+	).Find(&profiles).Error; err != nil {
 		return
 	}
 	for _, profile := range profiles {
@@ -1352,6 +1478,111 @@ func (s *teacherSubscriptionService) notifyTeachersAboutPremiumFile(file *models
 		Message: fmt.Sprintf("تم رفع ملف %s لمادة %s", file.Title, file.SubjectName),
 		URL:     "/dashboard/teacher-subscriptions/premium-files",
 	})
+}
+
+var teacherAIHTMLTagRe = regexp.MustCompile(`<[^>]+>`)
+
+func stripHTMLTagsForTeacherAI(value string) string {
+	return strings.TrimSpace(teacherAIHTMLTagRe.ReplaceAllString(value, " "))
+}
+
+// teacherAIToolLabel returns the Arabic display label for a teacher AI tool type.
+func teacherAIToolLabel(tool string) string {
+	switch tool {
+	case "answer_key":
+		return "نموذج إجابة"
+	case "worksheet":
+		return "ورقة عمل"
+	case "remedial_plan":
+		return "خطة علاجية"
+	case "content_analysis":
+		return "تحليل محتوى"
+	default:
+		return "نموذج امتحان"
+	}
+}
+
+// teacherAIInstruction returns the generation instruction injected as
+// "curriculum context" so the shared SEO/content AI engine produces content
+// shaped like the requested teacher tool instead of a generic blog article.
+func teacherAIInstruction(tool string) string {
+	switch tool {
+	case "answer_key":
+		return "أنشئ نموذج إجابة (Answer Key) دقيق ومفصل لامتحان في هذه المادة، يشمل الإجابة الصحيحة المتوقعة لكل سؤال مع معيار تصحيح مختصر وملاحظات حول الأخطاء الشائعة. لا تكتب مقالاً عاماً؛ اكتب نموذج إجابة مرقّماً وواضحاً."
+	case "worksheet":
+		return "أنشئ ورقة عمل تعليمية مرقّمة ومتدرجة الصعوبة تشمل: أسئلة تهيئة، تدريبات فردية، نشاطاً تطبيقياً، وتقويماً ختامياً، مناسبة لمستوى الصف والفصل المحددين. لا تكتب مقالاً عاماً؛ اكتب ورقة عمل عملية بصيغة تمارين."
+	case "remedial_plan":
+		return "أنشئ خطة علاجية تفصيلية لمعالجة الفاقد التعليمي تشمل: الأهداف، اختباراً تشخيصياً مقترحاً، إجراءات أسبوعية مرقّمة، وأساليب قياس التحسن. لا تكتب مقالاً عاماً؛ اكتب خطة عملية للمعلم."
+	case "content_analysis":
+		return "أنشئ تحليل محتوى تربوي شامل يوضح المفاهيم الرئيسية، المهارات المستهدفة (تذكر/فهم/تطبيق/تحليل)، ونواتج التعلم المتوقعة لهذا الموضوع. لا تكتب مقالاً عاماً؛ اكتب تحليلاً تربوياً مبوباً."
+	default:
+		return "أنشئ نموذج امتحان متكامل يشمل: أسئلة اختيار من متعدد، أسئلة صح أو خطأ، وأسئلة مقالية قصيرة مرقّمة، مناسبة تماماً لمستوى الصف والمادة والفصل الدراسي المحددين. لا تكتب مقالاً عاماً؛ اكتب أسئلة امتحان فعلية."
+	}
+}
+
+// generateRealTeacherAIOutput asks the shared AI content engine (used
+// elsewhere for SEO article generation) to produce real, context-aware
+// educational content for a teacher tool request. It reuses
+// GenerateSEOArticleWithContext rather than a bespoke prompt pipeline, so it
+// inherits the same provider/model fallback chain already battle-tested for
+// SEO generation. Returns an error if the AI service isn't configured or the
+// call fails — callers should fall back to buildTeacherAIOutput in that case.
+func (s *teacherSubscriptionService) generateRealTeacherAIOutput(tool, title, prompt, grade, subject, semester string) (string, string, error) {
+	if s.ai == nil {
+		return "", "", errors.New("teacher AI: ai service not configured")
+	}
+
+	label := teacherAIToolLabel(tool)
+	instruction := teacherAIInstruction(tool)
+	if strings.TrimSpace(prompt) != "" {
+		instruction = instruction + "\nملاحظات إضافية من المعلم: " + strings.TrimSpace(prompt)
+	}
+
+	safeTitle := strings.TrimSpace(title)
+	if safeTitle == "" {
+		safeTitle = label
+	}
+	aiTitle := fmt.Sprintf("%s: %s", label, safeTitle)
+
+	article, err := s.ai.GenerateSEOArticleWithContext(aiTitle, "article", SEOGenerationContext{
+		SubjectName:       subject,
+		GradeName:         grade,
+		SemesterName:      semester,
+		CurriculumContext: instruction,
+	})
+	if err != nil {
+		return "", "", err
+	}
+	if article == nil {
+		return "", "", errors.New("teacher AI: empty response")
+	}
+
+	content := strings.TrimSpace(article.Content)
+	if content == "" {
+		content = stripHTMLTagsForTeacherAI(article.ContentHTML)
+	}
+	if content == "" {
+		return "", "", errors.New("teacher AI: response had no usable content")
+	}
+
+	header := fmt.Sprintf(
+		"%s: %s\nالمادة: %s\nالصف: %s\nالفصل: %s\n\n",
+		label, safeTitle,
+		firstNonEmpty(subject, "المادة المختارة"),
+		firstNonEmpty(grade, "الصف المختار"),
+		firstNonEmpty(semester, "الفصل الدراسي"),
+	)
+	output := header + content
+
+	if len(article.FAQ) > 0 {
+		faqLines := make([]string, 0, len(article.FAQ))
+		for i, item := range article.FAQ {
+			faqLines = append(faqLines, fmt.Sprintf("%d. %s\n%s", i+1, item.Question, item.Answer))
+		}
+		output += "\n\nأسئلة/بنود إضافية:\n" + strings.Join(faqLines, "\n\n")
+	}
+
+	return output, "together-ai", nil
 }
 
 func buildTeacherAIOutput(tool, title, prompt, grade, subject, semester string) string {
@@ -1681,10 +1912,10 @@ func (s *teacherSubscriptionService) Workspace(userID uint) (*TeacherWorkspaceSu
 		return nil, err
 	}
 	profile, _ := s.repo.GetProfile(userID)
-
+	subjects := teacherProfileSubjects(profile)
 	subject := ""
-	if profile != nil {
-		subject = strings.TrimSpace(profile.Subject)
+	if len(subjects) > 0 {
+		subject = subjects[0]
 	}
 
 	libraryCount := int64(0)
@@ -1696,6 +1927,7 @@ func (s *teacherSubscriptionService) Workspace(userID uint) (*TeacherWorkspaceSu
 
 	return &TeacherWorkspaceSummary{
 		Subject:      subject,
+		Subjects:     subjects,
 		Subscription: access.Subscription,
 		Usage:        access.Usage,
 		Limits:       access.Limits,

@@ -30,9 +30,16 @@ func (SubscriptionPlan) TableName() string { return "subscription_plans" }
 
 // TeacherProfile stores teacher-specific optional profile data.
 type TeacherProfile struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	UserID    uint      `gorm:"not null;uniqueIndex" json:"user_id"`
-	Subject   string    `gorm:"type:varchar(255)" json:"subject"`
+	ID uint `gorm:"primaryKey" json:"id"`
+	UserID uint `gorm:"not null;uniqueIndex" json:"user_id"`
+	// Subject is the legacy single-subject field, kept for backward
+	// compatibility with any code/reports that still read it directly. It is
+	// always kept in sync with the first entry of Subjects.
+	Subject string `gorm:"type:varchar(255)" json:"subject"`
+	// Subjects stores up to 3 subjects as a JSON array string, e.g.
+	// ["رياضيات","علوم","لغة عربية"]. This is the canonical field going
+	// forward — teachers may subscribe to up to 3 subjects instead of one.
+	Subjects  string    `gorm:"type:varchar(600)" json:"subjects"`
 	School    string    `gorm:"type:varchar(255)" json:"school"`
 	Phone     string    `gorm:"type:varchar(50)" json:"phone"`
 	City      string    `gorm:"type:varchar(120)" json:"city"`

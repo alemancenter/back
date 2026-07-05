@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"strings"
 	"time"
 
 	"github.com/alemancenter/fiber-api/internal/database"
@@ -28,7 +29,9 @@ type TeacherSubscriptionRepository interface {
 	AdminListFilesForPremium(countryID database.CountryID, search, premium, category, subject string, limit, offset int) ([]models.File, int64, error)
 	AdminUpdateFilePremium(countryID database.CountryID, fileID uint, values map[string]interface{}) (*models.File, error)
 
-	ListTeacherPremiumFiles(countryID database.CountryID, subject, category, query string, limit, offset int) ([]models.TeacherPremiumFile, int64, error)
+	// ListTeacherPremiumFiles filters by ANY of the given subjects (teacher may
+	// now subscribe to up to 3). An empty slice means "no subject filter".
+	ListTeacherPremiumFiles(countryID database.CountryID, subjects []string, category, query string, limit, offset int) ([]models.TeacherPremiumFile, int64, error)
 	GetTeacherPremiumFile(countryID database.CountryID, fileID uint) (*models.TeacherPremiumFile, error)
 	GetTeacherPremiumFileAdmin(countryID database.CountryID, fileID uint) (*models.TeacherPremiumFile, error)
 	AdminListTeacherPremiumFiles(countryID database.CountryID, search, active, category, subject string, limit, offset int) ([]models.TeacherPremiumFile, int64, error)
@@ -159,6 +162,7 @@ func (r *teacherSubscriptionRepository) CreateOrUpdateProfile(profile *models.Te
 	err := r.DB().Where("user_id = ?", profile.UserID).First(&existing).Error
 	if err == nil {
 		existing.Subject = profile.Subject
+		existing.Subjects = profile.Subjects
 		existing.School = profile.School
 		existing.Phone = profile.Phone
 		existing.City = profile.City
@@ -684,7 +688,7 @@ func ensureTeacherPremiumVaultTable(db *gorm.DB) error {
 	return db.AutoMigrate(&models.TeacherPremiumFile{}, &models.TeacherPremiumDownload{}, &models.TeacherLibraryItem{})
 }
 
-func (r *teacherSubscriptionRepository) ListTeacherPremiumFiles(countryID database.CountryID, subject, category, query string, limit, offset int) ([]models.TeacherPremiumFile, int64, error) {
+func (r *teacherSubscriptionRepository) ListTeacherPremiumFiles(countryID database.CountryID, subjects []string, category, query string, limit, offset int) ([]models.TeacherPremiumFile, int64, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 24
 	}
@@ -700,9 +704,20 @@ func (r *teacherSubscriptionRepository) ListTeacherPremiumFiles(countryID databa
 		q = q.Where("category = ?", category)
 	}
 
-	if subject != "" {
+	// Match the file's subject against ANY of the teacher's subjects (up to 3).
+	var subjectClauses []string
+	var subjectArgs []interface{}
+	for _, subject := range subjects {
+		subject = strings.TrimSpace(subject)
+		if subject == "" {
+			continue
+		}
 		like := "%" + subject + "%"
-		q = q.Where("(subject_name LIKE ? OR ? LIKE CONCAT('%', subject_name, '%'))", like, subject)
+		subjectClauses = append(subjectClauses, "(subject_name LIKE ? OR ? LIKE CONCAT('%', subject_name, '%'))")
+		subjectArgs = append(subjectArgs, like, subject)
+	}
+	if len(subjectClauses) > 0 {
+		q = q.Where(strings.Join(subjectClauses, " OR "), subjectArgs...)
 	}
 
 	if query != "" {

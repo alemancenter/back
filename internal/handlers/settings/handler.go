@@ -196,14 +196,22 @@ func applyEnvAndConfigUpdates(updates map[string]string) {
 }
 
 var (
-	adsenseClientRe  = regexp.MustCompile(`^ca-pub-\d+$`)
-	adSafeValueRe    = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
-	adAllowedKeys    = map[string]bool{"ad_slot": true, "format": true, "responsive": true, "ad_layout": true, "ad_layout_key": true, "ad_type": true}
+	adsenseClientRe   = regexp.MustCompile(`^ca-pub-\d+$`)
+	adSlotRe          = regexp.MustCompile(`^\d+$`)
+	adFormatRe        = regexp.MustCompile(`^[A-Za-z0-9_, -]+$`)
+	adLayoutRe        = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+	adLayoutKeyRe     = regexp.MustCompile(`^[A-Za-z0-9_+\-]+$`)
+	adMatchedLayoutRe = regexp.MustCompile(`^[A-Za-z0-9_, -]+$`)
+	adMatchedGridRe   = regexp.MustCompile(`^[0-9, ]+$`)
+	adAllowedKeys     = map[string]bool{
+		"ad_slot": true, "format": true, "responsive": true, "ad_layout": true, "ad_layout_key": true, "ad_type": true,
+		"matched_content_ui_type": true, "matched_content_rows_num": true, "matched_content_columns_num": true,
+	}
 	adForbiddenWords = []string{"<script", "<iframe", "javascript:", "data:", "vbscript:"}
 )
 
 // validateAdUpdates rejects any google_ads_* value that is not empty or a safe
-// JSON object containing only {ad_slot, format, responsive}.
+// JSON object containing a supported Display, In-Article, or Multiplex ad config.
 func validateAdUpdates(updates map[string]string) error {
 	for key, value := range updates {
 		if key == "adsense_client" {
@@ -234,21 +242,29 @@ func validateAdUpdates(updates map[string]string) error {
 			}
 		}
 		slot, ok := parsed["ad_slot"].(string)
-		if !ok || strings.TrimSpace(slot) == "" {
-			return fmt.Errorf("%s: ad_slot must be a non-empty string", key)
+		if !ok || !adSlotRe.MatchString(strings.TrimSpace(slot)) {
+			return fmt.Errorf("%s: ad_slot must be a numeric string", key)
 		}
-		for _, field := range []string{"format", "ad_layout", "ad_layout_key", "ad_type"} {
-			raw, ok := parsed[field]
-			if !ok || raw == nil {
-				continue
-			}
-			value, ok := raw.(string)
-			if !ok || strings.TrimSpace(value) == "" || !adSafeValueRe.MatchString(strings.TrimSpace(value)) {
-				return fmt.Errorf("%s: %s must be a safe string", key, field)
-			}
+		if value, ok := parsed["format"].(string); ok && strings.TrimSpace(value) != "" && !adFormatRe.MatchString(strings.TrimSpace(value)) {
+			return fmt.Errorf("%s: format must be a safe string", key)
 		}
-		if adType, ok := parsed["ad_type"].(string); ok && adType != "" && adType != "display" && adType != "in_article" {
-			return fmt.Errorf("%s: ad_type must be display or in_article", key)
+		if value, ok := parsed["ad_layout"].(string); ok && strings.TrimSpace(value) != "" && !adLayoutRe.MatchString(strings.TrimSpace(value)) {
+			return fmt.Errorf("%s: ad_layout must be a safe string", key)
+		}
+		if value, ok := parsed["ad_layout_key"].(string); ok && strings.TrimSpace(value) != "" && !adLayoutKeyRe.MatchString(strings.TrimSpace(value)) {
+			return fmt.Errorf("%s: ad_layout_key must be a safe string", key)
+		}
+		if value, ok := parsed["matched_content_ui_type"].(string); ok && strings.TrimSpace(value) != "" && !adMatchedLayoutRe.MatchString(strings.TrimSpace(value)) {
+			return fmt.Errorf("%s: matched_content_ui_type must be a safe string", key)
+		}
+		if value, ok := parsed["matched_content_rows_num"].(string); ok && strings.TrimSpace(value) != "" && !adMatchedGridRe.MatchString(strings.TrimSpace(value)) {
+			return fmt.Errorf("%s: matched_content_rows_num must be a safe string", key)
+		}
+		if value, ok := parsed["matched_content_columns_num"].(string); ok && strings.TrimSpace(value) != "" && !adMatchedGridRe.MatchString(strings.TrimSpace(value)) {
+			return fmt.Errorf("%s: matched_content_columns_num must be a safe string", key)
+		}
+		if adType, ok := parsed["ad_type"].(string); ok && adType != "" && adType != "display" && adType != "in_article" && adType != "multiplex" {
+			return fmt.Errorf("%s: ad_type must be display, in_article, or multiplex", key)
 		}
 	}
 	return nil

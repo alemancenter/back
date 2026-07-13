@@ -136,7 +136,7 @@ func NewDependencies() *Handlers {
 	redisSvc := services.NewRedisService(redisRepo)
 
 	roleRepo := repositories.NewRoleRepository()
-	roleSvc := services.NewRoleService(roleRepo)
+	roleSvc := services.NewRoleService(roleRepo, userRepo)
 
 	securityRepo := repositories.NewSecurityRepository()
 	securitySvc := services.NewSecurityService(securityRepo)

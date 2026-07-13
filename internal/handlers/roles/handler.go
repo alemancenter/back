@@ -3,11 +3,18 @@ package roles
 import (
 	"strconv"
 
-	_ "github.com/alemancenter/fiber-api/internal/models"
+	"github.com/alemancenter/fiber-api/internal/models"
 	"github.com/alemancenter/fiber-api/internal/services"
 	"github.com/alemancenter/fiber-api/internal/utils"
 	"github.com/gofiber/fiber/v2"
 )
+
+func callerID(c *fiber.Ctx) uint {
+	if u, ok := c.Locals("user").(*models.User); ok && u != nil {
+		return u.ID
+	}
+	return 0
+}
 
 // Handler contains roles and permissions route handlers
 type Handler struct {
@@ -94,8 +101,11 @@ func (h *Handler) CreateRole(c *fiber.Ctx) error {
 		return utils.ValidationError(c, errs)
 	}
 
-	role, err := h.svc.CreateRole(req.Name, req.Permissions)
+	role, err := h.svc.CreateRole(callerID(c), req.Name, req.Permissions)
 	if err != nil {
+		if err == services.ErrForbidden {
+			return utils.Forbidden(c, "هذه العملية تتطلب صلاحية Super Admin")
+		}
 		if err.Error() == "اسم الدور مستخدم بالفعل" {
 			return utils.ValidationError(c, map[string]string{"name": err.Error()})
 		}
@@ -135,9 +145,16 @@ func (h *Handler) UpdateRole(c *fiber.Ctx) error {
 		return utils.BadRequest(c, "بيانات غير صحيحة")
 	}
 
-	role, err := h.svc.UpdateRole(id, req.Name, req.Permissions)
+	role, err := h.svc.UpdateRole(callerID(c), id, req.Name, req.Permissions)
 	if err != nil {
-		return utils.NotFound(c)
+		switch err {
+		case services.ErrForbidden:
+			return utils.Forbidden(c, "هذه العملية تتطلب صلاحية Super Admin")
+		case services.ErrNotFound:
+			return utils.NotFound(c)
+		default:
+			return utils.InternalError(c, "فشل تحديث الدور")
+		}
 	}
 
 	return utils.Success(c, "تم تحديث الدور بنجاح", role)
@@ -161,7 +178,10 @@ func (h *Handler) DeleteRole(c *fiber.Ctx) error {
 		return utils.BadRequest(c, "معرف غير صحيح")
 	}
 
-	if err := h.svc.DeleteRole(id); err != nil {
+	if err := h.svc.DeleteRole(callerID(c), id); err != nil {
+		if err == services.ErrForbidden {
+			return utils.Forbidden(c, "هذه العملية تتطلب صلاحية Super Admin")
+		}
 		return utils.InternalError(c)
 	}
 
@@ -214,8 +234,11 @@ func (h *Handler) CreatePermission(c *fiber.Ctx) error {
 		return utils.ValidationError(c, errs)
 	}
 
-	permission, err := h.svc.CreatePermission(req.Name)
+	permission, err := h.svc.CreatePermission(callerID(c), req.Name)
 	if err != nil {
+		if err == services.ErrForbidden {
+			return utils.Forbidden(c, "هذه العملية تتطلب صلاحية Super Admin")
+		}
 		return utils.InternalError(c, "فشل إنشاء الصلاحية")
 	}
 
@@ -251,7 +274,10 @@ func (h *Handler) UpdatePermission(c *fiber.Ctx) error {
 		return utils.BadRequest(c, "بيانات غير صحيحة")
 	}
 
-	if err := h.svc.UpdatePermission(id, req.Name); err != nil {
+	if err := h.svc.UpdatePermission(callerID(c), id, req.Name); err != nil {
+		if err == services.ErrForbidden {
+			return utils.Forbidden(c, "هذه العملية تتطلب صلاحية Super Admin")
+		}
 		return utils.InternalError(c, "فشل تحديث الصلاحية")
 	}
 
@@ -276,7 +302,10 @@ func (h *Handler) DeletePermission(c *fiber.Ctx) error {
 		return utils.BadRequest(c, "معرف غير صحيح")
 	}
 
-	if err := h.svc.DeletePermission(id); err != nil {
+	if err := h.svc.DeletePermission(callerID(c), id); err != nil {
+		if err == services.ErrForbidden {
+			return utils.Forbidden(c, "هذه العملية تتطلب صلاحية Super Admin")
+		}
 		return utils.InternalError(c, "فشل حذف الصلاحية")
 	}
 

@@ -14,11 +14,21 @@ func CORS() fiber.Handler {
 	// Comma-separated list, e.g. "https://example.com,https://www.example.com"
 	// Falls back to allow-all (for local dev) when not set.
 	allowedOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
+	appEnv := strings.ToLower(os.Getenv("APP_ENV"))
+	isDev := appEnv == "development" || appEnv == "local"
 
 	var allowOriginsFunc func(string) bool
 	if allowedOrigins == "" {
-		// Development fallback — allow all
-		allowOriginsFunc = func(origin string) bool { return true }
+		if isDev {
+			// Explicit local/development fallback only — allow all.
+			allowOriginsFunc = func(origin string) bool { return true }
+		} else {
+			// Fail closed: unset/misconfigured origin list must never
+			// default to allow-all in production, since AllowCredentials
+			// is true (that combination lets any origin read authenticated
+			// responses via credentialed fetch).
+			allowOriginsFunc = func(origin string) bool { return false }
+		}
 	} else {
 		origins := strings.Split(allowedOrigins, ",")
 		originSet := make(map[string]bool, len(origins))

@@ -187,6 +187,7 @@ func TestArticleService_UpdateArticle(t *testing.T) {
 		assert.Equal(t, ErrNotFound, err)
 		assert.Nil(t, article)
 	})
+
 }
 
 func TestArticleService_DeleteArticle(t *testing.T) {
@@ -325,4 +326,5 @@ func TestArticleService_CreateArticle(t *testing.T) {
 		assert.Nil(t, article)
 		assert.Equal(t, expectedErr, err)
 	})
+
 }

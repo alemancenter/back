@@ -14,7 +14,7 @@ type UserService interface {
 	GetByID(id uint64) (*models.User, error)
 	Create(req *CreateUserRequest, callerID uint) (*models.User, error)
 	Update(id uint64, req *UpdateUserRequest, callerID uint) (*models.User, error)
-	UpdateRolesPermissions(id uint64, req *RolesPermissionsRequest) error
+	UpdateRolesPermissions(id uint64, req *RolesPermissionsRequest, callerID uint) error
 	Delete(id uint64, callerID uint) error
 	BulkDelete(ids []uint, callerID uint) (int, error)
 	UpdateStatus(ids []uint, status string, callerID uint) error
@@ -151,13 +151,51 @@ func (s *userService) Update(id uint64, req *UpdateUserRequest, callerID uint) (
 	return user, nil
 }
 
-func (s *userService) UpdateRolesPermissions(id uint64, req *RolesPermissionsRequest) error {
+func (s *userService) UpdateRolesPermissions(id uint64, req *RolesPermissionsRequest, callerID uint) error {
+	if callerID == 0 {
+		return errors.New("غير مصرح بتنفيذ العملية")
+	}
+
+	if uint64(callerID) == id {
+		return errors.New("لا يمكنك تعديل أدوارك أو صلاحياتك بنفسك")
+	}
+
+	caller, err := s.repo.FindByID(uint64(callerID))
+	if err != nil {
+		return MapError(err)
+	}
+
+	if !caller.HasPermission("manage roles") && !caller.HasRole("Super Admin") {
+		return errors.New("لا تملك صلاحية إدارة الأدوار")
+	}
+
 	user, err := s.repo.FindByID(id)
 	if err != nil {
 		return MapError(err)
 	}
 
+	if user.HasRole("Super Admin") && !caller.HasRole("Super Admin") {
+		return errors.New("لا يحق لك تعديل حساب Super Admin")
+	}
+
 	db := s.repo.GetDB()
+
+	var requestedRoles []models.Role
+	if len(req.Roles) > 0 {
+		if err := db.Where("id IN ?", req.Roles).Find(&requestedRoles).Error; err != nil {
+			return MapError(err)
+		}
+
+		if len(requestedRoles) != len(req.Roles) {
+			return errors.New("تم إرسال دور غير موجود")
+		}
+	}
+
+	for _, role := range requestedRoles {
+		if role.Name == "Super Admin" && !caller.HasRole("Super Admin") {
+			return errors.New("لا يحق لك منح دور Super Admin")
+		}
+	}
 
 	if err := AssignRoles(db, user.ID, req.Roles); err != nil {
 		return errors.New("فشل تحديث الأدوار")

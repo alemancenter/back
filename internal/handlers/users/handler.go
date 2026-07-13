@@ -250,12 +250,24 @@ func (h *Handler) UpdateRolesPermissions(c *fiber.Ctx) error {
 		return utils.BadRequest(c, "معرف غير صحيح")
 	}
 
+	caller, ok := c.Locals("user").(*models.User)
+	if !ok || caller == nil {
+		return utils.Unauthorized(c)
+	}
+
+	if caller.ID == uint(id) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"success": false,
+			"message": "لا يمكنك تعديل أدوارك أو صلاحياتك بنفسك",
+		})
+	}
+
 	var req services.RolesPermissionsRequest
 	if err := c.BodyParser(&req); err != nil {
 		return utils.BadRequest(c, "بيانات غير صحيحة")
 	}
 
-	if err := h.svc.UpdateRolesPermissions(id, &req); err != nil {
+	if err := h.svc.UpdateRolesPermissions(id, &req, caller.ID); err != nil {
 		if err == services.ErrNotFound {
 			return utils.NotFound(c)
 		}

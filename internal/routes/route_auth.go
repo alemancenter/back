@@ -78,8 +78,17 @@ func registerAuthRoutes(api, dash fiber.Router, h *Handlers) {
 	dashUsers.Post("/bulk-delete", h.Users.BulkDelete)
 	dashUsers.Post("/update-status", h.Users.UpdateStatus)
 	dashUsers.Get("", h.Users.List)
-	dashUsers.Post("", h.Users.Create)
-	dashUsers.Put("/:user/roles-permissions", h.Users.UpdateRolesPermissions)
+	dashUsers.Post(
+		"",
+		middleware.Can("manage roles"),
+		h.Users.Create,
+	)
+
+	dashUsers.Put(
+		"/:user/roles-permissions",
+		middleware.Can("manage roles"),
+		h.Users.UpdateRolesPermissions,
+)
 	dashUsers.Get("/:user", h.Users.Show)
 	dashUsers.Put("/:user", h.Users.Update)
 	dashUsers.Delete("/:user", h.Users.Delete)

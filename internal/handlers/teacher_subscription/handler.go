@@ -53,19 +53,35 @@ func countryIDFromRequest(c *fiber.Ctx) database.CountryID {
 	return countryID
 }
 
+// sanitizePathSegment allow-lists a single path segment to letters (incl.
+// Arabic), digits, dash and underscore — anything else (including "." and
+// "/") is dropped. This closes path traversal via "..", absolute paths, or
+// separator injection, since only characters that can never form a
+// traversal sequence survive.
+func sanitizePathSegment(value, fallback string) string {
+	var b strings.Builder
+	for _, r := range strings.TrimSpace(value) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			b.WriteRune(r)
+		case r >= 0x0600 && r <= 0x06FF: // Arabic block
+			b.WriteRune(r)
+		case r == ' ':
+			b.WriteRune('-')
+		}
+	}
+	safe := b.String()
+	if safe == "" {
+		return fallback
+	}
+	return safe
+}
+
 func privateTeacherPremiumDir(country, subject, category string) string {
-	safeSubject := strings.NewReplacer("/", "-", "\\", "-", " ", "-").Replace(strings.TrimSpace(subject))
-	if safeSubject == "" {
-		safeSubject = "general"
-	}
-	safeCategory := strings.NewReplacer("/", "-", "\\", "-", " ", "-").Replace(strings.TrimSpace(category))
-	if safeCategory == "" {
-		safeCategory = "files"
-	}
-	if country == "" {
-		country = "jo"
-	}
-	return filepath.Join("storage", "private", "teacher-premium", country, safeSubject, safeCategory)
+	safeCountry := sanitizePathSegment(country, "jo")
+	safeSubject := sanitizePathSegment(subject, "general")
+	safeCategory := sanitizePathSegment(category, "files")
+	return filepath.Join("storage", "private", "teacher-premium", safeCountry, safeSubject, safeCategory)
 }
 
 func parseOptionalUint(value string) *uint {

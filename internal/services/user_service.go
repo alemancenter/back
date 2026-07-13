@@ -90,6 +90,27 @@ func (s *userService) Create(req *CreateUserRequest, callerID uint) (*models.Use
 	}
 
 	db := s.repo.GetDB()
+
+	if len(req.Roles) > 0 {
+		var requestedRoles []models.Role
+		if err := db.Where("id IN ?", req.Roles).Find(&requestedRoles).Error; err != nil {
+			return nil, MapError(err)
+		}
+		if len(requestedRoles) != len(req.Roles) {
+			return nil, errors.New("تم إرسال دور غير موجود")
+		}
+
+		for _, role := range requestedRoles {
+			if role.Name == "Super Admin" {
+				caller, err := s.repo.FindByID(uint64(callerID))
+				if err != nil || !caller.HasRole("Super Admin") {
+					return nil, errors.New("لا يحق لك منح دور Super Admin")
+				}
+				break
+			}
+		}
+	}
+
 	txErr := db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(user).Error; err != nil {
 			return MapError(err)

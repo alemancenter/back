@@ -24,8 +24,23 @@ mkdir -p "${SYSTEM_DIR}/${DOMAIN}/conf"
 mkdir -p "${SYSTEM_DIR}/${API_DOMAIN}/conf"
 
 # ─────────────────────────────────────────────────────────────────────────────
-echo "=== [2/7] Backend — copy binary + .env ==="
-# Copy the compiled Go binary
+echo "=== [2/7] Backend — build + copy binary + .env ==="
+# Always rebuild the Go binary from the current source before deploying, so a
+# stale prebuilt ./fiber-api can never be shipped (that once masked real
+# backend changes and returned 404 for new routes). Requires Go on the build
+# host; set SKIP_BUILD=1 to reuse an already-built ./fiber-api.
+if [ "${SKIP_BUILD:-0}" != "1" ]; then
+  echo "  Building fiber-api (linux/amd64)..."
+  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o ./fiber-api ./cmd/server
+  echo "  Build complete."
+fi
+
+if [ ! -f ./fiber-api ]; then
+  echo "  ERROR: ./fiber-api not found and SKIP_BUILD=1 — nothing to deploy." >&2
+  exit 1
+fi
+
+# Copy the freshly compiled Go binary
 cp ./fiber-api "${FIBER_DIR}/fiber-api"
 chmod +x "${FIBER_DIR}/fiber-api"
 

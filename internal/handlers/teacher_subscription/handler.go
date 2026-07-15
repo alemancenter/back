@@ -377,6 +377,13 @@ func (h *Handler) CreateOrderWithProof(c *fiber.Ctx) error {
 		PaymentRef:      c.FormValue("payment_reference"),
 		PaymentProofURL: proofURL,
 	}
+	if len(subjects) == 0 && strings.TrimSpace(req.Subject) == "" {
+		if proofPath != "" {
+			_ = os.Remove(proofPath)
+		}
+		return utils.BadRequest(c, "يرجى تحديد المواد التي تدرّسها")
+	}
+
 	order, err := h.svc.CreateOrder(user, req)
 	if err != nil {
 		if proofPath != "" {
@@ -398,6 +405,9 @@ func (h *Handler) CreateOrder(c *fiber.Ctx) error {
 	}
 	if req.PaymentMethod == "" {
 		return utils.BadRequest(c, "يرجى اختيار طريقة الدفع")
+	}
+	if len(req.Subjects) == 0 && strings.TrimSpace(req.Subject) == "" {
+		return utils.BadRequest(c, "يرجى تحديد المواد التي تدرّسها")
 	}
 	order, err := h.svc.CreateOrder(user, req)
 	if err != nil {

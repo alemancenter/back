@@ -532,8 +532,10 @@ func (r *repository) ListSessions(countryID database.CountryID, limit int) ([]mo
 // ListSessionsPaginated returns a page of sessions plus the total count, so the
 // dashboard can offer real pagination (the older ListSessions caps at 100).
 func (r *repository) ListSessionsPaginated(countryID database.CountryID, limit, offset int) ([]models.ChatSession, int64, error) {
-	if limit <= 0 || limit > 100 {
+	if limit <= 0 {
 		limit = 50
+	} else if limit > 500 {
+		limit = 500
 	}
 	if offset < 0 {
 		offset = 0

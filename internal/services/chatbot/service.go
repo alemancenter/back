@@ -391,6 +391,18 @@ func readSessionContext(raw string) sessionContext {
 func isDownloadLocationQuestion(message string) bool {
 	m := normalizeArabic(strings.ToLower(message))
 	return containsAny(m,
+		"عملت تحميل ولا اعرف اين اجد الملف",
+		"عملت تحميل ولا أعرف أين أجد الملف",
+		"عملت تحميل ولا اجد الملف",
+		"عملت تحميل ولا أجد الملف",
+		"عملت تحميل ولا القى الملف",
+		"عملت تحميل ولا لقيت الملف",
+		"حملت ولا اعرف وين الملف",
+		"حملت ولا أعرف وين الملف",
+		"الملف لا يظهر في التنزيلات",
+		"الملف ما ظهر في التنزيلات",
+		"لم يظهر الملف بعد التحميل",
+		"ما ظهر الملف بعد التحميل",
 		"عملت تحميل ولا اجد",
 		"عملت تحميل ولا أجد",
 		"حملت ولا اجد",
@@ -410,6 +422,51 @@ func isDownloadLocationQuestion(message string) bool {
 		"اختفى الملف",
 		"ما لقيت التنزيل",
 	)
+}
+
+func isOpenClassesQuestion(message string) bool {
+	m := normalizeArabic(strings.ToLower(message))
+	if containsAny(m,
+		"عرض الصفوف التعليمية",
+		"اعرض الصفوف التعليمية",
+		"اعرض الصفوف",
+		"فتح الصفوف",
+		"افتح الصفوف",
+		"فتح صفحة الصفوف",
+		"افتح صفحة الصفوف",
+		"اريد تصفح الصفوف التعليمية",
+		"أريد تصفح الصفوف التعليمية",
+		"تصفح الصفوف التعليمية",
+		"الصفوف التعليمية",
+	) {
+		return true
+	}
+	return false
+}
+
+func isPasswordResetEmailIssue(message string) bool {
+	m := normalizeArabic(strings.ToLower(message))
+	hasReset := containsAny(m,
+		"استعادة كلمة المرور",
+		"اعادة تعيين كلمة المرور",
+		"إعادة تعيين كلمة المرور",
+		"نسيت كلمة المرور",
+		"reset password",
+		"forgot password",
+	)
+	hasMissing := containsAny(m,
+		"لا تصل",
+		"لا يصل",
+		"لم تصل",
+		"لم يصل",
+		"ما وصلت",
+		"ما وصل",
+		"لم تصلني",
+		"لا تصلني",
+		"رسالة",
+		"email",
+	)
+	return hasReset && hasMissing
 }
 
 func isCannotFindContentQuestion(message string) bool {
@@ -487,6 +544,10 @@ func isOpenSearchHelpQuestion(message string) bool {
 		"كيف ابحث عن ملف",
 		"كيف أبحث عن ملف",
 		"طريقة البحث عن ملف",
+		"فتح صفحة البحث",
+		"افتح صفحة البحث",
+		"فتح البحث",
+		"افتح البحث",
 		"فتح البحث بهذه الكلمات",
 	)
 }
@@ -631,9 +692,27 @@ func isShortGreeting(message string) bool {
 func isFullEducationalSearchQuery(message string) bool {
 	m := normalizeArabic(strings.ToLower(message))
 	hasContent := hasContentSearchWords(m) || isEducationalContentPhrase(message)
-	hasGrade := strings.Contains(m, "صف") || strings.Contains(m, "الصف") || strings.Contains(m, "خامس") || strings.Contains(m, "سادس") || strings.Contains(m, "سابع") || strings.Contains(m, "ثامن") || strings.Contains(m, "تاسع") || strings.Contains(m, "عاشر") || strings.Contains(m, "توجيهي")
+	hasGrade := hasGradeSearchWord(m)
 	hasSubject := strings.Contains(m, "عربي") || strings.Contains(m, "انجليزي") || strings.Contains(m, "انكليزي") || strings.Contains(m, "رياضيات") || strings.Contains(m, "علوم") || strings.Contains(m, "اسلام") || strings.Contains(m, "دين") || strings.Contains(m, "فيزياء") || strings.Contains(m, "كيمياء") || strings.Contains(m, "اجتماعيات") || strings.Contains(m, "ثقافه ماليه") || strings.Contains(m, "ثقافة مالية")
 	return hasContent && (hasGrade || hasSubject)
+}
+
+func hasGradeSearchWord(m string) bool {
+	return containsAny(m,
+		"الصف الاول", "الصف الأول", "صف اول", "صف أول",
+		"الصف الثاني", "صف ثاني",
+		"الصف الثالث", "صف ثالث", "ثالث",
+		"الصف الرابع", "صف رابع", "رابع",
+		"الصف الخامس", "صف خامس", "خامس",
+		"الصف السادس", "صف سادس", "سادس",
+		"الصف السابع", "صف سابع", "سابع",
+		"الصف الثامن", "صف ثامن", "ثامن",
+		"الصف التاسع", "صف تاسع", "تاسع",
+		"الصف العاشر", "صف عاشر", "عاشر",
+		"الصف الحادي عشر", "الحادي عشر",
+		"الصف الثاني عشر", "الثاني عشر",
+		"توجيهي",
+	)
 }
 
 func resolveFlow(message, detectedIntent, lastIntent, currentStep string, authenticated bool) flowDecision {
@@ -653,6 +732,12 @@ func resolveFlow(message, detectedIntent, lastIntent, currentStep string, authen
 	if isSimilarContentQuestion(message) {
 		return flowDecision{Intent: "similar_content", Step: "similar_content", Confidence: 0.96, Answer: contextualAnswer("similar_content", "similar_content", message, lastIntent)}
 	}
+	if isOpenClassesQuestion(message) {
+		return flowDecision{Intent: "open_classes", Step: "open_classes", Confidence: 0.98, Answer: contextualAnswer("open_classes", "open_classes", message, lastIntent)}
+	}
+	if isPasswordResetEmailIssue(message) {
+		return flowDecision{Intent: "password_reset_problem", Step: "reset_email_missing", Confidence: 0.98, Answer: contextualAnswer("password_reset_problem", "reset_email_missing", message, lastIntent)}
+	}
 	if isDownloadLinkBrokenQuestion(message) {
 		return flowDecision{Intent: "file_not_found", Step: "broken_download_link", Confidence: 0.97, Answer: contextualAnswer("file_not_found", "broken_download_link", message, lastIntent)}
 	}
@@ -662,12 +747,11 @@ func resolveFlow(message, detectedIntent, lastIntent, currentStep string, authen
 	if isResendVerificationQuestion(message) {
 		return flowDecision{Intent: "email_verification_problem", Step: "resend_verification", Confidence: 0.97, Answer: contextualAnswer("email_verification_problem", "resend_verification", message, lastIntent)}
 	}
-	if isFullEducationalSearchQuery(message) {
-		return flowDecision{Intent: "search_content", Step: "content_followup", Confidence: 0.93}
-	}
-
 	if isOpenSearchHelpQuestion(message) {
 		return flowDecision{Intent: "open_search", Step: "open_search", Confidence: 0.97, Answer: contextualAnswer("open_search", "open_search", message, lastIntent)}
+	}
+	if isFullEducationalSearchQuery(message) {
+		return flowDecision{Intent: "search_content", Step: "content_followup", Confidence: 0.93}
 	}
 	if isPaymentQuestion(message) {
 		return flowDecision{Intent: "payment_question", Step: "payment_info", Confidence: 0.96, Answer: contextualAnswer("payment_question", "payment_info", message, lastIntent)}
@@ -879,6 +963,9 @@ func contextualAnswer(intent, step, message, lastIntent string) string {
 		}
 		return "لحل مشكلة تسجيل الدخول: تأكد من كتابة البريد وكلمة المرور بدون مسافات زائدة، ثم جرّب تسجيل الدخول مرة أخرى. إذا ظهرت رسالة أن البريد غير مفعّل، فعّل البريد أولًا. وإذا نسيت كلمة المرور، استخدم خيار استعادة كلمة المرور."
 	case "password_reset_problem":
+		if step == "reset_email_missing" {
+			return "إذا طلبت استعادة كلمة المرور ولم تصل الرسالة:\n\n1. تأكد أنك كتبت البريد المرتبط بالحساب نفسه.\n2. افحص Inbox ثم Spam/Junk والرسائل الترويجية.\n3. لا تطلب رابط الاستعادة مرات كثيرة متتالية؛ انتظر عدة دقائق ثم أعد المحاولة مرة واحدة.\n4. إذا لم تصل الرسالة بعد ذلك، استخدم صفحة التواصل واذكر البريد ووقت آخر محاولة.\n\nلا ترسل كلمة المرور لأي شخص، ولا تستخدم رابط استعادة قديم."
+		}
 		return "خطوات استعادة كلمة المرور:\n\n1. افتح صفحة استعادة كلمة المرور.\n2. اكتب البريد المرتبط بحسابك.\n3. افحص البريد الوارد وSpam/Junk.\n4. افتح رابط الاستعادة واضبط كلمة مرور جديدة.\n5. إذا لم تصل الرسالة، تأكد من البريد ثم تواصل مع الإدارة."
 	case "email_verification_problem":
 		if step == "resend_verification" {
@@ -1153,16 +1240,20 @@ func detectIntent(message string) (string, float64) {
 		return "general_question", 0.98
 	case isSimilarContentQuestion(message):
 		return "similar_content", 0.96
+	case isOpenClassesQuestion(message):
+		return "open_classes", 0.98
+	case isPasswordResetEmailIssue(message):
+		return "password_reset_problem", 0.98
 	case isDownloadLinkBrokenQuestion(message):
 		return "file_not_found", 0.97
 	case isLoggedInDownloadStillFails(message):
 		return "download_problem", 0.97
 	case isResendVerificationQuestion(message):
 		return "email_verification_problem", 0.97
-	case isFullEducationalSearchQuery(message):
-		return "search_content", 0.93
 	case isOpenSearchHelpQuestion(message):
 		return "open_search", 0.97
+	case isFullEducationalSearchQuery(message):
+		return "search_content", 0.93
 	case isPaymentQuestion(message):
 		return "payment_question", 0.96
 	case isOpenArticleCommand(message):
@@ -1287,7 +1378,7 @@ func containsEmail(v string) bool {
 }
 
 func hasContentSearchWords(m string) bool {
-	words := []string{"بحث", "ابحث", "اريد", "أريد", "ابعث", "ابعثولي", "تبعتولي", "بدي", "عايز", "ارسلوا", "نموذج", "نماذج", "امتحان", "امتحانات", "اختبار", "اختبارات", "نهائي", "ملخص", "ملخصات", "ورقه عمل", "ورقة عمل", "اوراق عمل", "أوراق عمل", "درس", "شرح", "خطة", "خطه", "تحضير", "نمو مهني", "جدول مواصفات", "حلول", "اجابات", "رياضيات", "علوم", "عربي", "اللغه العربيه", "لغة عربية", "انجليزي", "دين", "اسلاميه", "حاسوب", "مهارات رقمية", "ثقافه ماليه", "تربيه فنيه", "تاسع", "ثامن", "عاشر", "اول", "الأول", "الاول", "الصف", "صف", "اجتماعيات", "اجتماعي", "وطني", "نهاية", "فيزياء", "كيمياء", "احياء", "جغرافيا", "تاريخ", "موسيقى", "فلسفه"}
+	words := []string{"بحث", "ابحث", "اريد", "أريد", "ابعث", "ابعثولي", "تبعتولي", "بدي", "عايز", "ارسلوا", "نموذج", "نماذج", "امتحان", "امتحانات", "اختبار", "اختبارات", "نهائي", "ملخص", "ملخصات", "ورقه عمل", "ورقة عمل", "اوراق عمل", "أوراق عمل", "كتاب", "كتب", "كتاب الطالب", "كتاب التمارين", "كراسة", "دليل المعلم", "درس", "شرح", "خطة", "خطه", "تحضير", "نمو مهني", "جدول مواصفات", "حلول", "اجابات", "رياضيات", "علوم", "عربي", "اللغه العربيه", "لغة عربية", "انجليزي", "دين", "اسلاميه", "حاسوب", "مهارات رقمية", "ثقافه ماليه", "تربيه فنيه", "تاسع", "ثامن", "عاشر", "اول", "الأول", "الاول", "الصف", "صف", "اجتماعيات", "اجتماعي", "وطني", "نهاية", "فيزياء", "كيمياء", "احياء", "جغرافيا", "تاريخ", "موسيقى", "فلسفه"}
 	for _, w := range words {
 		if strings.Contains(m, normalizeArabic(w)) {
 			return true
@@ -1427,9 +1518,9 @@ func extractSearchEntities(message string) searchEntities {
 		}
 	}
 
-	if strings.Contains(m, "الفصل الاول") || strings.Contains(m, "فصل اول") || strings.Contains(m, "الترم الاول") {
+	if strings.Contains(m, "الفصل الاول") || strings.Contains(m, "الفصل الأول") || strings.Contains(m, "الفصل الدراسي الاول") || strings.Contains(m, "الفصل الدراسي الأول") || strings.Contains(m, "فصل اول") || strings.Contains(m, "فصل أول") || strings.Contains(m, "الترم الاول") || strings.Contains(m, "الترم الأول") || strings.Contains(m, "فصل 1") || strings.Contains(m, "ف1") || strings.Contains(m, "ف 1") {
 		entities.Semester = "الفصل الأول"
-	} else if strings.Contains(m, "الفصل الثاني") || strings.Contains(m, "فصل ثاني") || strings.Contains(m, "الترم الثاني") {
+	} else if strings.Contains(m, "الفصل الثاني") || strings.Contains(m, "الفصل الدراسي الثاني") || strings.Contains(m, "فصل ثاني") || strings.Contains(m, "الترم الثاني") || strings.Contains(m, "فصل 2") || strings.Contains(m, "ف2") || strings.Contains(m, "ف 2") {
 		entities.Semester = "الفصل الثاني"
 	}
 
@@ -1438,8 +1529,10 @@ func extractSearchEntities(message string) searchEntities {
 		entities.ContentType = "امتحانات"
 	case strings.Contains(m, "ملخص") || strings.Contains(m, "ملخصات") || strings.Contains(m, "تلخيص"):
 		entities.ContentType = "ملخصات"
-	case strings.Contains(m, "ورقه عمل") || strings.Contains(m, "اوراق عمل") || strings.Contains(m, "worksheet"):
+	case strings.Contains(m, "ورقه عمل") || strings.Contains(m, "ورقة عمل") || strings.Contains(m, "اوراق عمل") || strings.Contains(m, "أوراق عمل") || strings.Contains(m, "worksheet"):
 		entities.ContentType = "أوراق عمل"
+	case strings.Contains(m, "كتاب الطالب") || strings.Contains(m, "كتاب التمارين") || strings.Contains(m, "دليل المعلم") || strings.Contains(m, "كتاب") || strings.Contains(m, "كتب") || strings.Contains(m, "كراسة"):
+		entities.ContentType = "كتب"
 	case strings.Contains(m, "خطه") || strings.Contains(m, "خطة") || strings.Contains(m, "نمو مهني"):
 		entities.ContentType = "خطط وملفات"
 	case strings.Contains(m, "درس") || strings.Contains(m, "شرح"):
@@ -1555,16 +1648,26 @@ func entityMatchTerms(kind, value string) []string {
 	case "semester":
 		switch value {
 		case "الفصل الأول":
-			return []string{"الفصل الأول", "فصل أول", "الفصل الاول", "فصل الاول"}
+			return []string{"الفصل الأول", "فصل أول", "الفصل الاول", "فصل الاول", "الفصل الدراسي الأول", "الفصل الدراسي الاول", "ف1", "ف 1", "فصل 1"}
 		case "الفصل الثاني":
-			return []string{"الفصل الثاني", "فصل ثاني", "الفصل الثانى", "فصل ناني", "الفصل الثاني"}
+			return []string{"الفصل الثاني", "فصل ثاني", "الفصل الثانى", "الفصل الدراسي الثاني", "ف2", "ف 2", "فصل 2"}
 		}
 	case "content":
 		switch value {
 		case "امتحانات":
 			return []string{"امتحان", "اختبار", "اختبارات", "امتحانات", "نهائي", "نهنئي"}
-		case "خطط":
-			return []string{"خطة", "خطط", "تحضير"}
+		case "ملخصات":
+			return []string{"ملخص", "ملخصات", "تلخيص", "مراجعة"}
+		case "أوراق عمل":
+			return []string{"ورقة عمل", "ورقه عمل", "أوراق عمل", "اوراق عمل", "worksheet"}
+		case "كتب":
+			return []string{"كتاب", "كتب", "كتاب الطالب", "كتاب التمارين", "دليل المعلم", "كراسة"}
+		case "خطط", "خطط وملفات":
+			return []string{"خطة", "خطط", "تحضير", "نمو مهني", "جدول مواصفات"}
+		case "دروس وشروحات":
+			return []string{"درس", "دروس", "شرح", "شروحات"}
+		case "ملفات":
+			return []string{"ملف", "ملفات", "pdf"}
 		case "تقرير":
 			return []string{"تقرير", "تقارير", "أداء", "اداء"}
 		}

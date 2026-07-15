@@ -8,11 +8,24 @@ import (
 	"time"
 )
 
+// maxErrorSamples is how many recent error samples we keep per route so the
+// dashboard can show what actually failed (not just a count).
+const maxErrorSamples = 8
+
+// ErrorSample captures one failed request for diagnostics.
+type ErrorSample struct {
+	Status    int    `json:"status"`
+	Message   string `json:"message"`
+	Path      string `json:"path"`
+	Timestamp string `json:"timestamp"`
+}
+
 type routeMetric struct {
-	Count       uint64
-	Errors      uint64
-	TotalMillis float64
-	MaxMillis   float64
+	Count        uint64
+	Errors       uint64
+	TotalMillis  float64
+	MaxMillis    float64
+	RecentErrors []ErrorSample
 }
 
 type Snapshot struct {
@@ -24,10 +37,11 @@ type Snapshot struct {
 }
 
 type RouteSnapshot struct {
-	Count        uint64  `json:"count"`
-	Errors       uint64  `json:"errors"`
-	AvgLatencyMS float64 `json:"avg_latency_ms"`
-	MaxLatencyMS float64 `json:"max_latency_ms"`
+	Count        uint64        `json:"count"`
+	Errors       uint64        `json:"errors"`
+	AvgLatencyMS float64       `json:"avg_latency_ms"`
+	MaxLatencyMS float64       `json:"max_latency_ms"`
+	RecentErrors []ErrorSample `json:"recent_errors,omitempty"`
 }
 
 type collector struct {
@@ -49,6 +63,13 @@ func routeKey(method, path string) string {
 }
 
 func RecordRequest(method, path string, status int, latency time.Duration) {
+	RecordRequestWithError(method, path, status, latency, "", "")
+}
+
+// RecordRequestWithError records a request and, on a 5xx, keeps a diagnostic
+// sample (status, error message, actual request path). actualPath is the
+// concrete URL (with real ids) while path is the templated route key.
+func RecordRequestWithError(method, path string, status int, latency time.Duration, errMsg, actualPath string) {
 	key := routeKey(method, path)
 	ms := float64(latency.Microseconds()) / 1000.0
 	defaultCollector.mu.Lock()
@@ -67,6 +88,14 @@ func RecordRequest(method, path string, status int, latency time.Duration) {
 	if status >= 500 {
 		defaultCollector.errorsTotal++
 		m.Errors++
+		if errMsg == "" {
+			errMsg = fmt.Sprintf("HTTP %d", status)
+		}
+		sample := ErrorSample{Status: status, Message: errMsg, Path: actualPath, Timestamp: time.Now().UTC().Format(time.RFC3339)}
+		m.RecentErrors = append(m.RecentErrors, sample)
+		if len(m.RecentErrors) > maxErrorSamples {
+			m.RecentErrors = m.RecentErrors[len(m.RecentErrors)-maxErrorSamples:]
+		}
 	}
 }
 
@@ -81,7 +110,12 @@ func SnapshotData() Snapshot {
 			avg = m.TotalMillis / float64(m.Count)
 		}
 		totalMillis += m.TotalMillis
-		out.Routes[key] = RouteSnapshot{Count: m.Count, Errors: m.Errors, AvgLatencyMS: avg, MaxLatencyMS: m.MaxMillis}
+		var recent []ErrorSample
+		if len(m.RecentErrors) > 0 {
+			recent = make([]ErrorSample, len(m.RecentErrors))
+			copy(recent, m.RecentErrors)
+		}
+		out.Routes[key] = RouteSnapshot{Count: m.Count, Errors: m.Errors, AvgLatencyMS: avg, MaxLatencyMS: m.MaxMillis, RecentErrors: recent}
 	}
 	if out.RequestsTotal > 0 {
 		out.AvgLatencyMS = totalMillis / float64(out.RequestsTotal)

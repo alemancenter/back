@@ -15,7 +15,14 @@ func Metrics() fiber.Handler {
 		if route := c.Route(); route != nil && route.Path != "" {
 			path = route.Path
 		}
-		monitoring.RecordRequest(c.Method(), path, c.Response().StatusCode(), time.Since(start))
+		status := c.Response().StatusCode()
+		// On a 5xx, capture the handler error text (and the concrete URL) so the
+		// performance dashboard can surface what actually failed.
+		errMsg := ""
+		if status >= 500 && err != nil {
+			errMsg = err.Error()
+		}
+		monitoring.RecordRequestWithError(c.Method(), path, status, time.Since(start), errMsg, c.OriginalURL())
 		return err
 	}
 }

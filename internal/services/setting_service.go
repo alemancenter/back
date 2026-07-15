@@ -39,6 +39,9 @@ var publicSettingKeys = map[string]bool{
 	"footer_text":          true,
 	"recaptcha_site_key":   true,
 	"twitter_handle":       true,
+	// Read by DownloadAuthGate via GetPublic — must be public or the admin
+	// toggle "طلب تسجيل الدخول قبل التحميل" has no effect.
+	"require_login_for_download": true,
 }
 
 var privateSettingMarkers = []string{

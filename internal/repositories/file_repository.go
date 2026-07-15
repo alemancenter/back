@@ -1,13 +1,41 @@
 package repositories
 
 import (
+	"strings"
+
 	"github.com/alemancenter/fiber-api/internal/database"
 	"github.com/alemancenter/fiber-api/internal/models"
 	"gorm.io/gorm"
 )
 
+// FileListFilter holds the dashboard file-list filtering and sorting options.
+type FileListFilter struct {
+	FileType     string
+	FileCategory string
+	ArticleID    string
+	PostID       string
+	// Search matches the stored file name (LIKE).
+	Search string
+	// SortBy is one of: created_at, file_name, file_size, download_count, view_count.
+	SortBy string
+	// SortDir is "asc" or "desc" (defaults to desc).
+	SortDir string
+	Limit   int
+	Offset  int
+}
+
+// allowedFileSortColumns whitelists sortable columns — never interpolate a
+// user-supplied column name into SQL.
+var allowedFileSortColumns = map[string]string{
+	"created_at":     "created_at",
+	"file_name":      "file_name",
+	"file_size":      "file_size",
+	"download_count": "download_count",
+	"view_count":     "view_count",
+}
+
 type FileRepository interface {
-	ListPaginated(countryID database.CountryID, fileType string, articleID string, limit, offset int) ([]models.File, int64, error)
+	ListPaginated(countryID database.CountryID, filter FileListFilter) ([]models.File, int64, error)
 	FindByID(countryID database.CountryID, id uint64) (*models.File, error)
 	GetFileWithParent(countryID database.CountryID, id uint64) (*models.File, interface{}, string, error)
 	IncrementView(countryID database.CountryID, id uint64) error
@@ -27,24 +55,46 @@ func (r *fileRepository) GetDB(countryID database.CountryID) *gorm.DB {
 	return database.DBForCountry(countryID)
 }
 
-func (r *fileRepository) ListPaginated(countryID database.CountryID, fileType string, articleID string, limit, offset int) ([]models.File, int64, error) {
+func (r *fileRepository) ListPaginated(countryID database.CountryID, filter FileListFilter) ([]models.File, int64, error) {
 	db := r.GetDB(countryID)
 	var fileList []models.File
 	var total int64
 
 	query := db.Model(&models.File{})
-	if fileType != "" {
-		query = query.Where("file_type = ?", fileType)
+	if filter.FileType != "" {
+		query = query.Where("file_type = ?", filter.FileType)
 	}
-	if articleID != "" {
-		query = query.Where("article_id = ?", articleID)
+	if filter.FileCategory != "" {
+		query = query.Where("file_category = ?", filter.FileCategory)
+	}
+	if filter.ArticleID != "" {
+		query = query.Where("article_id = ?", filter.ArticleID)
+	}
+	if filter.PostID != "" {
+		query = query.Where("post_id = ?", filter.PostID)
+	}
+	if filter.Search != "" {
+		query = query.Where("file_name LIKE ?", "%"+filter.Search+"%")
 	}
 
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	err := query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&fileList).Error
+	column, ok := allowedFileSortColumns[filter.SortBy]
+	if !ok {
+		column = "created_at"
+	}
+	direction := "DESC"
+	if strings.EqualFold(filter.SortDir, "asc") {
+		direction = "ASC"
+	}
+
+	err := query.
+		Order(column + " " + direction).
+		Limit(filter.Limit).
+		Offset(filter.Offset).
+		Find(&fileList).Error
 	return fileList, total, err
 }
 

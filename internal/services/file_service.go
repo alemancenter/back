@@ -445,8 +445,8 @@ func applyPendingFileViews(countryID database.CountryID, files []models.File) []
 	return files
 }
 
-func (s *FileService) List(countryID database.CountryID, fileType string, articleID string, limit, offset int) ([]models.File, int64, error) {
-	files, total, err := s.repo.ListPaginated(countryID, fileType, articleID, limit, offset)
+func (s *FileService) List(countryID database.CountryID, filter repositories.FileListFilter) ([]models.File, int64, error) {
+	files, total, err := s.repo.ListPaginated(countryID, filter)
 	if err != nil {
 		return nil, 0, err
 	}

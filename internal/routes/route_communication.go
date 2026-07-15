@@ -56,6 +56,7 @@ func registerCommunicationRoutes(public, dash fiber.Router, h *Handlers) {
 	// Chatbot management
 	dashChatbot := dash.Group("/chatbot", middleware.Can("manage settings"))
 	dashChatbot.Get("/sessions", h.Chatbot.DashboardSessions)
+	dashChatbot.Post("/sessions/bulk-delete", h.Chatbot.DashboardBulkDeleteSessions)
 	dashChatbot.Get("/sessions/:id", h.Chatbot.DashboardSession)
 	dashChatbot.Get("/knowledge", h.Chatbot.DashboardKnowledge)
 	dashChatbot.Post("/knowledge", h.Chatbot.StoreKnowledge)

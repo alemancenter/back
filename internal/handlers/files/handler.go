@@ -7,6 +7,7 @@ import (
 
 	"github.com/alemancenter/fiber-api/internal/database"
 	"github.com/alemancenter/fiber-api/internal/models"
+	"github.com/alemancenter/fiber-api/internal/repositories"
 	"github.com/alemancenter/fiber-api/internal/services"
 	"github.com/alemancenter/fiber-api/internal/utils"
 	"github.com/gofiber/fiber/v2"
@@ -282,10 +283,19 @@ func (h *Handler) DashboardList(c *fiber.Ctx) error {
 	countryID, _ := c.Locals("country_id").(database.CountryID)
 	pag := utils.GetPagination(c)
 
-	fileType := c.Query("type")
-	articleID := c.Query("article_id")
+	filter := repositories.FileListFilter{
+		FileType:     c.Query("type"),
+		FileCategory: c.Query("file_category"),
+		ArticleID:    c.Query("article_id"),
+		PostID:       c.Query("post_id"),
+		Search:       c.Query("q"),
+		SortBy:       c.Query("sort_by"),
+		SortDir:      c.Query("sort_dir"),
+		Limit:        pag.PerPage,
+		Offset:       pag.Offset,
+	}
 
-	fileList, total, err := h.svc.List(countryID, fileType, articleID, pag.PerPage, pag.Offset)
+	fileList, total, err := h.svc.List(countryID, filter)
 	if err != nil {
 		return utils.InternalError(c)
 	}

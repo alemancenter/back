@@ -59,12 +59,32 @@ func (h *Handler) Feedback(c *fiber.Ctx) error {
 }
 
 func (h *Handler) DashboardSessions(c *fiber.Ctx) error {
-	limit, _ := strconv.Atoi(c.Query("limit", "50"))
-	sessions, err := h.service.ListSessions(countryID(c), limit)
+	pag := utils.GetPagination(c)
+	sessions, total, err := h.service.ListSessionsPaginated(countryID(c), pag.PerPage, pag.Offset)
 	if err != nil {
 		return utils.InternalError(c)
 	}
-	return utils.Success(c, "محادثات المساعد", sessions)
+	return utils.Paginated(c, "محادثات المساعد", sessions, pag.BuildMeta(total))
+}
+
+// BulkDeleteSessionsRequest is the payload for deleting multiple chat sessions.
+type BulkDeleteSessionsRequest struct {
+	IDs []uint `json:"ids" validate:"required,min=1,max=200,dive,required"`
+}
+
+func (h *Handler) DashboardBulkDeleteSessions(c *fiber.Ctx) error {
+	var req BulkDeleteSessionsRequest
+	if err := c.BodyParser(&req); err != nil {
+		return utils.BadRequest(c, "بيانات غير صحيحة")
+	}
+	if errs := utils.Validate(req); errs != nil {
+		return utils.ValidationError(c, errs)
+	}
+	deleted, err := h.service.DeleteSessions(countryID(c), req.IDs)
+	if err != nil {
+		return utils.InternalError(c)
+	}
+	return utils.Success(c, "تم حذف المحادثات", fiber.Map{"deleted": deleted})
 }
 
 func (h *Handler) DashboardSession(c *fiber.Ctx) error {

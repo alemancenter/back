@@ -49,7 +49,9 @@ type Service interface {
 	Feedback(countryID database.CountryID, messageID uint, rating, comment string) error
 	Suggestions() []string
 	ListSessions(countryID database.CountryID, limit int) ([]models.ChatSession, error)
+	ListSessionsPaginated(countryID database.CountryID, limit, offset int) ([]models.ChatSession, int64, error)
 	GetSession(countryID database.CountryID, sessionID uint) (*models.ChatSession, error)
+	DeleteSessions(countryID database.CountryID, ids []uint) (int64, error)
 	ListKnowledge(countryID database.CountryID, countryCode string, limit int) ([]models.ChatKnowledgeBase, error)
 	CreateKnowledge(countryID database.CountryID, item *models.ChatKnowledgeBase) error
 	UpdateKnowledge(countryID database.CountryID, item *models.ChatKnowledgeBase) error
@@ -335,6 +337,14 @@ func (s *service) Suggestions() []string {
 }
 func (s *service) ListSessions(countryID database.CountryID, limit int) ([]models.ChatSession, error) {
 	return s.repo.ListSessions(countryID, limit)
+}
+
+func (s *service) ListSessionsPaginated(countryID database.CountryID, limit, offset int) ([]models.ChatSession, int64, error) {
+	return s.repo.ListSessionsPaginated(countryID, limit, offset)
+}
+
+func (s *service) DeleteSessions(countryID database.CountryID, ids []uint) (int64, error) {
+	return s.repo.DeleteSessions(countryID, ids)
 }
 
 func (s *service) GetSession(countryID database.CountryID, sessionID uint) (*models.ChatSession, error) {

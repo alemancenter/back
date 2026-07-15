@@ -35,7 +35,9 @@ type Repository interface {
 	SearchContent(countryID database.CountryID, query string, limit int) ([]ContentResult, error)
 	CreateFeedback(countryID database.CountryID, feedback *models.ChatFeedback) error
 	ListSessions(countryID database.CountryID, limit int) ([]models.ChatSession, error)
+	ListSessionsPaginated(countryID database.CountryID, limit, offset int) ([]models.ChatSession, int64, error)
 	GetSessionWithMessages(countryID database.CountryID, sessionID uint) (*models.ChatSession, error)
+	DeleteSessions(countryID database.CountryID, ids []uint) (int64, error)
 	ListKnowledge(countryID database.CountryID, countryCode string, limit int) ([]models.ChatKnowledgeBase, error)
 	CreateKnowledge(countryID database.CountryID, item *models.ChatKnowledgeBase) error
 	UpdateKnowledge(countryID database.CountryID, item *models.ChatKnowledgeBase) error
@@ -525,6 +527,53 @@ func (r *repository) ListSessions(countryID database.CountryID, limit int) ([]mo
 	var sessions []models.ChatSession
 	err := r.db(countryID).Preload("Messages", func(db *gorm.DB) *gorm.DB { return db.Order("created_at ASC").Limit(8) }).Order("updated_at DESC").Limit(limit).Find(&sessions).Error
 	return sessions, err
+}
+
+// ListSessionsPaginated returns a page of sessions plus the total count, so the
+// dashboard can offer real pagination (the older ListSessions caps at 100).
+func (r *repository) ListSessionsPaginated(countryID database.CountryID, limit, offset int) ([]models.ChatSession, int64, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	db := r.db(countryID)
+	var total int64
+	if err := db.Model(&models.ChatSession{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var sessions []models.ChatSession
+	err := db.
+		Preload("Messages", func(d *gorm.DB) *gorm.DB { return d.Order("created_at ASC").Limit(8) }).
+		Order("updated_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&sessions).Error
+	return sessions, total, err
+}
+
+// DeleteSessions removes the given sessions and their messages, returning the
+// number of sessions deleted. Runs in a transaction so a session is never left
+// without its messages (or vice versa).
+func (r *repository) DeleteSessions(countryID database.CountryID, ids []uint) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	db := r.db(countryID)
+	var deleted int64
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("session_id IN ?", ids).Delete(&models.ChatMessage{}).Error; err != nil {
+			return err
+		}
+		res := tx.Where("id IN ?", ids).Delete(&models.ChatSession{})
+		if res.Error != nil {
+			return res.Error
+		}
+		deleted = res.RowsAffected
+		return nil
+	})
+	return deleted, err
 }
 
 func (r *repository) GetSessionWithMessages(countryID database.CountryID, sessionID uint) (*models.ChatSession, error) {

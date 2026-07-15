@@ -2,6 +2,7 @@ package chatbot
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/alemancenter/fiber-api/internal/database"
 	"github.com/alemancenter/fiber-api/internal/middleware"
@@ -85,6 +86,61 @@ func (h *Handler) DashboardBulkDeleteSessions(c *fiber.Ctx) error {
 		return utils.InternalError(c)
 	}
 	return utils.Success(c, "تم حذف المحادثات", fiber.Map{"deleted": deleted})
+}
+
+// ExportSessionsRequest is the payload for the training-export endpoint.
+type ExportSessionsRequest struct {
+	IDs []uint `json:"ids" validate:"required,min=1,max=1000,dive,required"`
+}
+
+type exportMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type exportConversation struct {
+	SessionID uint            `json:"session_id"`
+	Messages  []exportMessage `json:"messages"`
+}
+
+// DashboardExportSessions returns the selected sessions with their full message
+// history in ONE response, already shaped for chat fine-tuning
+// ({session_id, messages:[{role, content}]}). This replaces the old approach of
+// one request per session, which tripped rate limits for large selections.
+func (h *Handler) DashboardExportSessions(c *fiber.Ctx) error {
+	var req ExportSessionsRequest
+	if err := c.BodyParser(&req); err != nil {
+		return utils.BadRequest(c, "بيانات غير صحيحة")
+	}
+	if errs := utils.Validate(req); errs != nil {
+		return utils.ValidationError(c, errs)
+	}
+
+	sessions, err := h.service.GetSessions(countryID(c), req.IDs)
+	if err != nil {
+		return utils.InternalError(c)
+	}
+
+	conversations := make([]exportConversation, 0, len(sessions))
+	for _, session := range sessions {
+		msgs := make([]exportMessage, 0, len(session.Messages))
+		for _, m := range session.Messages {
+			if strings.TrimSpace(m.Message) == "" {
+				continue
+			}
+			role := "assistant"
+			if m.Role == "user" {
+				role = "user"
+			}
+			msgs = append(msgs, exportMessage{Role: role, Content: m.Message})
+		}
+		if len(msgs) == 0 {
+			continue
+		}
+		conversations = append(conversations, exportConversation{SessionID: session.ID, Messages: msgs})
+	}
+
+	return utils.Success(c, "تصدير المحادثات", fiber.Map{"conversations": conversations})
 }
 
 func (h *Handler) DashboardSession(c *fiber.Ctx) error {

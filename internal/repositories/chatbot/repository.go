@@ -37,6 +37,7 @@ type Repository interface {
 	ListSessions(countryID database.CountryID, limit int) ([]models.ChatSession, error)
 	ListSessionsPaginated(countryID database.CountryID, limit, offset int) ([]models.ChatSession, int64, error)
 	GetSessionWithMessages(countryID database.CountryID, sessionID uint) (*models.ChatSession, error)
+	GetSessionsWithMessages(countryID database.CountryID, ids []uint) ([]models.ChatSession, error)
 	DeleteSessions(countryID database.CountryID, ids []uint) (int64, error)
 	ListKnowledge(countryID database.CountryID, countryCode string, limit int) ([]models.ChatKnowledgeBase, error)
 	CreateKnowledge(countryID database.CountryID, item *models.ChatKnowledgeBase) error
@@ -553,6 +554,22 @@ func (r *repository) ListSessionsPaginated(countryID database.CountryID, limit, 
 		Offset(offset).
 		Find(&sessions).Error
 	return sessions, total, err
+}
+
+// GetSessionsWithMessages fetches multiple sessions with their FULL message
+// history, ordered oldest-first — used for the single-request training export
+// so the dashboard never has to fan out one request per session.
+func (r *repository) GetSessionsWithMessages(countryID database.CountryID, ids []uint) ([]models.ChatSession, error) {
+	if len(ids) == 0 {
+		return []models.ChatSession{}, nil
+	}
+	var sessions []models.ChatSession
+	err := r.db(countryID).
+		Preload("Messages", func(d *gorm.DB) *gorm.DB { return d.Order("created_at ASC") }).
+		Where("id IN ?", ids).
+		Order("id ASC").
+		Find(&sessions).Error
+	return sessions, err
 }
 
 // DeleteSessions removes the given sessions and their messages, returning the

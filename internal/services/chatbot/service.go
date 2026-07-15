@@ -51,6 +51,7 @@ type Service interface {
 	ListSessions(countryID database.CountryID, limit int) ([]models.ChatSession, error)
 	ListSessionsPaginated(countryID database.CountryID, limit, offset int) ([]models.ChatSession, int64, error)
 	GetSession(countryID database.CountryID, sessionID uint) (*models.ChatSession, error)
+	GetSessions(countryID database.CountryID, ids []uint) ([]models.ChatSession, error)
 	DeleteSessions(countryID database.CountryID, ids []uint) (int64, error)
 	ListKnowledge(countryID database.CountryID, countryCode string, limit int) ([]models.ChatKnowledgeBase, error)
 	CreateKnowledge(countryID database.CountryID, item *models.ChatKnowledgeBase) error
@@ -341,6 +342,10 @@ func (s *service) ListSessions(countryID database.CountryID, limit int) ([]model
 
 func (s *service) ListSessionsPaginated(countryID database.CountryID, limit, offset int) ([]models.ChatSession, int64, error) {
 	return s.repo.ListSessionsPaginated(countryID, limit, offset)
+}
+
+func (s *service) GetSessions(countryID database.CountryID, ids []uint) ([]models.ChatSession, error) {
+	return s.repo.GetSessionsWithMessages(countryID, ids)
 }
 
 func (s *service) DeleteSessions(countryID database.CountryID, ids []uint) (int64, error) {

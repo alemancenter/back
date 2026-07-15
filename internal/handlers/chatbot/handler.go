@@ -69,8 +69,9 @@ func (h *Handler) DashboardSessions(c *fiber.Ctx) error {
 }
 
 // BulkDeleteSessionsRequest is the payload for deleting multiple chat sessions.
+// max matches the export cap and the max page size (500), with headroom.
 type BulkDeleteSessionsRequest struct {
-	IDs []uint `json:"ids" validate:"required,min=1,max=200,dive,required"`
+	IDs []uint `json:"ids" validate:"required,min=1,max=1000,dive,required"`
 }
 
 func (h *Handler) DashboardBulkDeleteSessions(c *fiber.Ctx) error {

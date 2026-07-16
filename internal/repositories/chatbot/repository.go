@@ -163,15 +163,21 @@ func (r *repository) SearchContent(countryID database.CountryID, query string, l
 	cc := database.CountryCode(countryID)
 	db := r.db(countryID)
 
-	results := make([]ContentResult, 0, limit)
+	// Collect a wide candidate pool, then rank by relevance and trim to `limit`.
+	// Capping the pool at `limit` *before* scoring (the old behaviour) discarded
+	// the truly relevant item whenever more popular loose matches came first.
+	const collectCap = 60
+	results := make([]ContentResult, 0, collectCap)
 	seen := map[string]bool{}
 
 	appendResult := func(item ContentResult) {
 		key := item.Type + ":" + uintToString(item.ID)
-		if seen[key] || len(results) >= limit {
+		if seen[key] || len(results) >= collectCap {
 			return
 		}
-		item.Score = scoreContentResult(query, terms, item)
+		// Score against the expanded terms so synonyms (امتحان↔اختبار, الثاني↔2)
+		// still credit a match.
+		item.Score = scoreContentResult(query, expandedTerms, item)
 		seen[key] = true
 		results = append(results, item)
 	}
@@ -184,8 +190,8 @@ func (r *repository) SearchContent(countryID database.CountryID, query string, l
 		Preload("Article.Semester").
 		Preload("Post").
 		Select("id, article_id, post_id, file_name, file_category, created_at, download_count, view_count, views_count")
-	fileDB = applySmartMatch(fileDB, []string{"file_name", "file_category"}, expandedTerms, false)
-	if err := fileDB.Order("download_count DESC, view_count DESC, views_count DESC, created_at DESC").Limit(limit * 2).Find(&files).Error; err == nil {
+	fileDB = applySmartMatch(fileDB, []string{"file_name", "file_category"}, expandedTerms, true)
+	if err := fileDB.Order("download_count DESC, view_count DESC, views_count DESC, created_at DESC").Limit(collectCap).Find(&files).Error; err == nil {
 		for _, f := range files {
 			desc := ""
 			if f.FileCategory != nil {
@@ -212,15 +218,15 @@ func (r *repository) SearchContent(countryID database.CountryID, query string, l
 	}
 
 	// Articles with joined subject/semester names.
-	if len(results) < limit {
+	if len(results) < collectCap {
 		var articles []models.Article
 		articleDB := db.Model(&models.Article{}).
 			Preload("Subject").
 			Preload("Semester").
 			Select("id,title,meta_description,grade_level,subject_id,semester_id,visit_count,created_at").
 			Where("status = ?", 1)
-		articleDB = applySmartMatch(articleDB, []string{"title", "meta_description", "content"}, expandedTerms, false)
-		if err := articleDB.Order("visit_count DESC, created_at DESC").Limit(limit * 2).Find(&articles).Error; err == nil {
+		articleDB = applySmartMatch(articleDB, []string{"title", "meta_description", "content"}, expandedTerms, true)
+		if err := articleDB.Order("visit_count DESC, created_at DESC").Limit(collectCap).Find(&articles).Error; err == nil {
 			for _, a := range articles {
 				desc := ""
 				if a.MetaDescription != nil {
@@ -239,14 +245,14 @@ func (r *repository) SearchContent(countryID database.CountryID, query string, l
 	}
 
 	// Posts with keywords/category-like content.
-	if len(results) < limit {
+	if len(results) < collectCap {
 		var posts []models.Post
 		postDB := db.Model(&models.Post{}).
 			Select("id,title,meta_description,keywords,country,views,created_at").
 			Where("is_active = ?", true).
 			Where("country = ? OR country = '' OR country IS NULL", string(cc))
-		postDB = applySmartMatch(postDB, []string{"title", "meta_description", "keywords", "content"}, expandedTerms, false)
-		if err := postDB.Order("views DESC, created_at DESC").Limit(limit * 2).Find(&posts).Error; err == nil {
+		postDB = applySmartMatch(postDB, []string{"title", "meta_description", "keywords", "content"}, expandedTerms, true)
+		if err := postDB.Order("views DESC, created_at DESC").Limit(collectCap).Find(&posts).Error; err == nil {
 			for _, p := range posts {
 				desc := ""
 				if p.MetaDescription != nil {
@@ -288,6 +294,23 @@ func (r *repository) SearchContent(countryID database.CountryID, query string, l
 	}
 
 	sortContentResults(results)
+
+	// Relevance gate: with OR matching the pool includes loose matches (e.g. items
+	// that only share "الصف"). Keep the strongest results and drop anything far
+	// below the best match, so answers stay precise while still tolerating
+	// near-miss wording (امتحان بدل اختبار، الفصل الدراسي بدل الفصل).
+	if len(results) > 0 {
+		best := results[0].Score
+		threshold := best * 2 / 5 // 40% of the top score
+		gated := results[:0:0]
+		for i, r := range results {
+			if i < 3 || r.Score >= threshold {
+				gated = append(gated, r)
+			}
+		}
+		results = gated
+	}
+
 	if len(results) > limit {
 		results = results[:limit]
 	}

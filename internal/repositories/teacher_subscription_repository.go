@@ -455,7 +455,7 @@ func (r *teacherSubscriptionRepository) AdminListSubscriptions(status, search st
 	if limit <= 0 || limit > 100 {
 		limit = 24
 	}
-	q := r.DB().Model(&models.TeacherSubscription{}).Preload("User").Preload("Plan")
+	q := r.DB().Model(&models.TeacherSubscription{}).Preload("User").Preload("Plan").Preload("Profile")
 	now := time.Now()
 	switch status {
 	case "active":

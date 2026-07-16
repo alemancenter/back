@@ -72,6 +72,9 @@ type TeacherSubscription struct {
 
 	User *User             `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	Plan *SubscriptionPlan `gorm:"foreignKey:PlanID" json:"plan,omitempty"`
+	// Profile carries what the teacher actually subscribed for (subjects, school,
+	// city). Shares the user_id key with teacher_profiles; preloaded for admin views.
+	Profile *TeacherProfile `gorm:"foreignKey:UserID;references:UserID" json:"profile,omitempty"`
 }
 
 func (TeacherSubscription) TableName() string { return "teacher_subscriptions" }

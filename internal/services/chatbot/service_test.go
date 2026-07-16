@@ -86,6 +86,25 @@ func TestNamedLookupFallbackSkipsSupportAndGreetings(t *testing.T) {
 	}
 }
 
+func TestMergeResetsStaleEntitiesOnNewTopic(t *testing.T) {
+	// Switching subject/grade must not inherit the previous topic's content type
+	// or semester, which caused stale, irrelevant search results.
+	prev := searchEntities{Subject: "اللغة العربية", Grade: "الصف التاسع", ContentType: "امتحانات", Semester: "الفصل الأول"}
+	got := mergeSearchEntities(prev, extractSearchEntities("تربية اسلامية الصف الاول"))
+	if got.Subject != "التربية الإسلامية" {
+		t.Fatalf("Subject = %q, want التربية الإسلامية", got.Subject)
+	}
+	if got.ContentType != "" || got.Semester != "" {
+		t.Fatalf("stale entities leaked: contentType=%q semester=%q", got.ContentType, got.Semester)
+	}
+
+	// A pure refinement of the SAME topic keeps the earlier subject/grade.
+	got2 := mergeSearchEntities(searchEntities{Subject: "اللغة العربية", Grade: "الصف التاسع"}, extractSearchEntities("الفصل الاول"))
+	if got2.Subject != "اللغة العربية" || got2.Grade != "الصف التاسع" {
+		t.Fatalf("refinement lost context: %+v", got2)
+	}
+}
+
 func TestContextualSpecializedAnswers(t *testing.T) {
 	tests := []struct {
 		name   string

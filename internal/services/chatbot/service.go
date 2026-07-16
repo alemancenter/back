@@ -1593,6 +1593,17 @@ func extractSearchEntities(message string) searchEntities {
 }
 
 func mergeSearchEntities(previous, current searchEntities) searchEntities {
+	// A different subject or grade means the user started a NEW search topic —
+	// don't inherit the previous topic's content-type/semester/subject, which
+	// would pollute the query and surface stale, irrelevant results.
+	newTopic := (current.Subject != "" && previous.Subject != "" && current.Subject != previous.Subject) ||
+		(current.Grade != "" && previous.Grade != "" && current.Grade != previous.Grade)
+	if newTopic {
+		if current.RawQuery == "" {
+			current.RawQuery = previous.RawQuery
+		}
+		return current
+	}
 	merged := previous
 	if current.Grade != "" {
 		merged.Grade = current.Grade

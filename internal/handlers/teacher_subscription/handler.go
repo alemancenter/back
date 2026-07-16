@@ -607,6 +607,29 @@ func (h *Handler) AdminRenewSubscription(c *fiber.Ctx) error {
 	return utils.Success(c, "تم تجديد الاشتراك", item)
 }
 
+func (h *Handler) AdminUpdateSubscriptionDates(c *fiber.Ctx) error {
+	admin := middleware.GetUser(c)
+	if admin == nil {
+		return utils.Unauthorized(c)
+	}
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil {
+		return utils.BadRequest(c, "معرف الاشتراك غير صحيح")
+	}
+	var req services.TeacherUpdateSubscriptionDatesRequest
+	if err := c.BodyParser(&req); err != nil {
+		return utils.BadRequest(c, "بيانات غير صحيحة")
+	}
+	if strings.TrimSpace(req.StartsAt) == "" && strings.TrimSpace(req.EndsAt) == "" {
+		return utils.BadRequest(c, "يرجى تحديد تاريخ البدء أو الانتهاء")
+	}
+	item, err := h.svc.AdminUpdateSubscriptionDates(uint(id), admin.ID, req, c.IP())
+	if err != nil {
+		return utils.BadRequest(c, err.Error())
+	}
+	return utils.Success(c, "تم تحديث تواريخ الاشتراك", item)
+}
+
 func (h *Handler) AdminRunExpiryMaintenance(c *fiber.Ctx) error {
 	stats, err := h.svc.RunExpiryMaintenance()
 	if err != nil {

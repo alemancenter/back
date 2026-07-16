@@ -268,6 +268,12 @@ type TeacherRenewSubscriptionRequest struct {
 	AdminNote string `json:"admin_note"`
 }
 
+type TeacherUpdateSubscriptionDatesRequest struct {
+	StartsAt  string `json:"starts_at"`
+	EndsAt    string `json:"ends_at"`
+	AdminNote string `json:"admin_note"`
+}
+
 type TeacherArchiveFileRequest struct {
 	Reason string `json:"reason"`
 }
@@ -472,6 +478,7 @@ type TeacherSubscriptionService interface {
 	AdminListAuditLogs(entityType string, entityID uint, limit, offset int) ([]TeacherAuditLogResponse, int64, error)
 	RunExpiryMaintenance() (map[string]int64, error)
 	AdminRenewSubscription(subscriptionID uint, adminID uint, req TeacherRenewSubscriptionRequest, ip string) (*models.TeacherSubscription, error)
+	AdminUpdateSubscriptionDates(subscriptionID uint, adminID uint, req TeacherUpdateSubscriptionDatesRequest, ip string) (*models.TeacherSubscription, error)
 	AdminArchivePremiumVaultFile(countryID database.CountryID, fileID uint, req TeacherArchiveFileRequest, adminID uint, ip string) (*TeacherPremiumVaultFileResponse, error)
 	AdminGetPremiumVaultFileDetail(countryID database.CountryID, fileID uint) (*TeacherPremiumFileDetail, error)
 	ReactivateSubscription(subscriptionID uint, adminID uint, req TeacherRenewSubscriptionRequest, ip string) (*models.TeacherSubscription, error)
@@ -1111,6 +1118,70 @@ func (s *teacherSubscriptionService) AdminRenewSubscription(subscriptionID uint,
 	userID := sub.UserID
 	_ = s.CreateAudit(&actorID, &userID, "teacher_subscription", sub.ID, "renew", req.AdminNote, ip)
 	return sub, nil
+}
+
+// AdminUpdateSubscriptionDates lets an admin set explicit start/end dates for a
+// subscription. Accepts RFC3339 or plain YYYY-MM-DD; either date may be omitted
+// to keep its current value. Re-derives the active/expired status from the new
+// window so the subscription reflects reality immediately.
+func (s *teacherSubscriptionService) AdminUpdateSubscriptionDates(subscriptionID uint, adminID uint, req TeacherUpdateSubscriptionDatesRequest, ip string) (*models.TeacherSubscription, error) {
+	sub, err := s.repo.GetSubscriptionByID(subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+
+	if v := strings.TrimSpace(req.StartsAt); v != "" {
+		parsed, perr := parseFlexibleDate(v)
+		if perr != nil {
+			return nil, errors.New("تاريخ البدء غير صالح")
+		}
+		sub.StartsAt = parsed
+	}
+	if v := strings.TrimSpace(req.EndsAt); v != "" {
+		parsed, perr := parseFlexibleDate(v)
+		if perr != nil {
+			return nil, errors.New("تاريخ الانتهاء غير صالح")
+		}
+		sub.EndsAt = parsed
+	}
+	if !sub.EndsAt.After(sub.StartsAt) {
+		return nil, errors.New("يجب أن يكون تاريخ الانتهاء بعد تاريخ البدء")
+	}
+
+	// Keep status consistent with the new window (unless the admin cancelled it).
+	now := time.Now()
+	if sub.Status != "cancelled" {
+		if sub.EndsAt.Before(now) {
+			sub.Status = "expired"
+		} else if sub.StartsAt.After(now) {
+			sub.Status = "pending"
+		} else {
+			sub.Status = "active"
+		}
+	}
+	if note := strings.TrimSpace(req.AdminNote); note != "" {
+		sub.AdminNote = note
+	}
+
+	if err := s.repo.UpdateSubscription(sub); err != nil {
+		return nil, err
+	}
+	if sub.Status == "active" {
+		_ = s.assignTeacherProRole(sub.UserID)
+	}
+	InvalidateUserCache(sub.UserID)
+	actorID := adminID
+	userID := sub.UserID
+	_ = s.CreateAudit(&actorID, &userID, "teacher_subscription", sub.ID, "update_dates", req.AdminNote, ip)
+	return sub, nil
+}
+
+// parseFlexibleDate accepts RFC3339 timestamps or plain YYYY-MM-DD dates.
+func parseFlexibleDate(value string) (time.Time, error) {
+	if t, err := time.Parse(time.RFC3339, value); err == nil {
+		return t, nil
+	}
+	return time.Parse("2006-01-02", value)
 }
 
 func (s *teacherSubscriptionService) RunExpiryMaintenance() (map[string]int64, error) {

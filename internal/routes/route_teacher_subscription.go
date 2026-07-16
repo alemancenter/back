@@ -43,6 +43,7 @@ func registerTeacherSubscriptionRoutes(api, dash fiber.Router, h *Handlers) {
 	admin.Post("/premium-files/:id", h.TeacherSubscription.AdminUpdatePremiumVaultFile)
 	admin.Post("/premium-files/:id/disable", h.TeacherSubscription.AdminDisablePremiumVaultFile)
 	admin.Get("/subscriptions", h.TeacherSubscription.AdminListSubscriptions)
+	admin.Post("/subscriptions/:id/dates", h.TeacherSubscription.AdminUpdateSubscriptionDates)
 	admin.Post("/subscriptions/:id/cancel", h.TeacherSubscription.AdminCancelSubscription)
 	admin.Post("/subscriptions/:id/renew", h.TeacherSubscription.AdminRenewSubscription)
 	admin.Post("/subscriptions/:id/reactivate", h.TeacherSubscription.AdminReactivateSubscription)

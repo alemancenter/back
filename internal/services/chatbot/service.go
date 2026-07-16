@@ -216,7 +216,8 @@ func (s *service) Reply(countryID database.CountryID, userID *uint, ip, userAgen
 	answer := flow.Answer
 	source := "flow"
 
-	if shouldRunContentSearch(intent, message, currentEntities) {
+	ranContentSearch := shouldRunContentSearch(intent, message, currentEntities)
+	if ranContentSearch {
 		queries := relaxedSearchQueries(message, mergedEntities)
 		for idx, searchQuery := range queries {
 			candidateLinks, _ := s.repo.SearchContent(countryID, searchQuery, 8)
@@ -245,6 +246,22 @@ func (s *service) Reply(countryID database.CountryID, userID *uint, ip, userAgen
 		} else {
 			answer = contextualAnswer(intent, step, message, session.LastIntent)
 			source = "flow"
+		}
+	}
+
+	// Named-lookup fallback: the user may have pasted an exact file name, article
+	// title, or post title WITHOUT any of the usual search keywords (نموذج/امتحان/
+	// صف/مادة). The primary flow then never searched. Try one direct search on the
+	// raw message and adopt the results only when something actually matches — so
+	// support/navigation answers are never clobbered by an empty search.
+	if !ranContentSearch && len(links) == 0 && allowNamedLookupFallback(intent, message) {
+		if fallback, _ := s.repo.SearchContent(countryID, message, 8); len(fallback) > 0 {
+			links = fallback
+			intent = "search_content"
+			step = "content_results"
+			answer = buildSearchAnswer(mergedEntities, links)
+			source = "content_search"
+			confidence = maxFloat(confidence, 0.82)
 		}
 	}
 
@@ -1463,6 +1480,37 @@ func shouldRunContentSearch(intent, message string, entities searchEntities) boo
 }
 func isContentIntent(intent string) bool {
 	return intent == "search_content" || intent == "find_grade" || intent == "find_subject" || intent == "find_semester" || intent == "request_content"
+}
+
+// allowNamedLookupFallback decides whether an untriggered message is worth one
+// direct content search. It stays out of the way of clear support/navigation
+// intents, and requires the message to look like a title/name (enough
+// meaningful tokens) rather than a greeting or one-word fragment.
+func allowNamedLookupFallback(intent, message string) bool {
+	switch intent {
+	case "download_problem", "download_location", "password_reset_problem",
+		"resend_verification", "payment_question", "unsupported_phone_feature",
+		"greeting", "about_site", "site_usage", "site_services", "privacy_request",
+		"open_search", "open_classes", "similar_content", "empty":
+		return false
+	}
+	m := strings.TrimSpace(normalizeArabic(strings.ToLower(message)))
+	if len([]rune(m)) < 4 {
+		return false
+	}
+	// Pure short greetings/thanks shouldn't trigger a search.
+	if isShortGreeting(message) {
+		return false
+	}
+	// A file/article/post title is rarely a single short word.
+	tokens := strings.Fields(m)
+	meaningful := 0
+	for _, t := range tokens {
+		if len([]rune(t)) >= 3 {
+			meaningful++
+		}
+	}
+	return meaningful >= 2 || len(tokens) >= 3
 }
 
 func shouldKeepContentContext(intent, lastIntent string, current, previous searchEntities) bool {

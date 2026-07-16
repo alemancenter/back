@@ -53,6 +53,39 @@ func TestChatbotIntentCoverageForRealUserPhrases(t *testing.T) {
 	}
 }
 
+func TestNamedLookupFallbackTriggersForBareTitles(t *testing.T) {
+	// Titles/names WITHOUT the usual search keywords (نموذج/امتحان/صف/مادة) must
+	// still trigger the fallback content search — this is the reported gap.
+	lookups := []string{
+		"دوسية المرجع الشامل",
+		"unit 3 grammar workbook",
+		"أطلس المصور الحديث",
+		"مذكرة الأوائل النهائية",
+	}
+	for _, msg := range lookups {
+		intent, _ := detectIntent(msg)
+		if !allowNamedLookupFallback(intent, msg) {
+			t.Fatalf("bare title %q (intent %q) should allow the named-lookup fallback", msg, intent)
+		}
+	}
+}
+
+func TestNamedLookupFallbackSkipsSupportAndGreetings(t *testing.T) {
+	// The fallback must never hijack clear support intents or greetings.
+	cases := []string{
+		"المشكلة بحيث لا أستطيع تحميل الملفات", // download_problem
+		"مرحبا",                                 // greeting
+		"شكرا",                                  // greeting/thanks
+		"ملف",                                   // single short fragment
+	}
+	for _, msg := range cases {
+		intent, _ := detectIntent(msg)
+		if allowNamedLookupFallback(intent, msg) {
+			t.Fatalf("message %q (intent %q) should NOT trigger the named-lookup fallback", msg, intent)
+		}
+	}
+}
+
 func TestContextualSpecializedAnswers(t *testing.T) {
 	tests := []struct {
 		name   string

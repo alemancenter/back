@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -18,19 +19,20 @@ import (
 // Mirrors Laravel's FrontendApiGuard middleware.
 func FrontendGuard() fiber.Handler {
 	cfg := config.Get()
+	return frontendGuard(cfg)
+}
 
+func frontendGuard(cfg *config.Config) fiber.Handler {
 	// Paths excluded from frontend guard validation.
 	// OAuth redirect/callback URLs come from external providers (Google, Facebook)
 	// without X-Frontend-Key or controlled Origin headers — they must bypass the guard.
+	// Email verification links are opened directly from email clients.
 	excludedPaths := []string{
 		"/api/auth/google/redirect",
 		"/api/auth/google/callback",
 		"/api/auth/facebook/redirect",
 		"/api/auth/facebook/callback",
 		"/api/auth/email/verify/",
-		"/api/ping",
-		"/api/img/fit/",
-		"/api/secure/view",
 	}
 
 	return func(c *fiber.Ctx) error {
@@ -50,6 +52,7 @@ func FrontendGuard() fiber.Handler {
 		requestedWith := c.Get("X-Requested-With")
 		referer := c.Get("Referer")
 		authToken := authTokenFromRequest(c)
+		isPublicAPIHost := isConfiguredAPIHost(c, cfg)
 
 		// 0. Frontend API key — highest priority, always checked first.
 		// Next.js must send: headers: { "X-Frontend-Key": NEXT_PUBLIC_FRONTEND_API_KEY }
@@ -59,8 +62,10 @@ func FrontendGuard() fiber.Handler {
 			return continueWithCountry(c, cfg)
 		}
 
-		// 1. Localhost bypass — any request from the same machine is trusted
-		if utils.IsLocalhost(clientIP) || utils.IsLocalhost(c.IP()) {
+		// 1. Direct localhost bypass for server-side checks only. A request
+		// forwarded by nginx from the public internet is not treated as local,
+		// even though c.IP() can be 127.0.0.1 after proxying.
+		if isDirectLocalEndpointRequest(c) {
 			c.Locals("client_type", "localhost")
 			logger.Debug("[FG] tier-1 localhost bypass",
 				zap.String("path", path),
@@ -69,20 +74,34 @@ func FrontendGuard() fiber.Handler {
 			)
 			return continueWithCountry(c, cfg)
 		}
+
+		// 2. The public api.alemancenter.com host is not a public data surface.
+		// Browser traffic must go through alemancenter.com's Node proxy, which
+		// injects X-Frontend-Key server-side. This blocks direct curl/Postman and
+		// direct browser calls to /api/* before public handlers can disclose data.
+		if cfg.App.IsProduction() && isPublicAPIHost {
+			logger.Warn("[FG] direct public API host blocked",
+				zap.String("path", path),
+				zap.String("ip", clientIP),
+				zap.String("host", c.Hostname()),
+				zap.String("origin", origin),
+				zap.Bool("has_auth_header", authToken != ""),
+			)
+			return utils.NotFound(c)
+		}
 		logger.Debug("[FG] tier-1 NOT localhost",
 			zap.String("path", path),
 			zap.String("ip", clientIP),
 		)
 
-		// 2. SSR (Server-Side Rendering) detection — Node.js/Next.js
+		// 3. SSR (Server-Side Rendering) detection — Node.js/Next.js
 		if utils.IsSSRUserAgent(userAgent) {
 			isSSRTrusted := false
-			// Check if IP matches SSRTrustedIPs OR if it is a local request
-			if utils.IsLocalhost(clientIP) || utils.IsLocalhost(c.IP()) {
+			if isDirectLocalEndpointRequest(c) {
 				isSSRTrusted = true
 			} else {
 				for _, ip := range cfg.Frontend.SSRTrustedIPs {
-					if strings.TrimSpace(ip) == clientIP || strings.TrimSpace(ip) == c.IP() {
+					if strings.TrimSpace(ip) == clientIP {
 						isSSRTrusted = true
 						break
 					}
@@ -103,13 +122,13 @@ func FrontendGuard() fiber.Handler {
 			)
 		}
 
-		// 3. Authenticated token: Authorization bearer or transitional HttpOnly cookie
+		// 4. Authenticated token: Authorization bearer or transitional HttpOnly cookie
 		if authToken != "" {
 			c.Locals("client_type", "auth_token")
 			return continueWithCountry(c, cfg)
 		}
 
-		// 4. Origin + Referer validation (browser CORS)
+		// 5. Origin + Referer validation (browser CORS)
 		if origin != "" {
 			if isAllowedOrigin(origin, cfg.Frontend.CORSOrigins) {
 				// Allow if requested with XMLHttpRequest or if referer is set
@@ -126,7 +145,7 @@ func FrontendGuard() fiber.Handler {
 			}
 		}
 
-		// 5. Public API access (cURL, Postman) without strict CORS
+		// 6. Public API access (cURL, Postman) without strict CORS
 		if origin == "" && frontendKey == "" && authToken == "" {
 			if !cfg.App.IsProduction() {
 				c.Locals("client_type", "unknown")
@@ -154,6 +173,31 @@ func FrontendGuard() fiber.Handler {
 		)
 		return utils.Forbidden(c, "غير مصرح بالوصول")
 	}
+}
+
+func isConfiguredAPIHost(c *fiber.Ctx, cfg *config.Config) bool {
+	requestHost := strings.ToLower(hostWithoutPort(c.Hostname()))
+	if requestHost == "" {
+		return false
+	}
+
+	configuredHost := configuredAppHost(cfg.App.URL)
+	if configuredHost != "" {
+		return requestHost == configuredHost
+	}
+
+	return strings.HasPrefix(requestHost, "api.")
+}
+
+func configuredAppHost(appURL string) string {
+	appURL = strings.TrimSpace(appURL)
+	if appURL == "" {
+		return ""
+	}
+	if u, err := url.Parse(appURL); err == nil && u.Host != "" {
+		return strings.ToLower(hostWithoutPort(u.Host))
+	}
+	return strings.ToLower(hostWithoutPort(appURL))
 }
 
 // continueWithCountry sets the country database connection and proceeds

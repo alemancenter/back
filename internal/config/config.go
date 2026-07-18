@@ -10,9 +10,9 @@ import (
 )
 
 var (
-	cfg    *Config
-	once   sync.Once
-	cfgMu  sync.RWMutex
+	cfg   *Config
+	once  sync.Once
+	cfgMu sync.RWMutex
 )
 
 // UpdateMailConfig replaces the in-memory mail configuration at runtime.
@@ -201,10 +201,11 @@ type StorageConfig struct {
 }
 
 type SecurityConfig struct {
-	AddHSTS           bool
-	SessionLifetime   int
-	VisitorActiveMins int
-	VisitorPruneMins  int
+	AddHSTS            bool
+	SessionLifetime    int
+	VisitorActiveMins  int
+	VisitorPruneMins   int
+	InternalMonitorKey string
 }
 
 type LogConfig struct {
@@ -445,10 +446,11 @@ func Load() *Config {
 				URL:    v.GetString("STORAGE_URL"),
 			},
 			Security: SecurityConfig{
-				AddHSTS:           v.GetBool("APP_ADD_HSTS"),
-				SessionLifetime:   v.GetInt("SESSION_LIFETIME"),
-				VisitorActiveMins: v.GetInt("VISITOR_ACTIVE_MINUTES"),
-				VisitorPruneMins:  v.GetInt("VISITOR_PRUNE_MINUTES"),
+				AddHSTS:            v.GetBool("APP_ADD_HSTS"),
+				SessionLifetime:    v.GetInt("SESSION_LIFETIME"),
+				VisitorActiveMins:  v.GetInt("VISITOR_ACTIVE_MINUTES"),
+				VisitorPruneMins:   v.GetInt("VISITOR_PRUNE_MINUTES"),
+				InternalMonitorKey: strings.TrimSpace(v.GetString("INTERNAL_MONITOR_KEY")),
 			},
 			Log: LogConfig{
 				Level:      v.GetString("LOG_LEVEL"),

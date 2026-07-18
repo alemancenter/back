@@ -52,10 +52,12 @@ func Setup(app *fiber.App) *Handlers {
 	app.Use(etag.New())
 	app.Use(middleware.ResponseCache(2 * time.Minute))
 
-	// Health check (no auth required)
-	app.Get("/api/ping", deps.Health.Ping)
-	app.Get("/api/health", deps.Health.Health)
-	app.Get("/metrics", middleware.PrometheusMetrics)
+	// Operational endpoints are not public. They are available to direct local
+	// checks and to callers that provide an internal monitor/frontend key.
+	internalEndpointGuard := middleware.InternalEndpointGuard()
+	app.Get("/api/ping", internalEndpointGuard, deps.Health.Ping)
+	app.Get("/api/health", internalEndpointGuard, deps.Health.Health)
+	app.Get("/metrics", internalEndpointGuard, middleware.PrometheusMetrics)
 
 	// Base API group with frontend guard and IP guard
 	api := app.Group("/api",

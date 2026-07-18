@@ -8,6 +8,9 @@ import (
 )
 
 func TestCORS(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("CORS_ALLOWED_ORIGINS", "")
+
 	app := fiber.New()
 	app.Use(CORS())
 	app.Get("/test", func(c *fiber.Ctx) error {

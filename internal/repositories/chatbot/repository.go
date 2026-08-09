@@ -646,7 +646,17 @@ func (r *repository) CreateKnowledge(countryID database.CountryID, item *models.
 	return r.db(countryID).Create(item).Error
 }
 func (r *repository) UpdateKnowledge(countryID database.CountryID, item *models.ChatKnowledgeBase) error {
-	return r.db(countryID).Save(item).Error
+	return r.db(countryID).Model(&models.ChatKnowledgeBase{}).Where("id = ?", item.ID).Updates(map[string]interface{}{
+		"title":        item.Title,
+		"question":     item.Question,
+		"answer":       item.Answer,
+		"category":     item.Category,
+		"keywords":     item.Keywords,
+		"country_code": item.CountryCode,
+		"is_active":    item.IsActive,
+		"priority":     item.Priority,
+		"updated_by":   item.UpdatedBy,
+	}).Error
 }
 func (r *repository) DeleteKnowledge(countryID database.CountryID, id uint) error {
 	return r.db(countryID).Delete(&models.ChatKnowledgeBase{}, id).Error

@@ -65,13 +65,24 @@ type articleService struct {
 	repo    repositories.ArticleRepository
 	fileSvc *FileService
 	cache   CacheService
+	sitemap SitemapService
 }
 
-func NewArticleService(repo repositories.ArticleRepository, fileSvc *FileService, cache CacheService) ArticleService {
-	return &articleService{
+func NewArticleService(repo repositories.ArticleRepository, fileSvc *FileService, cache CacheService, sitemap ...SitemapService) ArticleService {
+	service := &articleService{
 		repo:    repo,
 		fileSvc: fileSvc,
 		cache:   cache,
+	}
+	if len(sitemap) > 0 {
+		service.sitemap = sitemap[0]
+	}
+	return service
+}
+
+func (s *articleService) scheduleSitemapRefresh(countryID database.CountryID) {
+	if s.sitemap != nil {
+		s.sitemap.ScheduleGenerate(database.CountryCode(countryID))
 	}
 }
 
@@ -347,6 +358,7 @@ func (s *articleService) CreateArticle(countryID database.CountryID, req *Articl
 	if s.cache != nil {
 		_ = s.cache.DeletePattern("articles:list:*")
 	}
+	s.scheduleSitemapRefresh(countryID)
 
 	if authorID != nil {
 		LogActivity("أنشأ مقالة: "+article.Title, "Article", article.ID, *authorID)
@@ -401,6 +413,7 @@ func (s *articleService) UpdateArticle(countryID database.CountryID, id uint64, 
 	if s.cache != nil {
 		_ = s.cache.DeletePattern("articles:list:*")
 	}
+	s.scheduleSitemapRefresh(countryID)
 
 	if authorID != nil {
 		LogActivity("حدّث مقالة: "+article.Title, "Article", article.ID, *authorID)
@@ -420,6 +433,7 @@ func (s *articleService) DeleteArticle(countryID database.CountryID, id uint64, 
 		if s.cache != nil {
 			_ = s.cache.DeletePattern("articles:list:*")
 		}
+		s.scheduleSitemapRefresh(countryID)
 		if authorID != nil {
 			LogActivity("حذف مقالة: "+article.Title, "Article", article.ID, *authorID)
 		}
@@ -445,6 +459,9 @@ func (s *articleService) SetArticleStatus(countryID database.CountryID, id uint6
 
 	if err == nil && s.cache != nil {
 		_ = s.cache.DeletePattern("articles:list:*")
+	}
+	if err == nil {
+		s.scheduleSitemapRefresh(countryID)
 	}
 
 	return article, MapError(err)

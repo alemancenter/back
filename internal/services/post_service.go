@@ -49,12 +49,23 @@ type postService struct {
 	repo    repositories.PostRepository
 	fileSvc *FileService
 	cache   CacheService
+	sitemap SitemapService
 }
 
 var unsafePostTextBlocks = regexp.MustCompile(`(?is)<\s*(script|style|object|embed|iframe|link|meta)\b[^>]*>.*?<\s*/\s*(script|style|object|embed|iframe|link|meta)\s*>|<\s*(script|style|object|embed|iframe|link|meta)\b[^>]*\/?>`)
 
-func NewPostService(repo repositories.PostRepository, fileSvc *FileService, cache CacheService) PostService {
-	return &postService{repo: repo, fileSvc: fileSvc, cache: cache}
+func NewPostService(repo repositories.PostRepository, fileSvc *FileService, cache CacheService, sitemap ...SitemapService) PostService {
+	service := &postService{repo: repo, fileSvc: fileSvc, cache: cache}
+	if len(sitemap) > 0 {
+		service.sitemap = sitemap[0]
+	}
+	return service
+}
+
+func (s *postService) scheduleSitemapRefresh(countryID database.CountryID) {
+	if s.sitemap != nil {
+		s.sitemap.ScheduleGenerate(database.CountryCode(countryID))
+	}
 }
 
 func (s *postService) GetSignedDownloadToken(countryID database.CountryID, fileID uint64) (string, error) {
@@ -215,6 +226,7 @@ func (s *postService) Create(countryID database.CountryID, countryCode string, u
 	if s.cache != nil {
 		_ = s.cache.DeletePattern("posts:list:*")
 	}
+	s.scheduleSitemapRefresh(countryID)
 
 	return post, nil
 }
@@ -272,6 +284,7 @@ func (s *postService) Update(countryID database.CountryID, id uint64, req *Updat
 	if s.cache != nil {
 		_ = s.cache.DeletePattern("posts:list:*")
 	}
+	s.scheduleSitemapRefresh(countryID)
 
 	return post, nil
 }
@@ -287,8 +300,11 @@ func (s *postService) Delete(countryID database.CountryID, id uint64, callerID u
 	}
 
 	err = s.repo.Delete(countryID, id)
-	if err == nil && s.cache != nil {
-		_ = s.cache.DeletePattern("posts:list:*")
+	if err == nil {
+		if s.cache != nil {
+			_ = s.cache.DeletePattern("posts:list:*")
+		}
+		s.scheduleSitemapRefresh(countryID)
 	}
 	return MapError(err)
 }

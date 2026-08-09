@@ -81,8 +81,10 @@ func NewDependencies() *Handlers {
 
 	fileRepo := repositories.NewFileRepository()
 	fileSvc := services.NewFileService(fileRepo)
+	sitemapRepo := repositories.NewSitemapRepository()
+	sitemapSvc := services.NewSitemapService(sitemapRepo)
 	articleRepo := repositories.NewArticleRepository()
-	articleSvc := services.NewArticleService(articleRepo, fileSvc, cacheSvc)
+	articleSvc := services.NewArticleService(articleRepo, fileSvc, cacheSvc, sitemapSvc)
 
 	userRepo := repositories.NewUserRepository()
 	jwtSvc := services.NewJWTService()
@@ -97,7 +99,7 @@ func NewDependencies() *Handlers {
 	commentRepo := repositories.NewCommentRepository()
 	commentSvc := services.NewCommentService(commentRepo)
 	postRepo := repositories.NewPostRepository()
-	postSvc := services.NewPostService(postRepo, fileSvc, cacheSvc)
+	postSvc := services.NewPostService(postRepo, fileSvc, cacheSvc, sitemapSvc)
 
 	gradeRepo := repositories.NewGradeRepository()
 	gradeSvc := services.NewGradeService(gradeRepo, cacheSvc)
@@ -144,9 +146,6 @@ func NewDependencies() *Handlers {
 
 	settingRepo := repositories.NewSettingRepository()
 	settingSvc := services.NewSettingService(settingRepo)
-
-	sitemapRepo := repositories.NewSitemapRepository()
-	sitemapSvc := services.NewSitemapService(sitemapRepo)
 
 	analyticsRepo := repositories.NewAnalyticsRepository()
 	analyticsSvc := services.NewAnalyticsService(analyticsRepo)

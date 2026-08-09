@@ -176,7 +176,6 @@ func (h *Handler) StoreKnowledge(c *fiber.Ctx) error {
 	if item.CountryCode == "" {
 		item.CountryCode = database.CountryCode(countryID(c))
 	}
-	item.IsActive = true
 	if user := middleware.GetUser(c); user != nil {
 		uid := user.ID
 		item.CreatedBy = &uid

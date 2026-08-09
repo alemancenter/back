@@ -12,11 +12,14 @@ import (
 
 	"github.com/alemancenter/fiber-api/internal/config"
 	"github.com/alemancenter/fiber-api/internal/repositories"
+	"github.com/alemancenter/fiber-api/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type SitemapService interface {
 	GetStatus(dbCode string) map[string]SitemapInfo
 	GenerateAll(dbCode string) []error
+	ScheduleGenerate(dbCode string)
 	Delete(sitemapType, dbCode string) error
 }
 
@@ -26,11 +29,14 @@ type SitemapStatusResponse struct {
 }
 
 type sitemapService struct {
-	repo repositories.SitemapRepository
+	repo          repositories.SitemapRepository
+	generationMu  sync.Mutex
+	refreshMu     sync.Mutex
+	refreshTimers map[string]*time.Timer
 }
 
 func NewSitemapService(repo repositories.SitemapRepository) SitemapService {
-	return &sitemapService{repo: repo}
+	return &sitemapService{repo: repo, refreshTimers: make(map[string]*time.Timer)}
 }
 
 type SitemapInfo struct {
@@ -135,6 +141,11 @@ func (s *sitemapService) GetStatus(dbCode string) map[string]SitemapInfo {
 }
 
 func (s *sitemapService) GenerateAll(dbCode string) []error {
+	// Only one generation may write sitemap files at a time. This also protects
+	// manual generation from overlapping an automatic content-triggered refresh.
+	s.generationMu.Lock()
+	defer s.generationMu.Unlock()
+
 	base := s.siteURL()
 	cc := dbCode // country code used in frontend URL segments
 
@@ -239,6 +250,39 @@ func (s *sitemapService) GenerateAll(dbCode string) []error {
 	}
 
 	return actualErrors
+}
+
+// ScheduleGenerate coalesces rapid content changes into one background refresh.
+// Content persistence is never rolled back if sitemap I/O fails; failures are
+// logged so the dashboard can still be used to retry generation manually.
+func (s *sitemapService) ScheduleGenerate(dbCode string) {
+	if dbCode == "" {
+		dbCode = "jo"
+	}
+
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+	if timer, exists := s.refreshTimers[dbCode]; exists {
+		timer.Reset(750 * time.Millisecond)
+		return
+	}
+
+	var timer *time.Timer
+	timer = time.AfterFunc(750*time.Millisecond, func() {
+		s.refreshMu.Lock()
+		if s.refreshTimers[dbCode] != timer {
+			s.refreshMu.Unlock()
+			return
+		}
+		delete(s.refreshTimers, dbCode)
+		s.refreshMu.Unlock()
+
+		errs := s.GenerateAll(dbCode)
+		for _, err := range errs {
+			logger.Error("automatic sitemap refresh failed", zap.String("database", dbCode), zap.Error(err))
+		}
+	})
+	s.refreshTimers[dbCode] = timer
 }
 
 func (s *sitemapService) writeSitemapIndex(dbCode, baseURL string, sitemapTypes []string) error {

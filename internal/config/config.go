@@ -478,9 +478,22 @@ func Get() *Config {
 }
 
 func (d *DBConnection) DSN() string {
+	// DB_CHARSET missing/empty in the environment silently produced "charset=" (empty) in the
+	// DSN below — the Go MySQL driver falls back to its own default (not utf8mb4) rather than
+	// erroring, so nothing failed loudly. Symptom confirmed in production: any Arabic value
+	// sent as a query parameter (not data already stored) came back mangled to literal "?"
+	// characters — e.g. a keyword search echoed "????" for a 4-character Arabic keyword — so
+	// every exact-match/search query built from Arabic input silently matched nothing, while
+	// already-stored Arabic content kept displaying fine (no charset conversion needed to read
+	// it back). `collation=utf8mb4_unicode_ci` alone does not fix this — it only affects
+	// comparison rules, not the client-server wire charset that the `charset=` param controls.
+	charset := d.Charset
+	if charset == "" {
+		charset = "utf8mb4"
+	}
 	return fmt.Sprintf(
 		"%s:%s@tcp(%s:%d)/%s?charset=%s&parseTime=True&loc=Local&collation=utf8mb4_unicode_ci",
-		d.User, d.Password, d.Host, d.Port, d.Name, d.Charset,
+		d.User, d.Password, d.Host, d.Port, d.Name, charset,
 	)
 }
 

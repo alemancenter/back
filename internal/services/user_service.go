@@ -9,7 +9,8 @@ import (
 )
 
 type UserService interface {
-	List(search, status, role string, limit, offset int) ([]models.User, int64, error)
+	List(search, status, role, emailVerified string, limit, offset int) ([]models.User, int64, error)
+	GetUserActivity(id uint64, limit int) (*repositories.UserActivityData, error)
 	Search(query string) ([]models.User, error)
 	GetByID(id uint64) (*models.User, error)
 	Create(req *CreateUserRequest, callerID uint) (*models.User, error)
@@ -55,8 +56,15 @@ func NewUserService(repo repositories.UserRepository, securitySvc SecurityServic
 	return &userService{repo: repo, securitySvc: securitySvc}
 }
 
-func (s *userService) List(search, status, role string, limit, offset int) ([]models.User, int64, error) {
-	return s.repo.List(search, status, role, limit, offset)
+func (s *userService) List(search, status, role, emailVerified string, limit, offset int) ([]models.User, int64, error) {
+	return s.repo.List(search, status, role, emailVerified, limit, offset)
+}
+
+func (s *userService) GetUserActivity(id uint64, limit int) (*repositories.UserActivityData, error) {
+	if _, err := s.repo.FindByID(id); err != nil {
+		return nil, MapError(err)
+	}
+	return s.repo.GetUserActivity(id, limit)
 }
 
 func (s *userService) Search(query string) ([]models.User, error) {

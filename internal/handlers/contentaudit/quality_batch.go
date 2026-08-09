@@ -23,29 +23,10 @@ func (h *Handler) StartQualityBatch(c *fiber.Ctx) error {
 	}
 	req = normalizeQualityBatchRequest(req)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	targets, err := h.selectQualityBatchTargets(ctx, req)
-	if err != nil {
-		return utils.InternalError(c, "failed to select quality batch targets")
-	}
-	if len(targets) == 0 {
-		return utils.BadRequest(c, "لا توجد عناصر مطابقة للفلاتر المحددة")
-	}
-
+	// Create the job immediately (empty), then select targets + process in the
+	// background. Target selection can scan a lot of content, so doing it in the
+	// request handler made the "start" button block and time out on large sites.
 	jobID := nextQualityBatchID()
-	items := make([]contentQualityBatchItem, 0, len(targets))
-	for _, target := range targets {
-		items = append(items, contentQualityBatchItem{
-			ContentType: target.Type,
-			ContentID:   target.ID,
-			CountryCode: req.CountryCode,
-			Title:       target.Title,
-			URL:         target.URL,
-			Status:      models.ContentAIJobItemStatusPending,
-			ScoreBefore: target.Score,
-		})
-	}
 	job := &contentQualityBatchJob{
 		ID:              jobID,
 		Status:          models.ContentAIJobStatusQueued,
@@ -59,19 +40,66 @@ func (h *Handler) StartQualityBatch(c *fiber.Ctx) error {
 		Preset:          req.Preset,
 		Limit:           req.Limit,
 		Concurrency:     req.Concurrency,
-		TotalItems:      len(items),
-		PendingItems:    len(items),
+		TotalItems:      0,
+		PendingItems:    0,
 		CreatedByUserID: currentUserID(c),
 		CreatedAt:       time.Now(),
-		Items:           items,
+		Items:           nil,
 	}
 	putQualityBatch(job)
-	go h.runQualityBatch(job.ID)
+	go h.prepareAndRunQualityBatch(jobID, req)
 
-	if snapshot, ok := qualityBatchSnapshot(job.ID); ok {
+	if snapshot, ok := qualityBatchSnapshot(jobID); ok {
 		return utils.Created(c, "quality batch started", snapshot)
 	}
 	return utils.Created(c, "quality batch started", job)
+}
+
+// prepareAndRunQualityBatch selects the batch targets (bounded by a generous
+// timeout) then runs the batch. It runs in a goroutine so StartQualityBatch
+// returns instantly.
+func (h *Handler) prepareAndRunQualityBatch(jobID string, req contentQualityBatchRequest) {
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+
+	markFailed := func(message string) {
+		finished := time.Now()
+		updateQualityBatch(jobID, func(job *contentQualityBatchJob) {
+			job.Status = models.ContentAIJobStatusFailed
+			job.Error = message
+			job.FinishedAt = &finished
+		})
+	}
+
+	targets, err := h.selectQualityBatchTargets(ctx, req)
+	if err != nil {
+		markFailed("تعذّر تحديد عناصر الدفعة (قد يكون المحتوى كبيرًا أو انتهت المهلة). جرّب تضييق النطاق أو تقليل العدد.")
+		return
+	}
+	if len(targets) == 0 {
+		markFailed("لا توجد عناصر مطابقة للفلاتر المحددة")
+		return
+	}
+
+	items := make([]contentQualityBatchItem, 0, len(targets))
+	for _, target := range targets {
+		items = append(items, contentQualityBatchItem{
+			ContentType: target.Type,
+			ContentID:   target.ID,
+			CountryCode: req.CountryCode,
+			Title:       target.Title,
+			URL:         target.URL,
+			Status:      models.ContentAIJobItemStatusPending,
+			ScoreBefore: target.Score,
+		})
+	}
+	updateQualityBatch(jobID, func(job *contentQualityBatchJob) {
+		job.Items = items
+		job.TotalItems = len(items)
+		job.PendingItems = len(items)
+	})
+
+	h.runQualityBatch(jobID)
 }
 
 func (h *Handler) ListQualityBatches(c *fiber.Ctx) error {

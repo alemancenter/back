@@ -852,7 +852,8 @@ func (h *Handler) AdminDownloadOrderProof(c *fiber.Ctx) error {
 func (h *Handler) AdminListOrders(c *fiber.Ctx) error {
 	pag := utils.GetPagination(c)
 	status := c.Query("status")
-	orders, total, err := h.svc.ListOrders(status, pag.PerPage, pag.Offset)
+	search := c.Query("q")
+	orders, total, err := h.svc.ListOrders(status, search, pag.PerPage, pag.Offset)
 	if err != nil {
 		return utils.InternalError(c)
 	}

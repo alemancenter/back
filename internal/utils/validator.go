@@ -22,9 +22,15 @@ var richTextPolicy = func() *bluemonday.Policy {
 	p.AllowAttrs("width", "height", "frameborder", "allowfullscreen", "allow").OnElements("iframe")
 	// Allow dir attribute for RTL text
 	p.AllowAttrs("dir").OnElements("p", "div", "span", "h1", "h2", "h3", "h4", "h5", "h6", "td", "th")
-	// Allow inline styles for editor-generated content (colour, font-size, etc.)
+	// Allow inline styles for editor-generated content (colour, font-size, etc.). "direction"
+	// specifically: the dashboard's Quill editor renders its align/direction/size toolbar
+	// controls via Quill's *style-based* attributors (style="direction:rtl") rather than the
+	// default CSS-class-based ones (class="ql-direction-rtl") — the class-based form has
+	// nothing to render it (this policy has no class allowlist, and the public article page
+	// never loads Quill's own stylesheet), so admins could toggle RTL in the editor and have
+	// it silently vanish on save. Style-based attributors survive sanitization here instead.
 	p.AllowStyles("color", "background-color", "font-size", "font-weight", "text-align",
-		"text-decoration", "font-style").Globally()
+		"text-decoration", "font-style", "direction").Globally()
 	return p
 }()
 
@@ -162,9 +168,14 @@ func SplitKeywords(keywordsStr string) []string {
 	normalised := strings.NewReplacer("،", ",", "؛", ",", ";", ",").Replace(keywordsStr)
 	parts := strings.Split(normalised, ",")
 	var result []string
+	seen := make(map[string]bool)
 	for _, p := range parts {
 		trimmed := strings.TrimSpace(p)
-		if trimmed != "" {
+		// Deduplicate: a repeated keyword string was creating one join row per
+		// occurrence (e.g. the same phrase associated dozens of times), which the
+		// edit form then reloaded and re-sent, compounding on every save.
+		if trimmed != "" && !seen[trimmed] {
+			seen[trimmed] = true
 			result = append(result, trimmed)
 		}
 	}

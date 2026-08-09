@@ -15,6 +15,7 @@ import (
 	"github.com/alemancenter/fiber-api/internal/database"
 	"github.com/alemancenter/fiber-api/internal/models"
 	coreai "github.com/alemancenter/fiber-api/internal/services"
+	"github.com/alemancenter/fiber-api/internal/utils"
 	"github.com/alemancenter/fiber-api/pkg/logger"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -388,8 +389,15 @@ func (s *Service) ApplyFix(ctx context.Context, previewID uint64, userID *uint, 
 		if err := db.Preload("Subject").Preload("Subject.SchoolClass").Preload("Semester").Preload("Semester.SchoolClass").First(&item, id).Error; err != nil {
 			return nil, err
 		}
-		item.Title = preview.FixedTitle
-		item.Content = preview.FixedContent
+		// normalizeFixedHTML (applied earlier, at preview-generation time) is a formatting
+		// helper, not a security boundary — its regex-based script/iframe/on*= stripping is
+		// the same denylist approach OWASP explicitly warns against, unlike the bluemonday
+		// allowlist every other article/post write path goes through (ArticleService.
+		// CreateArticle/UpdateArticle). This is the actual persistence point for
+		// AI-generated content, so it must pass through the same trusted sanitizer,
+		// regardless of what ran upstream.
+		item.Title = utils.SanitizeInput(preview.FixedTitle)
+		item.Content = utils.SanitizeHTML(preview.FixedContent)
 		if err := db.Save(&item).Error; err != nil {
 			return nil, err
 		}
@@ -403,8 +411,10 @@ func (s *Service) ApplyFix(ctx context.Context, previewID uint64, userID *uint, 
 		if err := db.Preload("Category").First(&item, id).Error; err != nil {
 			return nil, err
 		}
-		item.Title = preview.FixedTitle
-		item.Content = preview.FixedContent
+		// Same reasoning as the article branch above; StripBlockedLinks order matches
+		// PostService.Create/Update (it must run after sanitization, never before).
+		item.Title = utils.SanitizeInput(preview.FixedTitle)
+		item.Content = utils.StripBlockedLinks(utils.SanitizeHTML(preview.FixedContent))
 		if err := db.Save(&item).Error; err != nil {
 			return nil, err
 		}

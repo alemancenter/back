@@ -87,6 +87,9 @@ func (s *roleService) UpdateRole(callerID uint, id uint64, name string, permissi
 	if err != nil {
 		return nil, MapError(err)
 	}
+	if (role.Name == "Super Admin" || role.Name == "Admin") && name != "" && name != role.Name {
+		return nil, ErrProtectedRole
+	}
 
 	if name != "" {
 		role.Name = name
@@ -104,6 +107,13 @@ func (s *roleService) UpdateRole(callerID uint, id uint64, name string, permissi
 func (s *roleService) DeleteRole(callerID uint, id uint64) error {
 	if err := s.requireSuperAdmin(callerID); err != nil {
 		return err
+	}
+	role, err := s.repo.GetRole(id)
+	if err != nil {
+		return MapError(err)
+	}
+	if role.Name == "Super Admin" || role.Name == "Admin" {
+		return ErrProtectedRole
 	}
 	return s.repo.DeleteRole(id)
 }

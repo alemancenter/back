@@ -26,7 +26,7 @@ func registerCommunicationRoutes(public, dash fiber.Router, h *Handlers) {
 	// =====================
 
 	// Calendar management
-	dashCalendar := dash.Group("/calendar")
+	dashCalendar := dash.Group("/calendar", middleware.CanAny("manage calendar", "manage settings"))
 	dashCalendar.Get("/databases", h.Calendar.Databases)
 	dashCalendar.Get("/events", h.Calendar.GetEvents)
 	dashCalendar.Post("/events", h.Calendar.CreateEvent)
@@ -49,6 +49,7 @@ func registerCommunicationRoutes(public, dash fiber.Router, h *Handlers) {
 	// Contact form messages (submitted via the public contact form)
 	dashContactMessages := dash.Group("/contact-messages", middleware.Can("manage settings"))
 	dashContactMessages.Get("", h.ContactMessages.List)
+	dashContactMessages.Get("/stats", h.ContactMessages.Stats)
 	dashContactMessages.Get("/:id", h.ContactMessages.Get)
 	dashContactMessages.Post("/:id/read", h.ContactMessages.MarkAsRead)
 	dashContactMessages.Delete("/:id", h.ContactMessages.Delete)
@@ -67,12 +68,15 @@ func registerCommunicationRoutes(public, dash fiber.Router, h *Handlers) {
 	// Notifications
 	dashNotifications := dash.Group("/notifications")
 	dashNotifications.Get("/latest", h.Notifications.Latest)
+	dashNotifications.Get("/stats", h.Notifications.Stats)
 	dashNotifications.Post("/read-all", h.Notifications.MarkAllRead)
-	dashNotifications.Post("/bulk", h.Notifications.BulkAction)
-	dashNotifications.Post("/prune", h.Notifications.Prune)
-	dashNotifications.Post("/broadcast", h.Notifications.Broadcast)
 	dashNotifications.Get("", h.Notifications.List)
-	dashNotifications.Post("", h.Notifications.Create)
 	dashNotifications.Post("/:id/read", h.Notifications.MarkAsRead)
-	dashNotifications.Delete("/:id", h.Notifications.Delete)
+
+	dashNotificationsAdmin := dashNotifications.Group("", middleware.Can("manage notifications"))
+	dashNotificationsAdmin.Post("/bulk", h.Notifications.BulkAction)
+	dashNotificationsAdmin.Post("/prune", h.Notifications.Prune)
+	dashNotificationsAdmin.Post("/broadcast", h.Notifications.Broadcast)
+	dashNotificationsAdmin.Post("", h.Notifications.Create)
+	dashNotificationsAdmin.Delete("/:id", h.Notifications.Delete)
 }

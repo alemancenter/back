@@ -24,6 +24,9 @@ type MockArticleRepository struct {
 	UpdateFunc               func(countryID database.CountryID, article *models.Article) error
 	DeleteFunc               func(countryID database.CountryID, article *models.Article) error
 	GetFileByIDFunc          func(countryID database.CountryID, fileID uint64) (*models.File, error)
+	GetClassesFunc           func(countryID database.CountryID) ([]models.SchoolClass, error)
+	GetAllSubjectsFunc       func(countryID database.CountryID) ([]models.Subject, error)
+	GetAllSemestersFunc      func(countryID database.CountryID) ([]models.Semester, error)
 }
 
 func (m *MockArticleRepository) List(countryID database.CountryID, pag utils.Pagination, filters *models.ArticleFilter) ([]models.Article, int64, error) {
@@ -83,6 +86,27 @@ func (m *MockArticleRepository) GetFileByID(countryID database.CountryID, fileID
 		return m.GetFileByIDFunc(countryID, fileID)
 	}
 	return nil, gorm.ErrRecordNotFound
+}
+
+func (m *MockArticleRepository) GetClasses(countryID database.CountryID) ([]models.SchoolClass, error) {
+	if m.GetClassesFunc != nil {
+		return m.GetClassesFunc(countryID)
+	}
+	return nil, nil
+}
+
+func (m *MockArticleRepository) GetAllSubjects(countryID database.CountryID) ([]models.Subject, error) {
+	if m.GetAllSubjectsFunc != nil {
+		return m.GetAllSubjectsFunc(countryID)
+	}
+	return nil, nil
+}
+
+func (m *MockArticleRepository) GetAllSemesters(countryID database.CountryID) ([]models.Semester, error) {
+	if m.GetAllSemestersFunc != nil {
+		return m.GetAllSemestersFunc(countryID)
+	}
+	return nil, nil
 }
 
 func TestArticleService_GetByID(t *testing.T) {
@@ -327,4 +351,194 @@ func TestArticleService_CreateArticle(t *testing.T) {
 		assert.Equal(t, expectedErr, err)
 	})
 
+}
+
+// Regression guard for the bug where GetDashboardCreateData used to return
+// Subjects/Semesters as hardcoded empty slices regardless of country — the dashboard's
+// class → subject → semester cascade had nothing to filter against. The fix fetches every
+// subject/semester across all classes (not scoped to any single one), so the key assertion
+// here is that the result spans more than one grade level, not just that it's non-empty.
+func TestArticleService_GetDashboardCreateData(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test_secret_key_12345678901234567890")
+	t.Setenv("DB_HOST_JO", "localhost")
+	t.Setenv("DB_NAME_JO", "test_db")
+	t.Setenv("DB_USER_JO", "root")
+	t.Setenv("APP_URL", "http://localhost")
+	t.Setenv("FRONTEND_URL", "http://localhost:3000")
+
+	mockRepo := &MockArticleRepository{}
+	svc := NewArticleService(mockRepo, nil, nil)
+
+	t.Run("Success returns subjects and semesters across every class", func(t *testing.T) {
+		mockRepo.GetClassesFunc = func(countryID database.CountryID) ([]models.SchoolClass, error) {
+			return []models.SchoolClass{
+				{ID: 1, GradeName: "الصف الأول", GradeLevel: 1},
+				{ID: 2, GradeName: "الصف الثاني", GradeLevel: 2},
+			}, nil
+		}
+		mockRepo.GetAllSubjectsFunc = func(countryID database.CountryID) ([]models.Subject, error) {
+			return []models.Subject{
+				{ID: 10, SubjectName: "اللغة العربية", GradeLevel: 1},
+				{ID: 20, SubjectName: "الرياضيات", GradeLevel: 2},
+			}, nil
+		}
+		mockRepo.GetAllSemestersFunc = func(countryID database.CountryID) ([]models.Semester, error) {
+			return []models.Semester{
+				{ID: 100, SemesterName: "الفصل الأول", GradeLevel: 1},
+				{ID: 200, SemesterName: "الفصل الأول", GradeLevel: 2},
+			}, nil
+		}
+
+		data, err := svc.GetDashboardCreateData(database.CountryJordan)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, data)
+		assert.Len(t, data.Classes, 2)
+		assert.Len(t, data.Subjects, 2)
+		assert.Len(t, data.Semesters, 2)
+
+		gradeLevels := map[uint]bool{}
+		for _, s := range data.Subjects {
+			gradeLevels[s.GradeLevel] = true
+		}
+		assert.Len(t, gradeLevels, 2, "subjects must span more than one grade level, not be scoped to a single class")
+	})
+
+	t.Run("ClassesError propagates", func(t *testing.T) {
+		expectedErr := errors.New("classes query failed")
+		mockRepo.GetClassesFunc = func(countryID database.CountryID) ([]models.SchoolClass, error) {
+			return nil, expectedErr
+		}
+		mockRepo.GetAllSubjectsFunc = func(countryID database.CountryID) ([]models.Subject, error) { return nil, nil }
+		mockRepo.GetAllSemestersFunc = func(countryID database.CountryID) ([]models.Semester, error) { return nil, nil }
+
+		data, err := svc.GetDashboardCreateData(database.CountryJordan)
+
+		assert.Error(t, err)
+		assert.Equal(t, expectedErr, err)
+		assert.Nil(t, data)
+	})
+
+	t.Run("SubjectsError propagates", func(t *testing.T) {
+		expectedErr := errors.New("subjects query failed")
+		mockRepo.GetClassesFunc = func(countryID database.CountryID) ([]models.SchoolClass, error) { return nil, nil }
+		mockRepo.GetAllSubjectsFunc = func(countryID database.CountryID) ([]models.Subject, error) {
+			return nil, expectedErr
+		}
+		mockRepo.GetAllSemestersFunc = func(countryID database.CountryID) ([]models.Semester, error) { return nil, nil }
+
+		data, err := svc.GetDashboardCreateData(database.CountryJordan)
+
+		assert.Error(t, err)
+		assert.Equal(t, expectedErr, err)
+		assert.Nil(t, data)
+	})
+
+	t.Run("SemestersError propagates", func(t *testing.T) {
+		expectedErr := errors.New("semesters query failed")
+		mockRepo.GetClassesFunc = func(countryID database.CountryID) ([]models.SchoolClass, error) { return nil, nil }
+		mockRepo.GetAllSubjectsFunc = func(countryID database.CountryID) ([]models.Subject, error) { return nil, nil }
+		mockRepo.GetAllSemestersFunc = func(countryID database.CountryID) ([]models.Semester, error) {
+			return nil, expectedErr
+		}
+
+		data, err := svc.GetDashboardCreateData(database.CountryJordan)
+
+		assert.Error(t, err)
+		assert.Equal(t, expectedErr, err)
+		assert.Nil(t, data)
+	})
+}
+
+// Regression guard for the bug where GetDashboardEditData scoped Subjects/Semesters to only
+// the article's own class — an admin reclassifying an article to a different class saw 0
+// subjects for it. The fix (matching GetDashboardCreateData) fetches every subject/semester
+// across all classes, so the key assertion is that the result includes subjects outside the
+// edited article's own grade level, not just that it's non-empty.
+func TestArticleService_GetDashboardEditData(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test_secret_key_12345678901234567890")
+	t.Setenv("DB_HOST_JO", "localhost")
+	t.Setenv("DB_NAME_JO", "test_db")
+	t.Setenv("DB_USER_JO", "root")
+	t.Setenv("APP_URL", "http://localhost")
+	t.Setenv("FRONTEND_URL", "http://localhost:3000")
+
+	mockRepo := &MockArticleRepository{}
+	svc := NewArticleService(mockRepo, nil, nil)
+
+	t.Run("Success includes subjects outside the article's own class", func(t *testing.T) {
+		// The article being edited belongs to subject 10 (grade level 1) — the bug this
+		// guards against scoped the returned Subjects/Semesters lists down to exactly that
+		// article's own class, so the fixed behavior must return grade level 2 as well.
+		ownSubjectID := uint(10)
+		const ownGradeLevel = 1
+		const otherGradeLevel = 2
+		existingArticle := &models.Article{ID: 1, Title: "Existing Article", SubjectID: &ownSubjectID}
+
+		mockRepo.FindByIDFunc = func(countryID database.CountryID, id uint64) (*models.Article, error) {
+			return existingArticle, nil
+		}
+		mockRepo.GetClassesFunc = func(countryID database.CountryID) ([]models.SchoolClass, error) {
+			return []models.SchoolClass{{ID: 1, GradeLevel: ownGradeLevel}, {ID: 2, GradeLevel: otherGradeLevel}}, nil
+		}
+		mockRepo.GetAllSubjectsFunc = func(countryID database.CountryID) ([]models.Subject, error) {
+			return []models.Subject{
+				{ID: ownSubjectID, SubjectName: "اللغة العربية", GradeLevel: ownGradeLevel},
+				{ID: 20, SubjectName: "الرياضيات", GradeLevel: otherGradeLevel},
+			}, nil
+		}
+		mockRepo.GetAllSemestersFunc = func(countryID database.CountryID) ([]models.Semester, error) {
+			return []models.Semester{
+				{ID: 100, SemesterName: "الفصل الأول", GradeLevel: ownGradeLevel},
+				{ID: 200, SemesterName: "الفصل الأول", GradeLevel: otherGradeLevel},
+			}, nil
+		}
+
+		data, err := svc.GetDashboardEditData(database.CountryJordan, 1)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, data)
+		assert.Equal(t, existingArticle, data.Data)
+		assert.Len(t, data.Subjects, 2)
+		assert.Len(t, data.Semesters, 2)
+
+		foundOutsideOwnClass := false
+		for _, s := range data.Subjects {
+			if s.GradeLevel == otherGradeLevel {
+				foundOutsideOwnClass = true
+			}
+		}
+		assert.True(t, foundOutsideOwnClass, "subjects must include grades other than the article's own — not scoped to a single class")
+	})
+
+	t.Run("ArticleNotFound", func(t *testing.T) {
+		mockRepo.FindByIDFunc = func(countryID database.CountryID, id uint64) (*models.Article, error) {
+			return nil, gorm.ErrRecordNotFound
+		}
+
+		data, err := svc.GetDashboardEditData(database.CountryJordan, 999)
+
+		assert.Error(t, err)
+		assert.Equal(t, ErrNotFound, err)
+		assert.Nil(t, data)
+	})
+
+	t.Run("SubjectsError propagates", func(t *testing.T) {
+		existingArticle := &models.Article{ID: 1, Title: "Existing Article"}
+		mockRepo.FindByIDFunc = func(countryID database.CountryID, id uint64) (*models.Article, error) {
+			return existingArticle, nil
+		}
+		mockRepo.GetClassesFunc = func(countryID database.CountryID) ([]models.SchoolClass, error) { return nil, nil }
+		expectedErr := errors.New("subjects query failed")
+		mockRepo.GetAllSubjectsFunc = func(countryID database.CountryID) ([]models.Subject, error) {
+			return nil, expectedErr
+		}
+		mockRepo.GetAllSemestersFunc = func(countryID database.CountryID) ([]models.Semester, error) { return nil, nil }
+
+		data, err := svc.GetDashboardEditData(database.CountryJordan, 1)
+
+		assert.Error(t, err)
+		assert.Equal(t, expectedErr, err)
+		assert.Nil(t, data)
+	})
 }

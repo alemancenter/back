@@ -233,6 +233,28 @@ func (h *Handler) DashboardList(c *fiber.Ctx) error {
 	return utils.Paginated(c, "success", newDashboardPostResponses(postList), pag.BuildMeta(total))
 }
 
+// DashboardShow returns a single post (including drafts/inactive) for the admin
+// edit form, with all fields and without incrementing the view counter.
+// @Router /dashboard/posts/{id} [get]
+func (h *Handler) DashboardShow(c *fiber.Ctx) error {
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil {
+		return utils.BadRequest(c, "معرف غير صحيح")
+	}
+
+	countryID, _ := c.Locals("country_id").(database.CountryID)
+
+	post, err := h.svc.GetByID(countryID, id)
+	if err != nil {
+		if err == services.ErrNotFound {
+			return utils.NotFound(c)
+		}
+		return utils.InternalError(c)
+	}
+
+	return utils.Success(c, "success", newDashboardPostResponse(*post))
+}
+
 // @Router /dashboard/posts [post]
 func (h *Handler) DashboardCreate(c *fiber.Ctx) error {
 	var req services.CreatePostRequest

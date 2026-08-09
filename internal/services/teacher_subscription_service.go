@@ -337,13 +337,13 @@ type CreateTeacherOrderRequest struct {
 	// to MaxTeacherSubjects entries.
 	Subject         string   `json:"subject"`
 	Subjects        []string `json:"subjects"`
-	School          string `json:"school"`
-	City            string `json:"city"`
-	Phone           string `json:"phone"`
-	PaymentMethod   string `json:"payment_method"`
-	PayerName       string `json:"payer_name"`
-	PaymentRef      string `json:"payment_reference"`
-	PaymentProofURL string `json:"payment_proof_url"`
+	School          string   `json:"school"`
+	City            string   `json:"city"`
+	Phone           string   `json:"phone"`
+	PaymentMethod   string   `json:"payment_method"`
+	PayerName       string   `json:"payer_name"`
+	PaymentRef      string   `json:"payment_reference"`
+	PaymentProofURL string   `json:"payment_proof_url"`
 }
 
 type TeacherOrderReviewRequest struct {
@@ -366,12 +366,12 @@ type TeacherSubscriptionSummary struct {
 	// MaxTeacherSubjects) — a convenience over parsing Profile.Subjects JSON.
 	Subjects       []string                   `json:"subjects"`
 	Orders         []models.SubscriptionOrder `json:"orders"`
-	Devices        []models.TeacherDevice      `json:"devices,omitempty"`
-	Usage          map[string]int64            `json:"usage"`
-	HasActive      bool                        `json:"has_active"`
-	CanCreateOrder bool                        `json:"can_create_order"`
-	PlanDesign     TeacherPlanDesign           `json:"plan_design"`
-	Access         TeacherAccessResult         `json:"access"`
+	Devices        []models.TeacherDevice     `json:"devices,omitempty"`
+	Usage          map[string]int64           `json:"usage"`
+	HasActive      bool                       `json:"has_active"`
+	CanCreateOrder bool                       `json:"can_create_order"`
+	PlanDesign     TeacherPlanDesign          `json:"plan_design"`
+	Access         TeacherAccessResult        `json:"access"`
 }
 
 type TeacherAIGenerateRequest struct {
@@ -444,7 +444,7 @@ type TeacherSubscriptionService interface {
 	PlanDesign() TeacherPlanDesign
 	MySummary(userID uint) (*TeacherSubscriptionSummary, error)
 	CreateOrder(user *models.User, req CreateTeacherOrderRequest) (*models.SubscriptionOrder, error)
-	ListOrders(status string, limit, offset int) ([]models.SubscriptionOrder, int64, error)
+	ListOrders(status, search string, limit, offset int) ([]models.SubscriptionOrder, int64, error)
 	AdminListAIGenerations(userID uint, limit, offset int) ([]models.TeacherAIGeneration, int64, error)
 	AdminUpdatePremiumVaultFile(countryID database.CountryID, fileID uint, req TeacherPremiumVaultCreateRequest, isActive *bool, adminID uint) (*TeacherPremiumVaultFileResponse, error)
 	AdminCreatePremiumVaultFile(countryID database.CountryID, req TeacherPremiumVaultCreateRequest, privatePath, storedFilename, originalFilename, mimeType string, fileSize int64, adminID uint) (*TeacherPremiumVaultFileResponse, error)
@@ -817,8 +817,8 @@ func (s *teacherSubscriptionService) AdminOrderProofPath(orderID uint) (string, 
 	return proofPath, filepath.Base(proofPath), contentType, nil
 }
 
-func (s *teacherSubscriptionService) ListOrders(status string, limit, offset int) ([]models.SubscriptionOrder, int64, error) {
-	return s.repo.ListOrders(status, limit, offset)
+func (s *teacherSubscriptionService) ListOrders(status, search string, limit, offset int) ([]models.SubscriptionOrder, int64, error) {
+	return s.repo.ListOrders(status, search, limit, offset)
 }
 
 func (s *teacherSubscriptionService) ListUserOrders(userID uint, limit int) ([]models.SubscriptionOrder, error) {
@@ -830,7 +830,7 @@ func (s *teacherSubscriptionService) AdminDashboard() (*TeacherAdminDashboard, e
 	if err != nil {
 		return nil, err
 	}
-	orders, _, _ := s.repo.ListOrders("", 8, 0)
+	orders, _, _ := s.repo.ListOrders("", "", 8, 0)
 	return &TeacherAdminDashboard{
 		Stats:        stats,
 		Plan:         s.PlanDesign(),

@@ -5,6 +5,7 @@ import (
 	"github.com/alemancenter/fiber-api/internal/models"
 	"github.com/alemancenter/fiber-api/internal/utils"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type ArticleRepository interface {
@@ -21,8 +22,10 @@ type ArticleRepository interface {
 	IncrementFileViewCount(countryID database.CountryID, fileID uint64) error
 	GetClasses(countryID database.CountryID) ([]models.SchoolClass, error)
 	GetSubjectsByClass(countryID database.CountryID, classID uint) ([]models.Subject, error)
+	GetAllSubjects(countryID database.CountryID) ([]models.Subject, error)
 	GetSubjectByID(countryID database.CountryID, subjectID uint) (*models.Subject, error)
 	GetSemestersByClass(countryID database.CountryID, classID uint) ([]models.Semester, error)
+	GetAllSemesters(countryID database.CountryID) ([]models.Semester, error)
 	GetStats(countryID database.CountryID) (total, published, drafts, views int64, err error)
 	UpdateKeywords(countryID database.CountryID, articleID uint, keywordsStr string) error
 }
@@ -189,7 +192,11 @@ func (r *articleRepository) Create(countryID database.CountryID, article *models
 }
 
 func (r *articleRepository) Update(countryID database.CountryID, article *models.Article) error {
-	return r.GetDB(countryID).Save(article).Error
+	// The article is loaded with associations preloaded (Subject, Semester,
+	// Files, KeywordsRel). A plain Save would cascade-upsert all of them on every
+	// edit — which fails on their constraints and 500s. Omit associations so only
+	// the article's own columns are written.
+	return r.GetDB(countryID).Omit(clause.Associations).Save(article).Error
 }
 
 func (r *articleRepository) Delete(countryID database.CountryID, article *models.Article) error {
@@ -241,6 +248,15 @@ func (r *articleRepository) GetSubjectsByClass(countryID database.CountryID, cla
 	return subjects, err
 }
 
+// GetAllSubjects returns every subject across every class — used by the article "create"
+// dashboard form, which lets an admin pick a subject before any class-specific context
+// exists (unlike "edit", which already knows the article's class and can scope the query).
+func (r *articleRepository) GetAllSubjects(countryID database.CountryID) ([]models.Subject, error) {
+	var subjects []models.Subject
+	err := r.GetDB(countryID).Order("grade_level ASC, subject_name ASC").Find(&subjects).Error
+	return subjects, err
+}
+
 func (r *articleRepository) GetSubjectByID(countryID database.CountryID, subjectID uint) (*models.Subject, error) {
 	var subject models.Subject
 	err := r.GetDB(countryID).First(&subject, subjectID).Error
@@ -250,6 +266,13 @@ func (r *articleRepository) GetSubjectByID(countryID database.CountryID, subject
 func (r *articleRepository) GetSemestersByClass(countryID database.CountryID, classID uint) ([]models.Semester, error) {
 	var semesters []models.Semester
 	err := r.GetDB(countryID).Where("grade_level = ?", classID).Order("semester_name ASC").Find(&semesters).Error
+	return semesters, err
+}
+
+// GetAllSemesters returns every semester across every class — see GetAllSubjects.
+func (r *articleRepository) GetAllSemesters(countryID database.CountryID) ([]models.Semester, error) {
+	var semesters []models.Semester
+	err := r.GetDB(countryID).Order("grade_level ASC, semester_name ASC").Find(&semesters).Error
 	return semesters, err
 }
 

@@ -32,11 +32,22 @@ func (h *Handler) List(c *fiber.Ctx) error {
 		return utils.Forbidden(c)
 	}
 	pag := utils.GetPagination(c)
-	msgs, total, err := h.svc.List(pag.Offset, pag.PerPage)
+	msgs, total, err := h.svc.List(c.Query("q"), c.Query("status"), pag.Offset, pag.PerPage)
 	if err != nil {
 		return utils.InternalError(c)
 	}
 	return utils.Paginated(c, "success", msgs, pag.BuildMeta(total))
+}
+
+func (h *Handler) Stats(c *fiber.Ctx) error {
+	if !h.requirePermission(c) {
+		return utils.Forbidden(c)
+	}
+	stats, err := h.svc.Stats()
+	if err != nil {
+		return utils.InternalError(c)
+	}
+	return utils.Success(c, "success", stats)
 }
 
 func (h *Handler) Get(c *fiber.Ctx) error {

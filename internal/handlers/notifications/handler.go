@@ -42,14 +42,29 @@ func (h *Handler) List(c *fiber.Ctx) error {
 	}
 
 	pag := utils.GetPagination(c)
-	unreadOnly := c.Query("unread") == "1"
+	status := c.Query("status")
+	if c.Query("unread") == "1" {
+		status = "unread"
+	}
 
-	notifications, total, err := h.svc.List(user.ID, unreadOnly, pag.Offset, pag.PerPage)
+	notifications, total, err := h.svc.List(user.ID, c.Query("q"), status, pag.Offset, pag.PerPage)
 	if err != nil {
 		return utils.InternalError(c)
 	}
 
 	return utils.Paginated(c, "success", notifications, pag.BuildMeta(total))
+}
+
+func (h *Handler) Stats(c *fiber.Ctx) error {
+	user, _ := c.Locals("user").(*models.User)
+	if user == nil {
+		return utils.Unauthorized(c)
+	}
+	stats, err := h.svc.Stats(user.ID)
+	if err != nil {
+		return utils.InternalError(c)
+	}
+	return utils.Success(c, "success", stats)
 }
 
 // Latest returns the latest 10 notifications

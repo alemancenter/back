@@ -36,7 +36,7 @@ func (h *Handler) Team(c *fiber.Ctx) error {
 	role := c.Query("role")
 
 	// Fetch all matching users (no pagination — team list is small)
-	allUsers, _, err := h.svc.List(search, "", "", 500, 0)
+	allUsers, _, err := h.svc.List(search, "", "", "", 500, 0)
 	if err != nil {
 		return utils.InternalError(c)
 	}
@@ -76,6 +76,7 @@ func (h *Handler) Team(c *fiber.Ctx) error {
 // @Param search query string false "Search query"
 // @Param status query string false "Filter by status"
 // @Param role query string false "Filter by role"
+// @Param email_verified query string false "Filter by email verification (verified/unverified)"
 // @Param page query int false "Page number"
 // @Param limit query int false "Items per page"
 // @Success 200 {object} utils.APIResponse{data=[]services.UserResponse}
@@ -86,13 +87,32 @@ func (h *Handler) List(c *fiber.Ctx) error {
 	search := c.Query("search")
 	status := c.Query("status")
 	role := c.Query("role")
+	emailVerified := c.Query("email_verified")
 
-	users, total, err := h.svc.List(search, status, role, pag.PerPage, pag.Offset)
+	users, total, err := h.svc.List(search, status, role, emailVerified, pag.PerPage, pag.Offset)
 	if err != nil {
 		return utils.InternalError(c)
 	}
 
 	return utils.Paginated(c, "success", users, pag.BuildMeta(total))
+}
+
+// Activity returns the user's recent sessions, locations, IP addresses and audit events.
+// @Router /dashboard/users/{user}/activity [get]
+func (h *Handler) Activity(c *fiber.Ctx) error {
+	id, err := strconv.ParseUint(c.Params("user"), 10, 64)
+	if err != nil {
+		return utils.BadRequest(c, "معرف غير صحيح")
+	}
+	limit := c.QueryInt("limit", 30)
+	data, err := h.svc.GetUserActivity(id, limit)
+	if err != nil {
+		if err == services.ErrNotFound {
+			return utils.NotFound(c)
+		}
+		return utils.InternalError(c, "تعذّر جلب نشاط المستخدم")
+	}
+	return utils.Success(c, "success", data)
 }
 
 // Search searches users by name or email (autocomplete for messaging).

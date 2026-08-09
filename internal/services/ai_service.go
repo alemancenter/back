@@ -20,12 +20,19 @@ import (
 )
 
 const (
-	AIOverallTimeout = 3 * time.Minute
+	// Overall budget across the primary model + fallbacks. Fast Turbo instruct
+	// models finish a 300–1000 word article in ~15–30s, so a success returns
+	// quickly while a genuinely failing title still gives up in ~110s instead of
+	// minutes. Per-request timeout is generous enough for the slowest fallback.
+	AIOverallTimeout = 110 * time.Second
 	AIRequestTimeout = 55 * time.Second
 	siteBaseURL      = "https://alemancenter.com"
 
 	defaultAIBaseURL = "https://api.together.ai/v1"
-	defaultAIModel   = "openai/gpt-oss-120b"
+	// DeepSeek-V4-Pro is serverless on this account and far stronger for Arabic
+	// SEO JSON than gpt-oss/gemma. Its only weakness (occasional CJK leakage) is
+	// handled by the prompt + stripCJK. gpt-oss-20b/gemma remain fast fallbacks.
+	defaultAIModel = "deepseek-ai/DeepSeek-V4-Pro"
 
 	minSEOArticleWords = 300
 	maxSEOArticleWords = 1000
@@ -35,8 +42,9 @@ var (
 	ErrAIGenerationTimeout = errors.New("ai generation timed out")
 	ErrAIProviderFailed    = errors.New("ai provider failed")
 
+	// Fast serverless fallbacks if DeepSeek fails. gpt-oss-120b is intentionally
+	// excluded: it is too slow to finish within the timeout and only burns budget.
 	defaultAIFallbackModels = []string{
-		"Qwen/Qwen3-235B-A22B-Instruct-2507-tput",
 		"openai/gpt-oss-20b",
 		"google/gemma-3n-E4B-it",
 	}
@@ -857,7 +865,10 @@ func (s *aiService) generateSEOWithFallback(ctx context.Context, title, contentT
 			{"role": "system", "content": systemPrompt},
 			{"role": "user", "content": userPrompt},
 		},
-		"max_tokens":  3500,
+		// Enough for a 300–1000 word Arabic article + JSON, but small enough that
+		// gpt-oss-20b finishes within the request timeout (8000 was so large the
+		// model couldn't complete in time and timed out).
+		"max_tokens":  4000,
 		"temperature": 0.46,
 		"top_p":       0.9,
 		"stop":        []string{"<|eot_id|>", "<|im_end|>"},
@@ -1220,8 +1231,10 @@ func buildSEOPrompts(title string, isArabic bool, intent searchIntent, generatio
 {"meta_description":"وصف بين 100 و180 حرفاً","keywords":["كلمة 1","كلمة 2","كلمة 3","كلمة 4","كلمة 5"],"faq":[{"question":"سؤال واضح","answer":"إجابة عملية مختصرة"}],"content":"نص المقال الكامل"}
 
 2. اللغة:
-- استخدم اللغة العربية فقط داخل content.
-- ممنوع استخدام أي لغة أخرى أو كلمات أجنبية.
+- استخدم اللغة العربية الفصحى فقط في جميع الحقول (content و meta_description و keywords و faq).
+- ممنوع منعاً باتاً استخدام أي أحرف صينية أو يابانية أو كورية أو أي كتابة غير عربية.
+- ممنوع الكلمات اللاتينية إلا للمصطلحات التقنية الضرورية جداً.
+- الأرقام تُكتب بالأرقام العربية الشرقية أو الغربية فقط.
 
 3. جودة المحتوى:
 - اكتب محتوى حقيقي مفيد وليس حشو أو جمل عامة.
@@ -1390,7 +1403,32 @@ func repairJSONStrings(s string) string {
 	return buf.String()
 }
 
+// DeepSeek-class models occasionally leak CJK (Chinese/Japanese/Korean) glyphs
+// into otherwise-Arabic output. This strips them so nothing foreign is ever
+// published; the prompt already forbids them, this is the belt-and-suspenders.
+var cjkStripRe = regexp.MustCompile(`[\p{Han}\p{Hiragana}\p{Katakana}\p{Hangul}]`)
+
+func stripCJK(s string) string {
+	if !cjkStripRe.MatchString(s) {
+		return s
+	}
+	// Collapse any whitespace left where CJK runs were removed.
+	return strings.TrimSpace(regexp.MustCompile(`\s{2,}`).ReplaceAllString(cjkStripRe.ReplaceAllString(s, ""), " "))
+}
+
 func cleanSEOArticle(article *SEOArticle, originalTitle string, isArabic bool, contentType string) *SEOArticle {
+	if isArabic {
+		article.Content = stripCJK(article.Content)
+		article.MetaDescription = stripCJK(article.MetaDescription)
+		article.FeaturedSnippet = stripCJK(article.FeaturedSnippet)
+		for i := range article.Keywords {
+			article.Keywords[i] = stripCJK(article.Keywords[i])
+		}
+		for i := range article.FAQ {
+			article.FAQ[i].Question = stripCJK(article.FAQ[i].Question)
+			article.FAQ[i].Answer = stripCJK(article.FAQ[i].Answer)
+		}
+	}
 	article.MetaDescription = cleanPlainText(article.MetaDescription, isArabic)
 	article.Content = cleanContent(article.Content, isArabic)
 	if isArabic {
@@ -1723,7 +1761,11 @@ func applyArabicLinguisticFilter(content string) string {
 
 	content = regexp.MustCompile(`[A-Za-z]+[\x{0600}-\x{06FF}]+`).ReplaceAllString(content, "")
 	content = regexp.MustCompile(`[\x{0600}-\x{06FF}]+[A-Za-z]+`).ReplaceAllString(content, "")
-	content = regexp.MustCompile(`لل\s+([\x{0600}-\x{06FF}])`).ReplaceAllString(content, "لل$1")
+	// Join a STANDALONE "لل" prefix that the model split off (e.g. "لل مدرسة" →
+	// "للمدرسة"). It must be anchored to a word boundary, otherwise it also glued
+	// any word ENDING in "لل" to the next word ("يحلل مرحلة" → "يحللمرحلة",
+	// "يقلل من" → "يقللمن").
+	content = regexp.MustCompile(`(^|\s)لل\s+([\x{0600}-\x{06FF}])`).ReplaceAllString(content, "${1}لل${2}")
 	content = regexp.MustCompile(`[ \t]+([،؛:.؟!])`).ReplaceAllString(content, "$1")
 	content = regexp.MustCompile(`([،؛:.؟!])([^\s\n])`).ReplaceAllString(content, "$1 $2")
 	content = regexp.MustCompile(`[،]{2,}`).ReplaceAllString(content, "،")

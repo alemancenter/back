@@ -18,7 +18,7 @@ type TeacherSubscriptionRepository interface {
 	GetProfile(userID uint) (*models.TeacherProfile, error)
 	CreateOrder(order *models.SubscriptionOrder) error
 	GetOrder(id uint) (*models.SubscriptionOrder, error)
-	ListOrders(status string, limit, offset int) ([]models.SubscriptionOrder, int64, error)
+	ListOrders(status, search string, limit, offset int) ([]models.SubscriptionOrder, int64, error)
 	AdminStats() (map[string]int64, error)
 	AdminListSubscriptions(status, search string, limit, offset int) ([]models.TeacherSubscription, int64, error)
 	AdminListTeachers(search string, limit, offset int) ([]models.TeacherProfile, int64, error)
@@ -190,17 +190,25 @@ func (r *teacherSubscriptionRepository) GetOrder(id uint) (*models.SubscriptionO
 	return &order, err
 }
 
-func (r *teacherSubscriptionRepository) ListOrders(status string, limit, offset int) ([]models.SubscriptionOrder, int64, error) {
+func (r *teacherSubscriptionRepository) ListOrders(status, search string, limit, offset int) ([]models.SubscriptionOrder, int64, error) {
 	var orders []models.SubscriptionOrder
 	var total int64
 	q := r.DB().Model(&models.SubscriptionOrder{}).Preload("User").Preload("Plan")
 	if status != "" {
-		q = q.Where("status = ?", status)
+		q = q.Where("subscription_orders.status = ?", status)
+	}
+	if term := strings.TrimSpace(search); term != "" {
+		like := "%" + term + "%"
+		q = q.Joins("LEFT JOIN users AS order_users ON order_users.id = subscription_orders.user_id").
+			Where(
+				"order_users.name LIKE ? OR order_users.email LIKE ? OR subscription_orders.payer_name LIKE ? OR subscription_orders.phone LIKE ? OR subscription_orders.payment_ref LIKE ? OR CAST(subscription_orders.id AS CHAR) LIKE ?",
+				like, like, like, like, like, like,
+			)
 	}
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := q.Order("created_at DESC").Limit(limit).Offset(offset).Find(&orders).Error
+	err := q.Order("subscription_orders.created_at DESC").Limit(limit).Offset(offset).Find(&orders).Error
 	return orders, total, err
 }
 

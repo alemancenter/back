@@ -152,6 +152,8 @@ func (h *Handler) UpdateRole(c *fiber.Ctx) error {
 			return utils.Forbidden(c, "هذه العملية تتطلب صلاحية Super Admin")
 		case services.ErrNotFound:
 			return utils.NotFound(c)
+		case services.ErrProtectedRole:
+			return utils.BadRequest(c, "لا يمكن إعادة تسمية دور أساسي في النظام")
 		default:
 			return utils.InternalError(c, "فشل تحديث الدور")
 		}
@@ -181,6 +183,12 @@ func (h *Handler) DeleteRole(c *fiber.Ctx) error {
 	if err := h.svc.DeleteRole(callerID(c), id); err != nil {
 		if err == services.ErrForbidden {
 			return utils.Forbidden(c, "هذه العملية تتطلب صلاحية Super Admin")
+		}
+		if err == services.ErrProtectedRole {
+			return utils.BadRequest(c, "لا يمكن حذف دور Admin أو Super Admin")
+		}
+		if err == services.ErrNotFound {
+			return utils.NotFound(c)
 		}
 		return utils.InternalError(c)
 	}

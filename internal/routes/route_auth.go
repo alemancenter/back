@@ -88,7 +88,8 @@ func registerAuthRoutes(api, dash fiber.Router, h *Handlers) {
 		"/:user/roles-permissions",
 		middleware.Can("manage roles"),
 		h.Users.UpdateRolesPermissions,
-)
+	)
+	dashUsers.Get("/:user/activity", h.Users.Activity)
 	dashUsers.Get("/:user", h.Users.Show)
 	dashUsers.Put("/:user", h.Users.Update)
 	dashUsers.Delete("/:user", h.Users.Delete)

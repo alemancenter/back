@@ -24,8 +24,9 @@ func registerAnalyticsRoutes(public, dash fiber.Router, h *Handlers) {
 	dash.Get("", h.Analytics.DashboardSummary)
 
 	// Activities Log
-	dash.Get("/activities", h.Dashboard.Activities)
-	dash.Delete("/activities/clean", h.Dashboard.CleanActivities)
+	dashActivities := dash.Group("", middleware.CanAny("manage monitoring", "manage performance", "manage security"))
+	dashActivities.Get("/activities", h.Dashboard.Activities)
+	dashActivities.Delete("/activities/clean", h.Dashboard.CleanActivities)
 
 	// Visitor Analytics (requires monitoring permission)
 	dashMonitor := dash.Group("", middleware.CanAny("manage monitoring", "manage performance"))

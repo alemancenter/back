@@ -31,17 +31,29 @@ func NewSettingService(repo repositories.SettingRepository) SettingService {
 var publicSettingKeys = map[string]bool{
 	"adsense_client":       true,
 	"canonical_url":        true,
-	"cookieyes_id":         true,
 	"date_format":          true,
+	"time_format":          true,
 	"enable_notifications": true,
 	"enable_registration":  true,
 	"facebook_pixel_id":    true,
-	"footer_text":          true,
-	"recaptcha_site_key":   true,
-	"twitter_handle":       true,
+	// Public OAuth identifiers — safe to expose (used in the browser to start the
+	// login flow). The matching *_secret keys are blocked by privateSettingMarkers.
+	"google_client_id":   true,
+	"facebook_app_id":    true,
+	"footer_text":        true,
+	"recaptcha_site_key": true,
+	"twitter_handle":     true,
 	// Read by DownloadAuthGate via GetPublic — must be public or the admin
 	// toggle "طلب تسجيل الدخول قبل التحميل" has no effect.
 	"require_login_for_download": true,
+	// Public page-rendering data: SEO defaults, brand colors, analytics IDs — all
+	// meant to be embedded directly in page HTML, none of them secrets.
+	"meta_title":          true,
+	"meta_description":    true,
+	"meta_keywords":       true,
+	"primary_color":       true,
+	"secondary_color":     true,
+	"google_analytics_id": true,
 }
 
 var privateSettingMarkers = []string{

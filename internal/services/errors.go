@@ -12,6 +12,9 @@ var ErrNotFound = errors.New("record not found")
 // ErrForbidden is returned when the caller lacks ownership of the target resource.
 var ErrForbidden = errors.New("forbidden")
 
+// ErrProtectedRole prevents destructive changes to the platform's root access roles.
+var ErrProtectedRole = errors.New("protected role")
+
 // MapError translates data layer errors to service layer errors.
 func MapError(err error) error {
 	if err == gorm.ErrRecordNotFound {

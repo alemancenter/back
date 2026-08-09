@@ -83,7 +83,7 @@ func TestPostService_GetByID(t *testing.T) {
 	t.Setenv("FRONTEND_URL", "http://localhost:3000")
 
 	mockRepo := &MockPostRepository{}
-	svc := NewPostService(mockRepo, nil)
+	svc := NewPostService(mockRepo, nil, nil)
 
 	t.Run("Success", func(t *testing.T) {
 		expectedPost := &models.Post{
@@ -125,7 +125,7 @@ func TestPostService_Create(t *testing.T) {
 	t.Setenv("FRONTEND_URL", "http://localhost:3000")
 
 	mockRepo := &MockPostRepository{}
-	svc := NewPostService(mockRepo, nil)
+	svc := NewPostService(mockRepo, nil, nil)
 
 	t.Run("Success", func(t *testing.T) {
 		req := &CreatePostRequest{
@@ -228,7 +228,7 @@ func TestPostService_Update_SanitizesPostFields(t *testing.T) {
 	t.Setenv("FRONTEND_URL", "http://localhost:3000")
 
 	mockRepo := &MockPostRepository{}
-	svc := NewPostService(mockRepo, nil)
+	svc := NewPostService(mockRepo, nil, nil)
 	imagePath := `<script>bad</script>posts/image.png`
 
 	mockRepo.FindByIDFunc = func(countryID database.CountryID, id uint64) (*models.Post, error) {

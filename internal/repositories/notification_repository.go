@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"strings"
 	"time"
 
 	"github.com/alemancenter/fiber-api/internal/database"
@@ -8,7 +9,8 @@ import (
 )
 
 type NotificationRepository interface {
-	List(userID uint, unreadOnly bool, offset, limit int) ([]models.Notification, int64, error)
+	List(userID uint, search, status string, offset, limit int) ([]models.Notification, int64, error)
+	Stats(userID uint) (map[string]int64, error)
 	GetLatest(userID uint, limit int) ([]models.Notification, error)
 	GetUnreadCount(userID uint) (int64, error)
 	MarkAsRead(id string, userID uint) error
@@ -27,7 +29,7 @@ func NewNotificationRepository() NotificationRepository {
 	return &notificationRepository{}
 }
 
-func (r *notificationRepository) List(userID uint, unreadOnly bool, offset, limit int) ([]models.Notification, int64, error) {
+func (r *notificationRepository) List(userID uint, search, status string, offset, limit int) ([]models.Notification, int64, error) {
 	var notifications []models.Notification
 	var total int64
 	db := database.DB()
@@ -35,8 +37,15 @@ func (r *notificationRepository) List(userID uint, unreadOnly bool, offset, limi
 	query := db.Model(&models.Notification{}).
 		Where("notifiable_type = ? AND notifiable_id = ?", "App\\Models\\User", userID)
 
-	if unreadOnly {
+	switch status {
+	case "unread":
 		query = query.Where("read_at IS NULL")
+	case "read":
+		query = query.Where("read_at IS NOT NULL")
+	}
+	if term := strings.TrimSpace(search); term != "" {
+		like := "%" + term + "%"
+		query = query.Where("type LIKE ? OR CAST(data AS CHAR) LIKE ?", like, like)
 	}
 
 	if err := query.Count(&total).Error; err != nil {
@@ -45,6 +54,30 @@ func (r *notificationRepository) List(userID uint, unreadOnly bool, offset, limi
 
 	err := query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&notifications).Error
 	return notifications, total, err
+}
+
+func (r *notificationRepository) Stats(userID uint) (map[string]int64, error) {
+	db := database.DB()
+	baseWhere := "notifiable_type = ? AND notifiable_id = ?"
+	baseArgs := []interface{}{"App\\Models\\User", userID}
+	stats := map[string]int64{"total": 0, "unread": 0, "read": 0, "today": 0}
+	var total, unread, today int64
+	if err := db.Model(&models.Notification{}).Where(baseWhere, baseArgs...).Count(&total).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Model(&models.Notification{}).Where(baseWhere, baseArgs...).Where("read_at IS NULL").Count(&unread).Error; err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	if err := db.Model(&models.Notification{}).Where(baseWhere, baseArgs...).Where("created_at >= ?", startOfDay).Count(&today).Error; err != nil {
+		return nil, err
+	}
+	stats["total"] = total
+	stats["unread"] = unread
+	stats["read"] = total - unread
+	stats["today"] = today
+	return stats, nil
 }
 
 func (r *notificationRepository) GetLatest(userID uint, limit int) ([]models.Notification, error) {

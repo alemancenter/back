@@ -9,11 +9,13 @@
 
 -- ── 1. Unify AdSense publisher ID ──────────────────────────────────────────
 -- AdSense policy: only ONE ca-pub-* per domain.
--- Replace the wrong ID (ca-pub-5143966486037953) with the correct one.
+-- Switched to the new AdSense account ca-pub-4320033645574547.
+-- NOTE: the ADSENSE_CLIENT env var in /etc/alemancenter/api.env overrides this
+-- DB value across all countries — keep them in sync.
 INSERT INTO settings (`key`, `value`, created_at, updated_at)
-VALUES ('adsense_client', 'ca-pub-2187451543840210', NOW(), NOW())
+VALUES ('adsense_client', 'ca-pub-4320033645574547', NOW(), NOW())
 ON DUPLICATE KEY UPDATE
-    `value`     = 'ca-pub-2187451543840210',
+    `value`     = 'ca-pub-4320033645574547',
     updated_at  = NOW();
 
 -- ── 2. Populate canonical_url if empty ─────────────────────────────────────

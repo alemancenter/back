@@ -1,7 +1,9 @@
 package repositories
 
 import (
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/alemancenter/fiber-api/internal/database"
 	"github.com/alemancenter/fiber-api/internal/models"
@@ -13,7 +15,8 @@ import (
 type UserRepository interface {
 	GetDB() *gorm.DB
 	CountByEmail(email string) (int64, error)
-	List(search, status, role string, limit, offset int) ([]models.User, int64, error)
+	List(search, status, role, emailVerified string, limit, offset int) ([]models.User, int64, error)
+	GetUserActivity(userID uint64, limit int) (*UserActivityData, error)
 	Search(query string, limit int) ([]models.User, error)
 	Create(user *models.User) error
 	FindByEmail(email string) (*models.User, error)
@@ -34,6 +37,31 @@ type UserRepository interface {
 	GetPushTokensByUserIDs(userIDs []uint) ([]models.PushToken, error)
 }
 
+type UserSessionRecord struct {
+	ID           uint      `json:"id"`
+	Database     string    `json:"database"`
+	IPAddress    string    `json:"ip_address"`
+	Country      *string   `json:"country,omitempty"`
+	City         *string   `json:"city,omitempty"`
+	Browser      *string   `json:"browser,omitempty"`
+	OS           *string   `json:"os,omitempty"`
+	URL          *string   `json:"url,omitempty"`
+	Referer      *string   `json:"referer,omitempty"`
+	UserAgent    string    `json:"user_agent"`
+	Latitude     *float64  `json:"latitude,omitempty"`
+	Longitude    *float64  `json:"longitude,omitempty"`
+	StatusCode   *int      `json:"status_code,omitempty"`
+	ResponseTime *float64  `json:"response_time,omitempty"`
+	LastActivity time.Time `json:"last_activity"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+type UserActivityData struct {
+	Sessions       []UserSessionRecord  `json:"sessions"`
+	SecurityEvents []models.SecurityLog `json:"security_events"`
+	ActivityLogs   []models.ActivityLog `json:"activity_logs"`
+}
+
 type userRepository struct{}
 
 // NewUserRepository creates a new UserRepository
@@ -52,7 +80,7 @@ func (r *userRepository) CountByEmail(email string) (int64, error) {
 	return count, err
 }
 
-func (r *userRepository) List(search, status, role string, limit, offset int) ([]models.User, int64, error) {
+func (r *userRepository) List(search, status, role, emailVerified string, limit, offset int) ([]models.User, int64, error) {
 	db := r.GetDB()
 	var users []models.User
 	var total int64
@@ -70,6 +98,11 @@ func (r *userRepository) List(search, status, role string, limit, offset int) ([
 			Joins("JOIN roles ON roles.id = model_has_roles.role_id").
 			Where("roles.name = ?", role)
 	}
+	if emailVerified == "verified" {
+		query = query.Where("users.email_verified_at IS NOT NULL")
+	} else if emailVerified == "unverified" {
+		query = query.Where("users.email_verified_at IS NULL")
+	}
 
 	err := query.Count(&total).Error
 	if err != nil {
@@ -78,6 +111,54 @@ func (r *userRepository) List(search, status, role string, limit, offset int) ([
 
 	err = query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&users).Error
 	return users, total, err
+}
+
+func (r *userRepository) GetUserActivity(userID uint64, limit int) (*UserActivityData, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	result := &UserActivityData{
+		Sessions:       make([]UserSessionRecord, 0),
+		SecurityEvents: make([]models.SecurityLog, 0),
+		ActivityLogs:   make([]models.ActivityLog, 0),
+	}
+	seen := make(map[string]struct{})
+	for _, countryID := range []database.CountryID{database.CountryJordan, database.CountrySaudi, database.CountryEgypt, database.CountryPalestine} {
+		var rows []models.VisitorTracking
+		err := database.DBForCountry(countryID).Where("user_id = ?", userID).
+			Order("last_activity DESC").Limit(limit).Find(&rows).Error
+		if err != nil {
+			continue
+		}
+		for _, row := range rows {
+			key := row.IPAddress + "|" + row.LastActivity.UTC().Format(time.RFC3339Nano)
+			if row.URL != nil {
+				key += "|" + *row.URL
+			}
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			result.Sessions = append(result.Sessions, UserSessionRecord{
+				ID: row.ID, Database: database.CountryCode(countryID), IPAddress: row.IPAddress,
+				Country: row.Country, City: row.City, Browser: row.Browser, OS: row.OS,
+				URL: row.URL, Referer: row.Referer, UserAgent: row.UserAgent,
+				Latitude: row.Latitude, Longitude: row.Longitude, StatusCode: row.StatusCode,
+				ResponseTime: row.ResponseTime, LastActivity: row.LastActivity, CreatedAt: row.CreatedAt,
+			})
+		}
+	}
+	sort.Slice(result.Sessions, func(i, j int) bool { return result.Sessions[i].LastActivity.After(result.Sessions[j].LastActivity) })
+	if len(result.Sessions) > limit {
+		result.Sessions = result.Sessions[:limit]
+	}
+	if err := r.GetDB().Where("user_id = ?", userID).Order("created_at DESC").Limit(limit).Find(&result.SecurityEvents).Error; err != nil {
+		return nil, err
+	}
+	if err := r.GetDB().Where("causer_id = ?", userID).Order("created_at DESC").Limit(limit).Find(&result.ActivityLogs).Error; err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (r *userRepository) Search(query string, limit int) ([]models.User, error) {

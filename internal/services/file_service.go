@@ -177,8 +177,8 @@ var officeMimeByExt = map[string]string{
 // MaxImageSize is 10MB
 const MaxImageSize = 10 * 1024 * 1024
 
-// MaxDocumentSize is 50MB
-const MaxDocumentSize = 50 * 1024 * 1024
+// MaxDocumentSize is 80MB (headroom above the 70MB target for attachments).
+const MaxDocumentSize = 80 * 1024 * 1024
 
 // NewFileService creates a new FileService
 func NewFileService(repo repositories.FileRepository) *FileService {
@@ -200,7 +200,7 @@ func (s *FileService) UploadImage(header *multipart.FileHeader, subdir string) (
 // UploadDocument validates and saves a document file
 func (s *FileService) UploadDocument(header *multipart.FileHeader, subdir string) (*UploadedFile, error) {
 	if header.Size > MaxDocumentSize {
-		return nil, fmt.Errorf("حجم الملف يتجاوز الحد المسموح (50MB)")
+		return nil, fmt.Errorf("حجم الملف يتجاوز الحد المسموح (80MB)")
 	}
 
 	return s.upload(header, subdir, AllowedDocumentTypes)

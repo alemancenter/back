@@ -2,7 +2,6 @@ package services
 
 import (
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
@@ -207,15 +206,50 @@ func (s *articleService) GetFileBySignedToken(token string) (*models.File, strin
 	return file, absPath, nil
 }
 
+// GetDashboardCreateData used to return Subjects/Semesters as hardcoded empty slices
+// (`Subjects: []models.Subject{}, Semesters: []models.Semester{}`), regardless of country —
+// the dashboard's article-create form has a class → subject → semester cascade that filters
+// client-side, so an empty payload meant no subject ever appeared no matter which class was
+// selected. Fetching every subject/semester across all classes (not scoped to any single
+// one) fixes this — the client already filters down to the selected class itself.
 func (s *articleService) GetDashboardCreateData(countryID database.CountryID) (*ArticleDashboardCreateData, error) {
-	classes, err := s.repo.GetClasses(countryID)
-	if err != nil {
-		return nil, MapError(err)
+	var (
+		classes                           []models.SchoolClass
+		subjects                          []models.Subject
+		semesters                         []models.Semester
+		classErr, subjectErr, semesterErr error
+		wg                                sync.WaitGroup
+	)
+
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		classes, classErr = s.repo.GetClasses(countryID)
+	}()
+	go func() {
+		defer wg.Done()
+		subjects, subjectErr = s.repo.GetAllSubjects(countryID)
+	}()
+	go func() {
+		defer wg.Done()
+		semesters, semesterErr = s.repo.GetAllSemesters(countryID)
+	}()
+	wg.Wait()
+
+	if classErr != nil {
+		return nil, MapError(classErr)
 	}
+	if subjectErr != nil {
+		return nil, MapError(subjectErr)
+	}
+	if semesterErr != nil {
+		return nil, MapError(semesterErr)
+	}
+
 	return &ArticleDashboardCreateData{
 		Classes:   classes,
-		Subjects:  []models.Subject{},
-		Semesters: []models.Semester{},
+		Subjects:  subjects,
+		Semesters: semesters,
 	}, nil
 }
 
@@ -225,44 +259,41 @@ func (s *articleService) GetDashboardEditData(countryID database.CountryID, id u
 		return nil, MapError(err)
 	}
 
-	classID := articleClassID(article)
-	if classID == 0 && article.SubjectID != nil {
-		if subject, err := s.repo.GetSubjectByID(countryID, *article.SubjectID); err == nil {
-			classID = subject.GradeLevel
-		}
-	}
-
 	var (
-		classes   []models.SchoolClass
-		subjects  []models.Subject
-		semesters []models.Semester
-		classErr  error
-		wg        sync.WaitGroup
+		classes                           []models.SchoolClass
+		subjects                          []models.Subject
+		semesters                         []models.Semester
+		classErr, subjectErr, semesterErr error
+		wg                                sync.WaitGroup
 	)
 
-	wg.Add(1)
+	// All subjects/semesters across every class (not just the article's current one) — an
+	// admin editing an article can reclassify it to a different class entirely, and the
+	// class/subject/semester selects cascade client-side, so they need the full lists to
+	// filter against. Matches GetDashboardCreateData for the same reason.
+	wg.Add(3)
 	go func() {
 		defer wg.Done()
 		classes, classErr = s.repo.GetClasses(countryID)
 	}()
-
-	if classID > 0 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			subjects, _ = s.repo.GetSubjectsByClass(countryID, classID)
-		}()
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			semesters, _ = s.repo.GetSemestersByClass(countryID, classID)
-		}()
-	}
-
+	go func() {
+		defer wg.Done()
+		subjects, subjectErr = s.repo.GetAllSubjects(countryID)
+	}()
+	go func() {
+		defer wg.Done()
+		semesters, semesterErr = s.repo.GetAllSemesters(countryID)
+	}()
 	wg.Wait()
 
 	if classErr != nil {
-		return nil, classErr
+		return nil, MapError(classErr)
+	}
+	if subjectErr != nil {
+		return nil, MapError(subjectErr)
+	}
+	if semesterErr != nil {
+		return nil, MapError(semesterErr)
 	}
 
 	return &ArticleDashboardEditData{
@@ -431,17 +462,4 @@ func (s *articleService) GetDashboardStats(countryID database.CountryID) (*Artic
 		Drafts:    drafts,
 		Views:     views,
 	}, nil
-}
-
-func articleClassID(article *models.Article) uint {
-	if article == nil || article.GradeLevel == nil || *article.GradeLevel == "" {
-		return 0
-	}
-
-	id, err := strconv.ParseUint(*article.GradeLevel, 10, 64)
-	if err != nil {
-		return 0
-	}
-
-	return uint(id)
 }

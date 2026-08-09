@@ -11,7 +11,8 @@ import (
 )
 
 type NotificationService interface {
-	List(userID uint, unreadOnly bool, offset, limit int) ([]models.Notification, int64, error)
+	List(userID uint, search, status string, offset, limit int) ([]models.Notification, int64, error)
+	Stats(userID uint) (map[string]int64, error)
 	GetLatest(userID uint, limit int) ([]models.Notification, int64, error)
 	MarkAsRead(id string, userID uint) error
 	MarkAllRead(userID uint) error
@@ -47,8 +48,12 @@ func NewNotificationService(
 	return &notificationService{repo: repo, userRepo: userRepo, push: push}
 }
 
-func (s *notificationService) List(userID uint, unreadOnly bool, offset, limit int) ([]models.Notification, int64, error) {
-	return s.repo.List(userID, unreadOnly, offset, limit)
+func (s *notificationService) List(userID uint, search, status string, offset, limit int) ([]models.Notification, int64, error) {
+	return s.repo.List(userID, search, status, offset, limit)
+}
+
+func (s *notificationService) Stats(userID uint) (map[string]int64, error) {
+	return s.repo.Stats(userID)
 }
 
 func (s *notificationService) GetLatest(userID uint, limit int) ([]models.Notification, int64, error) {

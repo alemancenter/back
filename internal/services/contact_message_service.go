@@ -7,7 +7,8 @@ import (
 
 type ContactMessageService interface {
 	Create(msg *models.ContactMessage) error
-	List(offset, limit int) ([]models.ContactMessage, int64, error)
+	List(search, readStatus string, offset, limit int) ([]models.ContactMessage, int64, error)
+	Stats() (map[string]int64, error)
 	Get(id uint) (*models.ContactMessage, error)
 	MarkAsRead(id uint) error
 	Delete(id uint) error
@@ -25,8 +26,12 @@ func (s *contactMessageService) Create(msg *models.ContactMessage) error {
 	return s.repo.Create(msg)
 }
 
-func (s *contactMessageService) List(offset, limit int) ([]models.ContactMessage, int64, error) {
-	return s.repo.List(offset, limit)
+func (s *contactMessageService) List(search, readStatus string, offset, limit int) ([]models.ContactMessage, int64, error) {
+	return s.repo.List(search, readStatus, offset, limit)
+}
+
+func (s *contactMessageService) Stats() (map[string]int64, error) {
+	return s.repo.Stats()
 }
 
 func (s *contactMessageService) Get(id uint) (*models.ContactMessage, error) {

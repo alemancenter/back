@@ -92,9 +92,14 @@ func registerContentRoutes(api, public, dash fiber.Router, h *Handlers) {
 	// Posts management
 	dashPosts := dash.Group("/posts", middleware.Can("manage posts"))
 	dashPosts.Get("", h.Posts.DashboardList)
+	dashPosts.Get("/:id", h.Posts.DashboardShow)
 	dashPosts.Post("", h.Posts.DashboardCreate)
 	dashPosts.Post("/:id/toggle-status", h.Posts.DashboardToggleStatus)
 	dashPosts.Put("/:id", h.Posts.DashboardUpdate)
+	// Multipart form uploads (new image / attachments) are parsed reliably on
+	// POST but not on PUT (fasthttp), so file-bearing edits use POST while a
+	// plain metadata edit keeps the JSON PUT above.
+	dashPosts.Post("/:id", h.Posts.DashboardUpdate)
 	dashPosts.Delete("/:id", h.Posts.DashboardDelete)
 
 	// Categories management

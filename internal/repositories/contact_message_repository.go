@@ -1,7 +1,9 @@
 package repositories
 
 import (
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/alemancenter/fiber-api/internal/database"
 	"github.com/alemancenter/fiber-api/internal/models"
@@ -9,7 +11,8 @@ import (
 
 type ContactMessageRepository interface {
 	Create(msg *models.ContactMessage) error
-	List(offset, limit int) ([]models.ContactMessage, int64, error)
+	List(search, readStatus string, offset, limit int) ([]models.ContactMessage, int64, error)
+	Stats() (map[string]int64, error)
 	Get(id uint) (*models.ContactMessage, error)
 	MarkAsRead(id uint) error
 	Delete(id uint) error
@@ -52,20 +55,57 @@ func (r *contactMessageRepository) Create(msg *models.ContactMessage) error {
 	return database.DB().Create(msg).Error
 }
 
-func (r *contactMessageRepository) List(offset, limit int) ([]models.ContactMessage, int64, error) {
+func (r *contactMessageRepository) List(search, readStatus string, offset, limit int) ([]models.ContactMessage, int64, error) {
 	if err := ensureContactMessageSchema(); err != nil {
 		return nil, 0, err
 	}
 
 	var msgs []models.ContactMessage
 	var total int64
-	db := database.DB()
+	db := database.DB().Model(&models.ContactMessage{})
+	if term := strings.TrimSpace(search); term != "" {
+		like := "%" + term + "%"
+		db = db.Where("name LIKE ? OR email LIKE ? OR phone LIKE ? OR subject LIKE ? OR message LIKE ?", like, like, like, like, like)
+	}
+	switch readStatus {
+	case "read":
+		db = db.Where("`read` = ?", true)
+	case "unread":
+		db = db.Where("`read` = ?", false)
+	}
 
-	if err := db.Model(&models.ContactMessage{}).Count(&total).Error; err != nil {
+	if err := db.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 	err := db.Order("created_at DESC, id DESC").Limit(limit).Offset(offset).Find(&msgs).Error
 	return msgs, total, err
+}
+
+func (r *contactMessageRepository) Stats() (map[string]int64, error) {
+	if err := ensureContactMessageSchema(); err != nil {
+		return nil, err
+	}
+	db := database.DB().Model(&models.ContactMessage{})
+	stats := map[string]int64{"total": 0, "unread": 0, "read": 0, "today": 0}
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return nil, err
+	}
+	var unread int64
+	if err := db.Where("`read` = ?", false).Count(&unread).Error; err != nil {
+		return nil, err
+	}
+	stats["total"] = total
+	stats["unread"] = unread
+	stats["read"] = total - unread
+	now := time.Now()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	var today int64
+	if err := db.Where("created_at >= ?", startOfDay).Count(&today).Error; err != nil {
+		return nil, err
+	}
+	stats["today"] = today
+	return stats, nil
 }
 
 func (r *contactMessageRepository) Get(id uint) (*models.ContactMessage, error) {

@@ -5,6 +5,7 @@ import (
 	"github.com/alemancenter/fiber-api/internal/models"
 	"github.com/alemancenter/fiber-api/internal/utils"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type PostRepository interface {
@@ -114,7 +115,12 @@ func (r *postRepository) Create(countryID database.CountryID, post *models.Post)
 
 func (r *postRepository) Update(countryID database.CountryID, post *models.Post) error {
 	db := r.getDB(countryID)
-	return db.Save(post).Error
+	// The post was loaded with its associations preloaded (Category, Author,
+	// Comments+User, KeywordsRel, Files). A plain Save would cascade-upsert all
+	// of them — re-saving comments/users/keywords on every edit, which fails on
+	// their constraints and 500s. Omit associations so only the post's own
+	// columns are written; relations are managed by their own code paths.
+	return db.Omit(clause.Associations).Save(post).Error
 }
 
 func (r *postRepository) Delete(countryID database.CountryID, id uint64) error {

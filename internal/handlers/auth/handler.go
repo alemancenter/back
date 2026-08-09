@@ -864,7 +864,10 @@ func (h *Handler) exchangeGoogleCode(code string) (*oauth2.Token, *services.Goog
 }
 
 func (h *Handler) verifyGoogleToken(token string) (*services.GoogleUserInfo, error) {
-	req, err := http.NewRequest("GET", "https://www.googleapis.com/oauth2/v3/userinfo", nil)
+	// v2 userinfo returns id/verified_email (matching GoogleUserInfo's json tags);
+	// v3 returns sub/email_verified, which would leave GoogleID empty and risk a
+	// unique-constraint collision between Google accounts.
+	req, err := http.NewRequest("GET", "https://www.googleapis.com/oauth2/v2/userinfo", nil)
 	if err != nil {
 		return nil, err
 	}

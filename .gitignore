@@ -55,3 +55,10 @@ Thumbs.db
 /docs/swagger.json
 /docs/swagger.yaml
 back.zip
+
+# Local build artifacts & release bundles (never commit binaries/archives)
+/fiber-api
+/artifacts/
+*.zip
+*.tar.gz
+policy_audit_report.csv

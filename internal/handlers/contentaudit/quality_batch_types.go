@@ -116,7 +116,7 @@ func normalizeQualityBatchRequest(req contentQualityBatchRequest) contentQuality
 		req.ModelStrategy = "balanced"
 	}
 	if req.Limit <= 0 || req.Limit > 500 {
-		req.Limit = 50
+		req.Limit = 20 // matches the frontend default
 	}
 	if req.Concurrency <= 0 {
 		req.Concurrency = 2

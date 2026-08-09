@@ -121,7 +121,11 @@ func ResponseCache(_ time.Duration) fiber.Handler {
 }
 
 func publicCacheKey(c *fiber.Ctx) string {
-	raw := c.Method() + ":" + c.OriginalURL() + ":" + c.Get("Accept-Language") + ":" + c.Get("X-Country-Code")
+	// X-Country-Id is the header actually sent by clients (see database.CountryIDFromHeader
+	// and every handler's c.Get("X-Country-Id") fallback) — X-Country-Code was never set by
+	// anything, so this cache key was blind to country and could serve one country's cached
+	// response to every other country for the same path+query.
+	raw := c.Method() + ":" + c.OriginalURL() + ":" + c.Get("Accept-Language") + ":" + c.Get("X-Country-Id")
 	sum := sha1.Sum([]byte(raw))
 	return database.Redis().Key("http_cache", hex.EncodeToString(sum[:]))
 }

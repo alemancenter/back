@@ -106,7 +106,12 @@ func (r *keywordRepository) ListArticlesByKeyword(countryID database.CountryID, 
 	}
 
 	var articles []models.Article
-	err := db.Limit(limit).Offset(offset).Preload("Subject").Preload("Semester").Preload("SchoolClass").Preload("Files").Find(&articles).Error
+	// SchoolClass is a gorm:"-" computed field (see models.Article), not a real
+	// GORM association — Preload("SchoolClass") was invalid and made GORM error on
+	// every call regardless of result count, which made Keywords.Show 404 for every
+	// single keyword lookup (the ListArticlesByKeyword error aborts GetKeywordContent
+	// before the found posts/keyword are ever returned).
+	err := db.Limit(limit).Offset(offset).Preload("Subject").Preload("Semester").Preload("Files").Find(&articles).Error
 
 	return articles, total, err
 }

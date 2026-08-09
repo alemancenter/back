@@ -1,15 +1,19 @@
 package repositories
 
 import (
+	"strings"
+	"time"
+
 	"github.com/alemancenter/fiber-api/internal/database"
 	"github.com/alemancenter/fiber-api/internal/models"
 	"gorm.io/gorm"
 )
 
 type MessageRepository interface {
-	ListInbox(userID uint, offset, limit int) ([]models.Message, int64, error)
-	ListSent(userID uint, offset, limit int) ([]models.Message, int64, error)
-	ListDrafts(userID uint, offset, limit int) ([]models.Message, int64, error)
+	ListInbox(userID uint, search string, importantOnly bool, offset, limit int) ([]models.Message, int64, error)
+	ListSent(userID uint, search string, importantOnly bool, offset, limit int) ([]models.Message, int64, error)
+	ListDrafts(userID uint, search string, importantOnly bool, offset, limit int) ([]models.Message, int64, error)
+	Stats(userID uint) (map[string]int64, error)
 	FindOrCreateConversation(user1ID, user2ID uint) (*models.Conversation, error)
 	CreateMessage(msg *models.Message) error
 	GetMessage(msgID uint64, userID uint) (*models.Message, error)
@@ -24,19 +28,39 @@ func NewMessageRepository() MessageRepository {
 	return &messageRepository{}
 }
 
-func (r *messageRepository) ListInbox(userID uint, offset, limit int) ([]models.Message, int64, error) {
+func applyMessageFilters(query *gorm.DB, search string, importantOnly bool) *gorm.DB {
+	if importantOnly {
+		query = query.Where("messages.is_important = ?", true)
+	}
+	if search = strings.TrimSpace(search); search != "" {
+		term := "%" + strings.ToLower(search) + "%"
+		query = query.Where("LOWER(messages.subject) LIKE ? OR LOWER(messages.body) LIKE ? OR LOWER(message_senders.name) LIKE ? OR LOWER(message_senders.email) LIKE ? OR LOWER(conversation_user1.name) LIKE ? OR LOWER(conversation_user1.email) LIKE ? OR LOWER(conversation_user2.name) LIKE ? OR LOWER(conversation_user2.email) LIKE ?", term, term, term, term, term, term, term, term)
+	}
+	return query
+}
+
+func messageListQuery(db *gorm.DB) *gorm.DB {
+	return db.Model(&models.Message{}).
+		Joins("JOIN conversations ON conversations.id = messages.conversation_id").
+		Joins("LEFT JOIN users AS message_senders ON message_senders.id = messages.sender_id").
+		Joins("LEFT JOIN users AS conversation_user1 ON conversation_user1.id = conversations.user1_id").
+		Joins("LEFT JOIN users AS conversation_user2 ON conversation_user2.id = conversations.user2_id")
+}
+
+func preloadMessageUsers(query *gorm.DB) *gorm.DB {
+	return query.Preload("Sender").Preload("Conversation.User1").Preload("Conversation.User2")
+}
+
+func (r *messageRepository) ListInbox(userID uint, search string, importantOnly bool, offset, limit int) ([]models.Message, int64, error) {
 	var msgs []models.Message
 	var total int64
 	db := database.DB()
 
-	query := db.Model(&models.Message{}).
-		Joins("JOIN conversations ON conversations.id = messages.conversation_id").
+	query := messageListQuery(db).
 		Where("(conversations.user1_id = ? OR conversations.user2_id = ?)", userID, userID).
 		Where("messages.sender_id != ?", userID).
-		Where("messages.is_draft = ? AND messages.is_deleted = ?", false, false).
-		Preload("Sender").
-		Preload("Conversation.User1").
-		Preload("Conversation.User2")
+		Where("messages.is_draft = ? AND messages.is_deleted = ?", false, false)
+	query = preloadMessageUsers(applyMessageFilters(query, search, importantOnly))
 
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -45,40 +69,69 @@ func (r *messageRepository) ListInbox(userID uint, offset, limit int) ([]models.
 	return msgs, total, err
 }
 
-func (r *messageRepository) ListSent(userID uint, offset, limit int) ([]models.Message, int64, error) {
+func (r *messageRepository) ListSent(userID uint, search string, importantOnly bool, offset, limit int) ([]models.Message, int64, error) {
 	var msgs []models.Message
 	var total int64
 	db := database.DB()
 
-	query := db.Model(&models.Message{}).
-		Where("sender_id = ? AND is_draft = ? AND is_deleted = ?", userID, false, false).
-		Preload("Sender").
-		Preload("Conversation.User1").
-		Preload("Conversation.User2")
+	query := messageListQuery(db).
+		Where("messages.sender_id = ? AND messages.is_draft = ? AND messages.is_deleted = ?", userID, false, false)
+	query = preloadMessageUsers(applyMessageFilters(query, search, importantOnly))
 
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&msgs).Error
+	err := query.Order("messages.created_at DESC").Limit(limit).Offset(offset).Find(&msgs).Error
 	return msgs, total, err
 }
 
-func (r *messageRepository) ListDrafts(userID uint, offset, limit int) ([]models.Message, int64, error) {
+func (r *messageRepository) ListDrafts(userID uint, search string, importantOnly bool, offset, limit int) ([]models.Message, int64, error) {
 	var msgs []models.Message
 	var total int64
 	db := database.DB()
 
-	query := db.Model(&models.Message{}).
-		Where("sender_id = ? AND is_draft = ? AND is_deleted = ?", userID, true, false).
-		Preload("Sender").
-		Preload("Conversation.User1").
-		Preload("Conversation.User2")
+	query := messageListQuery(db).
+		Where("messages.sender_id = ? AND messages.is_draft = ? AND messages.is_deleted = ?", userID, true, false)
+	query = preloadMessageUsers(applyMessageFilters(query, search, importantOnly))
 
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&msgs).Error
+	err := query.Order("messages.created_at DESC").Limit(limit).Offset(offset).Find(&msgs).Error
 	return msgs, total, err
+}
+
+func (r *messageRepository) Stats(userID uint) (map[string]int64, error) {
+	db := database.DB()
+	stats := map[string]int64{"inbox": 0, "unread": 0, "sent": 0, "drafts": 0, "important": 0, "today": 0}
+	var inboxCount, unreadCount, sentCount, draftsCount, importantCount, todayCount int64
+	participant := "messages.conversation_id IN (SELECT id FROM conversations WHERE user1_id = ? OR user2_id = ?)"
+	inbox := func() *gorm.DB {
+		return db.Model(&models.Message{}).Where(participant, userID, userID).Where("sender_id != ? AND is_draft = ? AND is_deleted = ?", userID, false, false)
+	}
+	if err := inbox().Count(&inboxCount).Error; err != nil {
+		return nil, err
+	}
+	if err := inbox().Where("`read` = ?", false).Count(&unreadCount).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Model(&models.Message{}).Where("sender_id = ? AND is_draft = ? AND is_deleted = ?", userID, false, false).Count(&sentCount).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Model(&models.Message{}).Where("sender_id = ? AND is_draft = ? AND is_deleted = ?", userID, true, false).Count(&draftsCount).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Model(&models.Message{}).Where(participant, userID, userID).Where("is_deleted = ? AND is_important = ?", false, true).Count(&importantCount).Error; err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	if err := db.Model(&models.Message{}).Where(participant, userID, userID).Where("is_deleted = ? AND created_at >= ?", false, startOfDay).Count(&todayCount).Error; err != nil {
+		return nil, err
+	}
+	stats["inbox"], stats["unread"], stats["sent"] = inboxCount, unreadCount, sentCount
+	stats["drafts"], stats["important"], stats["today"] = draftsCount, importantCount, todayCount
+	return stats, nil
 }
 
 func (r *messageRepository) FindOrCreateConversation(user1ID, user2ID uint) (*models.Conversation, error) {

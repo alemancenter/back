@@ -38,6 +38,7 @@ func registerCommunicationRoutes(public, dash fiber.Router, h *Handlers) {
 	dashMessages.Get("/inbox", h.Messages.Inbox)
 	dashMessages.Get("/sent", h.Messages.Sent)
 	dashMessages.Get("/drafts", h.Messages.Drafts)
+	dashMessages.Get("/stats", h.Messages.Stats)
 	dashMessages.Post("/send", h.Messages.Send)
 	dashMessages.Post("/draft", h.Messages.Draft)
 	dashMessages.Post("/save-draft", h.Messages.Draft)

@@ -21,28 +21,28 @@ import (
 	"gorm.io/gorm"
 )
 
-func contentAuditCountryQueryValue(code string) string {
+func contentAuditPublicCountryCode(code string) string {
 	switch strings.ToLower(strings.TrimSpace(code)) {
 	case "jo", "", "1":
-		return "1"
+		return "jo"
 	case "sa", "2":
-		return "2"
+		return "sa"
 	case "eg", "3":
-		return "3"
+		return "eg"
 	case "ps", "4":
-		return "4"
+		return "ps"
 	default:
-		return "1"
+		return "jo"
 	}
 }
 
 func contentAuditEditURL(contentType string, id uint, countryCode string) string {
-	country := contentAuditCountryQueryValue(countryCode)
+	country := contentAuditPublicCountryCode(countryCode)
 	switch strings.ToLower(strings.TrimSpace(contentType)) {
 	case "article":
-		return fmt.Sprintf("/dashboard/articles/edit/%d?country=%s", id, country)
+		return fmt.Sprintf("/%s/lesson/articles/%d", country, id)
 	case "post":
-		return fmt.Sprintf("/dashboard/posts/edit/%d?country=%s", id, country)
+		return fmt.Sprintf("/%s/posts/%d", country, id)
 	default:
 		return "/dashboard/content-review"
 	}

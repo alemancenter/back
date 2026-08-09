@@ -9,9 +9,10 @@ import (
 )
 
 type MessageService interface {
-	ListInbox(userID uint, offset, limit int) ([]models.Message, int64, error)
-	ListSent(userID uint, offset, limit int) ([]models.Message, int64, error)
-	ListDrafts(userID uint, offset, limit int) ([]models.Message, int64, error)
+	ListInbox(userID uint, search string, importantOnly bool, offset, limit int) ([]models.Message, int64, error)
+	ListSent(userID uint, search string, importantOnly bool, offset, limit int) ([]models.Message, int64, error)
+	ListDrafts(userID uint, search string, importantOnly bool, offset, limit int) ([]models.Message, int64, error)
+	Stats(userID uint) (map[string]int64, error)
 	SendMessage(senderID uint, recipientID uint, subject, body string) (*models.Message, error)
 	SaveDraft(senderID uint, recipientID uint, subject, body string) (*models.Message, error)
 	GetMessage(msgID uint64, userID uint) (*models.Message, error)
@@ -39,8 +40,8 @@ func populateRecipient(msg *models.Message, myID uint) {
 	}
 }
 
-func (s *messageService) ListInbox(userID uint, offset, limit int) ([]models.Message, int64, error) {
-	msgs, total, err := s.repo.ListInbox(userID, offset, limit)
+func (s *messageService) ListInbox(userID uint, search string, importantOnly bool, offset, limit int) ([]models.Message, int64, error) {
+	msgs, total, err := s.repo.ListInbox(userID, search, importantOnly, offset, limit)
 	if err == nil {
 		for i := range msgs {
 			populateRecipient(&msgs[i], userID)
@@ -49,8 +50,8 @@ func (s *messageService) ListInbox(userID uint, offset, limit int) ([]models.Mes
 	return msgs, total, MapError(err)
 }
 
-func (s *messageService) ListSent(userID uint, offset, limit int) ([]models.Message, int64, error) {
-	msgs, total, err := s.repo.ListSent(userID, offset, limit)
+func (s *messageService) ListSent(userID uint, search string, importantOnly bool, offset, limit int) ([]models.Message, int64, error) {
+	msgs, total, err := s.repo.ListSent(userID, search, importantOnly, offset, limit)
 	if err == nil {
 		for i := range msgs {
 			populateRecipient(&msgs[i], userID)
@@ -59,14 +60,19 @@ func (s *messageService) ListSent(userID uint, offset, limit int) ([]models.Mess
 	return msgs, total, MapError(err)
 }
 
-func (s *messageService) ListDrafts(userID uint, offset, limit int) ([]models.Message, int64, error) {
-	msgs, total, err := s.repo.ListDrafts(userID, offset, limit)
+func (s *messageService) ListDrafts(userID uint, search string, importantOnly bool, offset, limit int) ([]models.Message, int64, error) {
+	msgs, total, err := s.repo.ListDrafts(userID, search, importantOnly, offset, limit)
 	if err == nil {
 		for i := range msgs {
 			populateRecipient(&msgs[i], userID)
 		}
 	}
 	return msgs, total, MapError(err)
+}
+
+func (s *messageService) Stats(userID uint) (map[string]int64, error) {
+	stats, err := s.repo.Stats(userID)
+	return stats, MapError(err)
 }
 
 func ensureMessageRecipientExists(recipientID uint) error {

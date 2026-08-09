@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
 	"os"
@@ -36,6 +37,8 @@ type SitemapInfo struct {
 	Exists       bool    `json:"exists"`
 	LastModified *string `json:"last_modified"`
 	URL          *string `json:"url"`
+	SizeBytes    int64   `json:"size_bytes"`
+	Entries      int     `json:"entries"`
 }
 
 // --- XML types ---
@@ -101,12 +104,14 @@ func (s *sitemapService) siteURL() string {
 	return strings.TrimRight(strings.TrimSpace(cfg.App.URL), "/")
 }
 
-func (s *sitemapService) fileInfo(path string) (exists bool, lastMod string) {
+func (s *sitemapService) fileInfo(path string) (exists bool, lastMod string, sizeBytes int64, entries int) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return false, ""
+		return false, "", 0, 0
 	}
-	return true, info.ModTime().UTC().Format(time.RFC3339)
+	content, _ := os.ReadFile(path)
+	entries = bytes.Count(content, []byte("<url>")) + bytes.Count(content, []byte("<sitemap>"))
+	return true, info.ModTime().UTC().Format(time.RFC3339), info.Size(), entries
 }
 
 func (s *sitemapService) GetStatus(dbCode string) map[string]SitemapInfo {
@@ -116,8 +121,8 @@ func (s *sitemapService) GetStatus(dbCode string) map[string]SitemapInfo {
 
 	for _, t := range types {
 		path := s.sitemapFilename(t, dbCode)
-		exists, mod := s.fileInfo(path)
-		info := SitemapInfo{Exists: exists}
+		exists, mod, sizeBytes, entries := s.fileInfo(path)
+		info := SitemapInfo{Exists: exists, SizeBytes: sizeBytes, Entries: entries}
 		if exists {
 			info.LastModified = &mod
 			u := baseURL + "/storage/sitemaps/" + fmt.Sprintf("sitemap_%s_%s.xml", t, dbCode)
@@ -241,7 +246,7 @@ func (s *sitemapService) writeSitemapIndex(dbCode, baseURL string, sitemapTypes 
 
 	for _, sitemapType := range sitemapTypes {
 		path := s.sitemapFilename(sitemapType, dbCode)
-		exists, lastMod := s.fileInfo(path)
+		exists, lastMod, _, _ := s.fileInfo(path)
 		if !exists {
 			continue
 		}

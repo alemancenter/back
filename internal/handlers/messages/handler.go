@@ -50,7 +50,7 @@ func (h *Handler) Inbox(c *fiber.Ctx) error {
 	}
 
 	pag := utils.GetPagination(c)
-	msgs, total, err := h.svc.ListInbox(user.ID, pag.Offset, pag.PerPage)
+	msgs, total, err := h.svc.ListInbox(user.ID, c.Query("q", c.Query("search")), c.QueryBool("important", false), pag.Offset, pag.PerPage)
 	if err != nil {
 		return utils.InternalError(c)
 	}
@@ -78,7 +78,7 @@ func (h *Handler) Sent(c *fiber.Ctx) error {
 	}
 
 	pag := utils.GetPagination(c)
-	msgs, total, err := h.svc.ListSent(user.ID, pag.Offset, pag.PerPage)
+	msgs, total, err := h.svc.ListSent(user.ID, c.Query("q", c.Query("search")), c.QueryBool("important", false), pag.Offset, pag.PerPage)
 	if err != nil {
 		return utils.InternalError(c)
 	}
@@ -106,12 +106,32 @@ func (h *Handler) Drafts(c *fiber.Ctx) error {
 	}
 
 	pag := utils.GetPagination(c)
-	msgs, total, err := h.svc.ListDrafts(user.ID, pag.Offset, pag.PerPage)
+	msgs, total, err := h.svc.ListDrafts(user.ID, c.Query("q", c.Query("search")), c.QueryBool("important", false), pag.Offset, pag.PerPage)
 	if err != nil {
 		return utils.InternalError(c)
 	}
 
 	return utils.Paginated(c, "success", msgs, pag.BuildMeta(total))
+}
+
+// Stats returns message counters for the current user.
+// @Summary Get Message Statistics
+// @Tags Messages
+// @Produce json
+// @Security BearerAuth
+// @Security FrontendKeyAuth
+// @Success 200 {object} utils.APIResponse
+// @Router /dashboard/messages/stats [get]
+func (h *Handler) Stats(c *fiber.Ctx) error {
+	user := getUser(c)
+	if user == nil {
+		return utils.Unauthorized(c)
+	}
+	stats, err := h.svc.Stats(user.ID)
+	if err != nil {
+		return utils.InternalError(c)
+	}
+	return utils.Success(c, "success", stats)
 }
 
 type SendMessageRequest struct {

@@ -332,7 +332,7 @@ func (h *Handler) DashboardCreate(c *fiber.Ctx) error {
 				"App\\Notifications\\PostCreated",
 				fmt.Sprintf("منشور جديد: %s", post.Title),
 				fmt.Sprintf("تم إنشاء منشور جديد بعنوان \"%s\"", post.Title),
-				fmt.Sprintf("/dashboard/posts/edit/%d", post.ID),
+				fmt.Sprintf("/%s/posts/%d", database.CountryCode(countryID), post.ID),
 				[]string{"manage posts", "manage notifications"},
 				includeIDs...,
 			)
@@ -445,7 +445,7 @@ func (h *Handler) DashboardUpdate(c *fiber.Ctx) error {
 				"App\\Notifications\\PostUpdated",
 				"تم تحديث منشور",
 				fmt.Sprintf("تم تحديث المنشور: %s", post.Title),
-				fmt.Sprintf("/dashboard/posts/edit/%d", post.ID),
+				fmt.Sprintf("/%s/posts/%d", database.CountryCode(countryID), post.ID),
 				[]string{"manage posts", "manage notifications"},
 				includeIDs...,
 			)
@@ -519,7 +519,7 @@ func (h *Handler) DashboardToggleStatus(c *fiber.Ctx) error {
 				"App\\Notifications\\PostStatusChanged",
 				"تغيير حالة منشور",
 				fmt.Sprintf("%s المنشور: %s", statusLabel, updatedPost.Title),
-				fmt.Sprintf("/dashboard/posts/edit/%d", updatedPost.ID),
+				fmt.Sprintf("/%s/posts/%d", database.CountryCode(countryID), updatedPost.ID),
 				[]string{"manage posts", "manage notifications"},
 				includeIDs...,
 			)
@@ -584,7 +584,7 @@ func (h *Handler) DashboardDelete(c *fiber.Ctx) error {
 				"App\\Notifications\\PostDeleted",
 				"تم حذف منشور",
 				fmt.Sprintf("تم حذف المنشور: %s", title),
-				"/dashboard/posts",
+				fmt.Sprintf("/%s/posts", database.CountryCode(countryID)),
 				[]string{"manage posts", "manage notifications"},
 				includeIDs...,
 			)

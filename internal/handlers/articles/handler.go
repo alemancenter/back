@@ -440,7 +440,7 @@ func (h *Handler) DashboardCreate(c *fiber.Ctx) error {
 				"App\\Notifications\\ArticleCreated",
 				fmt.Sprintf("مقال جديد: %s", article.Title),
 				fmt.Sprintf("تم إنشاء مقال جديد بعنوان \"%s\"", article.Title),
-				fmt.Sprintf("/dashboard/articles/edit/%d", article.ID),
+				fmt.Sprintf("/%s/lesson/articles/%d", database.CountryCode(countryID), article.ID),
 				[]string{"manage articles", "manage notifications"},
 				includeIDs...,
 			)
@@ -506,7 +506,7 @@ func (h *Handler) DashboardUpdate(c *fiber.Ctx) error {
 				"App\\Notifications\\ArticleUpdated",
 				"تم تحديث مقالة",
 				fmt.Sprintf("تم تحديث مقالة: %s", article.Title),
-				fmt.Sprintf("/dashboard/articles/edit/%d", article.ID),
+				fmt.Sprintf("/%s/lesson/articles/%d", database.CountryCode(countryID), article.ID),
 				[]string{"manage articles", "manage notifications"},
 				includeIDs...,
 			)
@@ -566,7 +566,7 @@ func (h *Handler) DashboardDelete(c *fiber.Ctx) error {
 				"App\\Notifications\\ArticleDeleted",
 				"تم حذف مقالة",
 				fmt.Sprintf("تم حذف مقالة: %s", title),
-				"/dashboard/articles",
+				fmt.Sprintf("/%s/articles", database.CountryCode(countryID)),
 				[]string{"manage articles", "manage notifications"},
 				includeIDs...,
 			)
@@ -636,7 +636,7 @@ func (h *Handler) setArticleStatus(c *fiber.Ctx, status int8, message string) er
 				"App\\Notifications\\ArticlePublished",
 				"تم نشر مقالة",
 				fmt.Sprintf("تم نشر مقالة: %s", article.Title),
-				fmt.Sprintf("/dashboard/articles/edit/%d", article.ID),
+				fmt.Sprintf("/%s/lesson/articles/%d", database.CountryCode(countryID), article.ID),
 				[]string{"manage articles", "manage notifications"},
 				includeIDs...,
 			)

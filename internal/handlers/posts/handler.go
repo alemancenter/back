@@ -616,7 +616,16 @@ func (h *Handler) GetDownloadToken(c *fiber.Ctx) error {
 
 // DownloadFileSigned validates a signed token and serves the post file.
 func (h *Handler) DownloadFileSigned(c *fiber.Ctx) error {
-	token := c.Query("token")
+	token := strings.TrimSpace(c.Get("X-Download-Token"))
+	if token == "" {
+		authorization := strings.TrimSpace(c.Get("Authorization"))
+		if strings.HasPrefix(authorization, "Bearer ") {
+			token = strings.TrimSpace(strings.TrimPrefix(authorization, "Bearer "))
+		}
+	}
+	if token == "" {
+		token = c.Query("token") // Backward compatibility for previously issued links.
+	}
 	if token == "" {
 		return utils.BadRequest(c, "رمز التحميل مطلوب")
 	}

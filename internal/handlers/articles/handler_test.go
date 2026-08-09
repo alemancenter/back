@@ -61,6 +61,9 @@ func (m *MockArticleService) GetSignedDownloadToken(countryID database.CountryID
 	return "", nil
 }
 func (m *MockArticleService) GetFileBySignedToken(token string) (*models.File, string, error) {
+	if m.GetFileBySignedTokenFunc != nil {
+		return m.GetFileBySignedTokenFunc(token)
+	}
 	return nil, "", nil
 }
 func (m *MockArticleService) GetDashboardCreateData(countryID database.CountryID) (*services.ArticleDashboardCreateData, error) {
@@ -110,6 +113,7 @@ func setupApp() (*fiber.App, *MockArticleService) {
 	api.Put("/dashboard/articles/:id", h.DashboardUpdate)
 	api.Delete("/dashboard/articles/:id", h.DashboardDelete)
 	api.Get("/articles/file/:id/download-url", h.GetDownloadToken)
+	api.Get("/articles/download", h.DownloadFileSigned)
 
 	return app, mockSvc
 }
@@ -207,4 +211,22 @@ func TestHandler_GetDownloadToken(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 	})
+}
+
+func TestHandler_DownloadFileSignedAcceptsHeader(t *testing.T) {
+	app, mockSvc := setupApp()
+	called := false
+	mockSvc.GetFileBySignedTokenFunc = func(token string) (*models.File, string, error) {
+		called = true
+		assert.Equal(t, "header-token", token)
+		return nil, "", services.ErrNotFound
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/articles/download", nil)
+	req.Header.Set("X-Download-Token", "header-token")
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	assert.True(t, called)
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }

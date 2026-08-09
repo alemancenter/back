@@ -29,13 +29,14 @@ func NewSettingService(repo repositories.SettingRepository) SettingService {
 }
 
 var publicSettingKeys = map[string]bool{
-	"adsense_client":       true,
-	"canonical_url":        true,
-	"date_format":          true,
-	"time_format":          true,
-	"enable_notifications": true,
-	"enable_registration":  true,
-	"facebook_pixel_id":    true,
+	"adsense_client":               true,
+	"canonical_url":                true,
+	"date_format":                  true,
+	"time_format":                  true,
+	"enable_notifications":         true,
+	"enable_registration":          true,
+	"enable_teacher_subscriptions": true,
+	"facebook_pixel_id":            true,
 	// Public OAuth identifiers — safe to expose (used in the browser to start the
 	// login flow). The matching *_secret keys are blocked by privateSettingMarkers.
 	"google_client_id":   true,

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"mime"
 	"strconv"
+	"strings"
 
 	"github.com/alemancenter/fiber-api/internal/database"
 	"github.com/alemancenter/fiber-api/internal/middleware"
@@ -215,7 +216,16 @@ func (h *Handler) GetDownloadToken(c *fiber.Ctx) error {
 // @Failure 401 {object} utils.APIResponse
 // @Router /articles/download [get]
 func (h *Handler) DownloadFileSigned(c *fiber.Ctx) error {
-	token := c.Query("token")
+	token := strings.TrimSpace(c.Get("X-Download-Token"))
+	if token == "" {
+		authorization := strings.TrimSpace(c.Get("Authorization"))
+		if strings.HasPrefix(authorization, "Bearer ") {
+			token = strings.TrimSpace(strings.TrimPrefix(authorization, "Bearer "))
+		}
+	}
+	if token == "" {
+		token = c.Query("token") // Backward compatibility for previously issued links.
+	}
 	if token == "" {
 		return utils.BadRequest(c, "رمز التحميل مطلوب")
 	}

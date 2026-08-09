@@ -59,6 +59,9 @@ func (h *Handler) Create(c *fiber.Ctx) error {
 	if errs := utils.Validate(req); errs != nil {
 		return utils.ValidationError(c, errs)
 	}
+	if req.CommentableType != "App\\Models\\Article" && req.CommentableType != "App\\Models\\Post" {
+		return utils.BadRequest(c, "نوع المحتوى غير مدعوم")
+	}
 
 	user, _ := c.Locals("user").(*models.User)
 	if user == nil {

@@ -21,7 +21,7 @@ type CommentService interface {
 }
 
 type CreateCommentRequest struct {
-	Body            string `json:"body" validate:"required,min=1"`
+	Body            string `json:"body" validate:"required,min=2,max=2000"`
 	CommentableID   uint   `json:"commentable_id" validate:"required"`
 	CommentableType string `json:"commentable_type" validate:"required"`
 }

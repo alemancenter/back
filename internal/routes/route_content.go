@@ -31,6 +31,7 @@ func registerContentRoutes(api, public, dash fiber.Router, h *Handlers) {
 	public.Get("/posts", h.Posts.List)
 	public.Get("/posts/download", h.Posts.DownloadFileSigned)
 	public.Get("/posts/file/:id/download-url", downloadGateM, activityM, h.Posts.GetDownloadToken)
+	public.Get("/posts/:id/ad-status", h.ContentAudit.PublicPostAdStatus)
 	public.Get("/posts/:id", h.Posts.Show)
 	public.Post("/posts/:id/increment-view", h.Posts.IncrementView)
 

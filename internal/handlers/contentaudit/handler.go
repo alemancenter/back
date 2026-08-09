@@ -272,6 +272,15 @@ func (h *Handler) RejectFix(c *fiber.Ctx) error {
 // Intended for public article pages — returns only adsense_risk and eligible fields.
 // No full decision data is exposed.
 func (h *Handler) PublicAdStatus(c *fiber.Ctx) error {
+	return h.publicAdStatus(c, "article")
+}
+
+// PublicPostAdStatus returns the same restricted public eligibility payload for posts.
+func (h *Handler) PublicPostAdStatus(c *fiber.Ctx) error {
+	return h.publicAdStatus(c, "post")
+}
+
+func (h *Handler) publicAdStatus(c *fiber.Ctx, contentType string) error {
 	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
 		return utils.BadRequest(c, "invalid id")
@@ -280,7 +289,7 @@ func (h *Handler) PublicAdStatus(c *fiber.Ctx) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	decision, err := h.svc.LatestAIDecision(ctx, "article", strconv.FormatUint(id, 10), countryCode)
+	decision, err := h.svc.LatestAIDecision(ctx, contentType, strconv.FormatUint(id, 10), countryCode)
 	if err != nil {
 		// No decision found → default to eligible (ads shown until audit flags it)
 		return utils.Success(c, "success", fiber.Map{"eligible": true, "adsense_risk": "none"})

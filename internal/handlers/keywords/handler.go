@@ -1,6 +1,8 @@
 package keywords
 
 import (
+	"net/url"
+
 	"github.com/alemancenter/fiber-api/internal/database"
 	"github.com/alemancenter/fiber-api/internal/repositories"
 	"github.com/alemancenter/fiber-api/internal/services"
@@ -30,7 +32,12 @@ func New(svc services.KeywordService) *Handler {
 // @Failure 500 {object} utils.APIResponse
 // @Router /keywords [get]
 func (h *Handler) Index(c *fiber.Ctx) error {
-	countryID, _ := c.Locals("country_id").(database.CountryID)
+	countryID, ok := c.Locals("country_id").(database.CountryID)
+	if !ok || countryID == 0 {
+		// See Show() below — same missing fallback caused this endpoint to silently return
+		// Jordan's keywords for every country regardless of X-Country-Id.
+		countryID = database.CountryIDFromHeader(c.Get("X-Country-Id"))
+	}
 
 	search := c.Query("q", "")
 	keywordType := c.Query("type", "all")
@@ -99,13 +106,33 @@ func (h *Handler) Index(c *fiber.Ctx) error {
 // @Router /keywords/{keyword} [get]
 func (h *Handler) Show(c *fiber.Ctx) error {
 	keyword := c.Params("keyword")
-	countryID, _ := c.Locals("country_id").(database.CountryID)
+	countryID, ok := c.Locals("country_id").(database.CountryID)
+	if !ok || countryID == 0 {
+		// Locals("country_id") isn't guaranteed to be set on every route (see home/handler.go
+		// for the same fallback) — without this, a request that reaches here without it fell
+		// through to CountryID's zero value, which Manager.Get() silently maps to Jordan
+		// regardless of the caller's actual X-Country-Id header.
+		countryID = database.CountryIDFromHeader(c.Get("X-Country-Id"))
+	}
 
 	search := c.Query("q", "")
 	sort := c.Query("sort", "latest")
 	pag := utils.GetPagination(c)
 
+	// c.Params() is expected to already be percent-decoded (UnescapePath is enabled in
+	// cmd/server/main.go's fiber.Config), but an exact-match lookup on a multi-word Arabic
+	// keyword was confirmed failing in production for a keyword verified byte-for-byte present
+	// in the database (found via /keywords listing, compared codepoint-by-codepoint against
+	// what this handler receives). Rather than leave that dependent on exactly one layer of
+	// the request pipeline decoding correctly, try the value as received first and fall back
+	// to an explicit unescape — safe either way, since re-unescaping an already-decoded string
+	// with no remaining %XX sequences is a no-op.
 	kw, articles, artTotal, posts, postTotal, err := h.svc.GetKeywordContent(countryID, keyword, search, sort, pag.PerPage, pag.Offset)
+	if err != nil {
+		if decoded, decodeErr := url.QueryUnescape(keyword); decodeErr == nil && decoded != keyword {
+			kw, articles, artTotal, posts, postTotal, err = h.svc.GetKeywordContent(countryID, decoded, search, sort, pag.PerPage, pag.Offset)
+		}
+	}
 	if err != nil {
 		return utils.NotFound(c) // Keyword not found
 	}

@@ -73,11 +73,13 @@ func registerCommunicationRoutes(public, dash fiber.Router, h *Handlers) {
 	dashNotifications.Post("/read-all", h.Notifications.MarkAllRead)
 	dashNotifications.Get("", h.Notifications.List)
 	dashNotifications.Post("/:id/read", h.Notifications.MarkAsRead)
+	// Personal actions are scoped to the authenticated user's notifiable_id inside
+	// the repository, so every account owner may manage their own notifications.
+	dashNotifications.Post("/bulk", h.Notifications.BulkAction)
+	dashNotifications.Delete("/:id", h.Notifications.Delete)
 
 	dashNotificationsAdmin := dashNotifications.Group("", middleware.Can("manage notifications"))
-	dashNotificationsAdmin.Post("/bulk", h.Notifications.BulkAction)
 	dashNotificationsAdmin.Post("/prune", h.Notifications.Prune)
 	dashNotificationsAdmin.Post("/broadcast", h.Notifications.Broadcast)
 	dashNotificationsAdmin.Post("", h.Notifications.Create)
-	dashNotificationsAdmin.Delete("/:id", h.Notifications.Delete)
 }

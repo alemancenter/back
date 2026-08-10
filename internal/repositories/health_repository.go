@@ -1,6 +1,6 @@
 package repositories
 
-import "github.com/alemancenter/fiber-api/internal/database"
+import "github.com/imanjo/fiber-api/internal/database"
 
 type HealthRepository interface {
 	CheckDatabases() map[string]bool

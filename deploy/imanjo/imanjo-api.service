@@ -1,0 +1,30 @@
+[Unit]
+Description=Imanjo Go Fiber API — api.imanjo.com (internal 127.0.0.1:8082)
+After=network.target mariadb.service mysql.service redis.service
+Wants=redis.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+# NOTE: back/ has TWO different WorkingDirectory conventions for the alemancenter
+# version of this file (this Plesk-httpdocs one, and a second, older one at
+# back/alemancenter-api.service using /var/www/vhosts/alemancenter.com/fiber/) — it was
+# not possible to confirm from the repo alone which one reflects the real, currently-live
+# server. Confirm the actual VHost layout for imanjo.com before relying on this path.
+WorkingDirectory=/var/www/vhosts/api.imanjo.com/httpdocs
+EnvironmentFile=/etc/imanjo/api.env
+ExecStart=/var/www/vhosts/api.imanjo.com/httpdocs/fiber-api
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=imanjo-api
+
+# Security and limits
+LimitNOFILE=65536
+LimitNPROC=4096
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

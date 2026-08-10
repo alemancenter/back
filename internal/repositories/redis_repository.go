@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/database"
 )
 
 type RedisRepository interface {

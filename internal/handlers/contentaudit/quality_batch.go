@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/models"
-	auditservice "github.com/alemancenter/fiber-api/internal/services/contentaudit"
-	"github.com/alemancenter/fiber-api/internal/utils"
+	"github.com/imanjo/fiber-api/internal/models"
+	auditservice "github.com/imanjo/fiber-api/internal/services/contentaudit"
+	"github.com/imanjo/fiber-api/internal/utils"
 	"github.com/gofiber/fiber/v2"
 )
 

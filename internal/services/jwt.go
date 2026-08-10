@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/config"
+	"github.com/imanjo/fiber-api/internal/config"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -51,7 +51,7 @@ func (s *JWTService) GenerateToken(userID uint, email string, countryID ...uint)
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(s.expireHours) * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
-			Issuer:    "alemancenter-api",
+			Issuer:    "imanjo-api",
 			Subject:   email,
 		},
 	}
@@ -73,7 +73,7 @@ func (s *JWTService) GenerateRefreshToken(userID uint, email string, countryID .
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(s.refreshHours) * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			Issuer:    "alemancenter-api-refresh",
+			Issuer:    "imanjo-api-refresh",
 		},
 	}
 
@@ -117,7 +117,7 @@ func (s *JWTService) GenerateDownloadToken(fileID uint64, countryID uint) (strin
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			Issuer:    "alemancenter-api-download",
+			Issuer:    "imanjo-api-download",
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -139,7 +139,7 @@ func (s *JWTService) ValidateDownloadToken(tokenStr string) (*DownloadClaims, er
 	if !ok || !token.Valid {
 		return nil, errors.New("invalid download token")
 	}
-	if claims.Issuer != "alemancenter-api-download" {
+	if claims.Issuer != "imanjo-api-download" {
 		return nil, errors.New("not a download token")
 	}
 	return claims, nil
@@ -152,7 +152,7 @@ func (s *JWTService) ValidateRefreshToken(tokenStr string) (*JWTClaims, error) {
 	if err != nil {
 		return nil, MapError(err)
 	}
-	if claims.Issuer != "alemancenter-api-refresh" {
+	if claims.Issuer != "imanjo-api-refresh" {
 		return nil, errors.New("not a refresh token")
 	}
 	return claims, nil

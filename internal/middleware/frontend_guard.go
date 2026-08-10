@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/config"
-	"github.com/alemancenter/fiber-api/internal/database"
-	"github.com/alemancenter/fiber-api/internal/utils"
-	"github.com/alemancenter/fiber-api/pkg/logger"
+	"github.com/imanjo/fiber-api/internal/config"
+	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/utils"
+	"github.com/imanjo/fiber-api/pkg/logger"
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
 )
@@ -75,8 +75,8 @@ func frontendGuard(cfg *config.Config) fiber.Handler {
 			return continueWithCountry(c, cfg)
 		}
 
-		// 2. The public api.alemancenter.com host is not a public data surface.
-		// Browser traffic must go through alemancenter.com's Node proxy, which
+		// 2. The public api.imanjo.com host is not a public data surface.
+		// Browser traffic must go through imanjo.com's Node proxy, which
 		// injects X-Frontend-Key server-side. This blocks direct curl/Postman and
 		// direct browser calls to /api/* before public handlers can disclose data.
 		if cfg.App.IsProduction() && isPublicAPIHost {

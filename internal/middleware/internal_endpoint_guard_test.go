@@ -35,7 +35,7 @@ func TestInternalEndpointGuardBlocksForwardedPublicRequest(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
-	req.Host = "api.alemancenter.com"
+	req.Host = "api.imanjo.com"
 	req.RemoteAddr = "127.0.0.1:49152"
 	req.Header.Set("X-Forwarded-For", "198.51.100.10")
 	req.Header.Set("X-Real-IP", "198.51.100.10")
@@ -56,7 +56,7 @@ func TestInternalEndpointGuardAllowsInternalMonitorKey(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
-	req.Host = "api.alemancenter.com"
+	req.Host = "api.imanjo.com"
 	req.RemoteAddr = "127.0.0.1:49152"
 	req.Header.Set("X-Forwarded-For", "198.51.100.10")
 	req.Header.Set("X-Internal-Monitor-Key", "monitor-secret")

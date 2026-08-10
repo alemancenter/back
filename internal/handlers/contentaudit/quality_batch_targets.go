@@ -4,8 +4,8 @@ import (
 	"context"
 	"sort"
 
-	"github.com/alemancenter/fiber-api/internal/database"
-	"github.com/alemancenter/fiber-api/internal/models"
+	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/models"
 )
 
 func (h *Handler) selectQualityBatchTargets(ctx context.Context, req contentQualityBatchRequest) ([]adsenseReadinessItem, error) {

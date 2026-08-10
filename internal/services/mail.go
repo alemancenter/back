@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/config"
+	"github.com/imanjo/fiber-api/internal/config"
 	mail "github.com/wneessen/go-mail"
 )
 

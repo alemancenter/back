@@ -3,7 +3,7 @@ package chatbot
 import (
 	"testing"
 
-	repo "github.com/alemancenter/fiber-api/internal/repositories/chatbot"
+	repo "github.com/imanjo/fiber-api/internal/repositories/chatbot"
 )
 
 func TestTrainingPatternsIntentPriority(t *testing.T) {

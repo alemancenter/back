@@ -9,7 +9,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/alemancenter/fiber-api/internal/repositories"
+	"github.com/imanjo/fiber-api/internal/repositories"
 	"golang.org/x/oauth2/google"
 )
 

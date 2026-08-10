@@ -12,11 +12,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/database"
-	"github.com/alemancenter/fiber-api/internal/models"
-	coreai "github.com/alemancenter/fiber-api/internal/services"
-	"github.com/alemancenter/fiber-api/internal/utils"
-	"github.com/alemancenter/fiber-api/pkg/logger"
+	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/models"
+	coreai "github.com/imanjo/fiber-api/internal/services"
+	"github.com/imanjo/fiber-api/internal/utils"
+	"github.com/imanjo/fiber-api/pkg/logger"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -249,7 +249,7 @@ func (s *Service) AnalyzeWithAI(ctx context.Context, req AIAnalyzeRequest, userI
 		decision.Provider = "local_decision_engine"
 	}
 	if decision.Model == "" {
-		decision.Model = "alemancenter-content-audit-v1"
+		decision.Model = "imanjo-content-audit-v1"
 	}
 	if decision.PromptVersion == "" {
 		decision.PromptVersion = contentIntelligencePromptVersion
@@ -602,7 +602,7 @@ func buildDecisionReport(content *loadedContent) aiReport {
 	if len(suggestions) == 0 {
 		suggestions = append(suggestions, aiSuggestionDTO{"publish", "low", "المحتوى جاهز مبدئيًا، مع مراجعة بشرية نهائية قبل النشر أو تفعيل الإعلانات."})
 	}
-	return aiReport{Decision: decision, AdSenseRisk: risk, Score: total, PolicyScore: policyScore, SEOScore: seoScore, LanguageScore: languageScore, SafetyLinksScore: linkScore, StructureScore: structureScore, CanAutoFix: decision != models.AIDecisionRejected, Summary: buildSummary(decision, total, risk), Issues: issues, Suggestions: suggestions, Provider: "local_decision_engine", Model: "alemancenter-content-audit-v1", PromptVersion: contentIntelligencePromptVersion}
+	return aiReport{Decision: decision, AdSenseRisk: risk, Score: total, PolicyScore: policyScore, SEOScore: seoScore, LanguageScore: languageScore, SafetyLinksScore: linkScore, StructureScore: structureScore, CanAutoFix: decision != models.AIDecisionRejected, Summary: buildSummary(decision, total, risk), Issues: issues, Suggestions: suggestions, Provider: "local_decision_engine", Model: "imanjo-content-audit-v1", PromptVersion: contentIntelligencePromptVersion}
 }
 
 func reportFromAI(ai *coreai.ContentIntelligenceResponse, fallback aiReport) aiReport {

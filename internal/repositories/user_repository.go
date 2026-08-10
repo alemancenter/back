@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/database"
-	"github.com/alemancenter/fiber-api/internal/models"
+	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/models"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

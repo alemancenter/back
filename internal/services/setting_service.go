@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/config"
-	"github.com/alemancenter/fiber-api/internal/database"
-	"github.com/alemancenter/fiber-api/internal/repositories"
+	"github.com/imanjo/fiber-api/internal/config"
+	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/repositories"
 )
 
 const (
@@ -37,6 +37,10 @@ var publicSettingKeys = map[string]bool{
 	"enable_registration":          true,
 	"enable_teacher_subscriptions": true,
 	"facebook_pixel_id":            true,
+	// Read by the frontend's own middleware to actually gate public routes — same class
+	// of bug as require_login_for_download above: without this, the admin toggle "وضع
+	// الصيانة" silently does nothing, because the frontend can never see its value.
+	"maintenance_mode": true,
 	// Public OAuth identifiers — safe to expose (used in the browser to start the
 	// login flow). The matching *_secret keys are blocked by privateSettingMarkers.
 	"google_client_id":   true,

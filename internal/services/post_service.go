@@ -5,10 +5,10 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/database"
-	"github.com/alemancenter/fiber-api/internal/models"
-	"github.com/alemancenter/fiber-api/internal/repositories"
-	"github.com/alemancenter/fiber-api/internal/utils"
+	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/models"
+	"github.com/imanjo/fiber-api/internal/repositories"
+	"github.com/imanjo/fiber-api/internal/utils"
 )
 
 type PostService interface {
@@ -218,7 +218,12 @@ func (s *postService) Create(countryID database.CountryID, countryCode string, u
 	}
 
 	if req.Keywords != "" {
-		if err := s.repo.UpdateKeywords(countryID, uint64(post.ID), req.Keywords); err != nil {
+		// Was passing the raw request value straight through — post.Keywords (the denormalized
+		// text field, set above via sanitizedOptionalText) got sanitized, but the individual
+		// Keyword rows this creates/links via repo.UpdateKeywords did not, so unescaped HTML
+		// could land directly in the keywords table. Frontend rendering happens to auto-escape
+		// today, but storage shouldn't depend on every future caller getting that right.
+		if err := s.repo.UpdateKeywords(countryID, uint64(post.ID), sanitizePostPlainText(req.Keywords)); err != nil {
 			fmt.Printf("failed to update keywords for post %d: %v\n", post.ID, err)
 		}
 	}
@@ -276,7 +281,7 @@ func (s *postService) Update(countryID database.CountryID, id uint64, req *Updat
 	}
 
 	if req.Keywords != "" {
-		if err := s.repo.UpdateKeywords(countryID, id, req.Keywords); err != nil {
+		if err := s.repo.UpdateKeywords(countryID, id, sanitizePostPlainText(req.Keywords)); err != nil {
 			fmt.Printf("failed to update keywords for post %d: %v\n", id, err)
 		}
 	}

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/database"
-	"github.com/alemancenter/fiber-api/pkg/logger"
+	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/pkg/logger"
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 )

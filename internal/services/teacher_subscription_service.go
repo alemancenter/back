@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/database"
-	"github.com/alemancenter/fiber-api/internal/models"
-	"github.com/alemancenter/fiber-api/internal/repositories"
+	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/models"
+	"github.com/imanjo/fiber-api/internal/repositories"
 	"gorm.io/gorm"
 )
 
@@ -1434,7 +1434,7 @@ func (s *teacherSubscriptionService) GenerateTeacherAI(userID uint, req TeacherA
 	output, model, aiErr := s.generateRealTeacherAIOutput(tool, title, promptText, grade, subject, semester)
 	if aiErr != nil {
 		output = buildTeacherAIOutput(tool, title, promptText, grade, subject, semester)
-		model = "alemancenter-template-v1"
+		model = "imanjo-template-v1"
 	}
 
 	item := &models.TeacherAIGeneration{
@@ -1682,7 +1682,7 @@ func buildTeacherAIOutput(tool, title, prompt, grade, subject, semester string) 
 }
 
 func BuildTeacherWatermarkText(userID uint, downloadCode string) string {
-	return fmt.Sprintf("Alemancenter Teacher Pro | User:%d | Code:%s | %s", userID, downloadCode, time.Now().Format("2006-01-02"))
+	return fmt.Sprintf("Imanjo Teacher Pro | User:%d | Code:%s | %s", userID, downloadCode, time.Now().Format("2006-01-02"))
 }
 
 func subjectsMatch(userSubject, fileSubject string) bool {

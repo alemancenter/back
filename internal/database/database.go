@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/config"
-	"github.com/alemancenter/fiber-api/pkg/logger"
+	"github.com/imanjo/fiber-api/internal/config"
+	"github.com/imanjo/fiber-api/pkg/logger"
 	"go.uber.org/zap"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"

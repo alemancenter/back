@@ -126,18 +126,18 @@ func SnapshotData() Snapshot {
 func PrometheusText() string {
 	s := SnapshotData()
 	var b strings.Builder
-	b.WriteString("# HELP alemancenter_uptime_seconds Application uptime in seconds\n")
-	b.WriteString("# TYPE alemancenter_uptime_seconds gauge\n")
-	b.WriteString(fmt.Sprintf("alemancenter_uptime_seconds %d\n", s.UptimeSeconds))
-	b.WriteString("# HELP alemancenter_http_requests_total Total HTTP requests\n")
-	b.WriteString("# TYPE alemancenter_http_requests_total counter\n")
-	b.WriteString(fmt.Sprintf("alemancenter_http_requests_total %d\n", s.RequestsTotal))
-	b.WriteString("# HELP alemancenter_http_errors_total Total HTTP 5xx requests\n")
-	b.WriteString("# TYPE alemancenter_http_errors_total counter\n")
-	b.WriteString(fmt.Sprintf("alemancenter_http_errors_total %d\n", s.ErrorsTotal))
-	b.WriteString("# HELP alemancenter_http_latency_average_ms Average HTTP latency in milliseconds\n")
-	b.WriteString("# TYPE alemancenter_http_latency_average_ms gauge\n")
-	b.WriteString(fmt.Sprintf("alemancenter_http_latency_average_ms %.3f\n", s.AvgLatencyMS))
+	b.WriteString("# HELP imanjo_uptime_seconds Application uptime in seconds\n")
+	b.WriteString("# TYPE imanjo_uptime_seconds gauge\n")
+	b.WriteString(fmt.Sprintf("imanjo_uptime_seconds %d\n", s.UptimeSeconds))
+	b.WriteString("# HELP imanjo_http_requests_total Total HTTP requests\n")
+	b.WriteString("# TYPE imanjo_http_requests_total counter\n")
+	b.WriteString(fmt.Sprintf("imanjo_http_requests_total %d\n", s.RequestsTotal))
+	b.WriteString("# HELP imanjo_http_errors_total Total HTTP 5xx requests\n")
+	b.WriteString("# TYPE imanjo_http_errors_total counter\n")
+	b.WriteString(fmt.Sprintf("imanjo_http_errors_total %d\n", s.ErrorsTotal))
+	b.WriteString("# HELP imanjo_http_latency_average_ms Average HTTP latency in milliseconds\n")
+	b.WriteString("# TYPE imanjo_http_latency_average_ms gauge\n")
+	b.WriteString(fmt.Sprintf("imanjo_http_latency_average_ms %.3f\n", s.AvgLatencyMS))
 
 	keys := make([]string, 0, len(s.Routes))
 	for key := range s.Routes {
@@ -151,10 +151,10 @@ func PrometheusText() string {
 			path = parts[1]
 		}
 		r := s.Routes[key]
-		b.WriteString(fmt.Sprintf("alemancenter_http_route_requests_total{method=%q,path=%q} %d\n", method, path, r.Count))
-		b.WriteString(fmt.Sprintf("alemancenter_http_route_errors_total{method=%q,path=%q} %d\n", method, path, r.Errors))
-		b.WriteString(fmt.Sprintf("alemancenter_http_route_latency_average_ms{method=%q,path=%q} %.3f\n", method, path, r.AvgLatencyMS))
-		b.WriteString(fmt.Sprintf("alemancenter_http_route_latency_max_ms{method=%q,path=%q} %.3f\n", method, path, r.MaxLatencyMS))
+		b.WriteString(fmt.Sprintf("imanjo_http_route_requests_total{method=%q,path=%q} %d\n", method, path, r.Count))
+		b.WriteString(fmt.Sprintf("imanjo_http_route_errors_total{method=%q,path=%q} %d\n", method, path, r.Errors))
+		b.WriteString(fmt.Sprintf("imanjo_http_route_latency_average_ms{method=%q,path=%q} %.3f\n", method, path, r.AvgLatencyMS))
+		b.WriteString(fmt.Sprintf("imanjo_http_route_latency_max_ms{method=%q,path=%q} %.3f\n", method, path, r.MaxLatencyMS))
 	}
 	return b.String()
 }

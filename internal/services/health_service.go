@@ -5,10 +5,10 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/config"
-	"github.com/alemancenter/fiber-api/internal/database"
-	"github.com/alemancenter/fiber-api/internal/monitoring"
-	"github.com/alemancenter/fiber-api/internal/repositories"
+	"github.com/imanjo/fiber-api/internal/config"
+	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/monitoring"
+	"github.com/imanjo/fiber-api/internal/repositories"
 )
 
 type HealthStatusResponse struct {

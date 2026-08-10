@@ -12,7 +12,7 @@ const docTemplate = `{
         "termsOfService": "http://swagger.io/terms/",
         "contact": {
             "name": "API Support",
-            "email": "support@alemancenter.com"
+            "email": "support@imanjo.com"
         },
         "license": {
             "name": "MIT",
@@ -23,61 +23,6 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/ai/generate": {
-            "post": {
-                "description": "Generate article content automatically using AI based on a provided title",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "AI"
-                ],
-                "summary": "AI Content Generation",
-                "parameters": [
-                    {
-                        "description": "Prompt payload containing title",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/internal_handlers_ai.GenerateRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
-                        }
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    },
-                    {
-                        "FrontendKeyAuth": []
-                    }
-                ]
-            }
-        },
         "/articles": {
             "get": {
                 "description": "Returns a paginated list of active/published articles",
@@ -144,7 +89,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -152,7 +97,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Article"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Article"
                                             }
                                         }
                                     }
@@ -163,7 +108,7 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -212,7 +157,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -220,7 +165,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Article"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Article"
                                             }
                                         }
                                     }
@@ -231,7 +176,7 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -280,7 +225,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -288,7 +233,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Article"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Article"
                                             }
                                         }
                                     }
@@ -299,7 +244,7 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -334,13 +279,13 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -381,19 +326,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -430,7 +375,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -449,19 +394,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -498,13 +443,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Article"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Article"
                                         }
                                     }
                                 }
@@ -514,19 +459,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -534,6 +479,14 @@ const docTemplate = `{
         },
         "/auth/account/delete": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "FrontendKeyAuth": []
+                    }
+                ],
                 "description": "Permanently deletes the authenticated user's account (requires password)",
                 "consumes": [
                     "application/json"
@@ -560,28 +513,32 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/auth/email/resend": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -589,11 +546,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/auth/email/resend": {
-            "post": {
+                ],
                 "description": "Resends the verification email to the authenticated user",
                 "produces": [
                     "application/json"
@@ -606,30 +559,22 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    },
-                    {
-                        "FrontendKeyAuth": []
-                    }
-                ]
+                }
             }
         },
         "/auth/email/verify/{id}/{hash}": {
@@ -662,19 +607,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -710,7 +655,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -727,13 +672,13 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -769,7 +714,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -786,19 +731,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -806,6 +751,14 @@ const docTemplate = `{
         },
         "/auth/logout": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "FrontendKeyAuth": []
+                    }
+                ],
                 "description": "Invalidate the current JWT token",
                 "produces": [
                     "application/json"
@@ -818,24 +771,16 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    },
-                    {
-                        "FrontendKeyAuth": []
-                    }
-                ]
+                }
             }
         },
         "/auth/password/forgot": {
@@ -866,13 +811,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -906,19 +851,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -926,6 +871,14 @@ const docTemplate = `{
         },
         "/auth/profile": {
             "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "FrontendKeyAuth": []
+                    }
+                ],
                 "description": "Updates the profile details (name, bio, job title, photo) of the authenticated user",
                 "consumes": [
                     "application/json",
@@ -944,7 +897,7 @@ const docTemplate = `{
                         "name": "request",
                         "in": "body",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.UpdateProfileInput"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.UpdateProfileInput"
                         }
                     }
                 ],
@@ -954,7 +907,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -971,16 +924,20 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/auth/push-token": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -988,11 +945,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/auth/push-token": {
-            "post": {
+                ],
                 "description": "Register a device push token for the authenticated user",
                 "consumes": [
                     "application/json"
@@ -1019,30 +972,22 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    },
-                    {
-                        "FrontendKeyAuth": []
-                    }
-                ]
+                }
             }
         },
         "/auth/refresh": {
@@ -1075,7 +1020,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -1094,13 +1039,13 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -1134,25 +1079,25 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.RegisterResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.RegisterResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -1160,6 +1105,14 @@ const docTemplate = `{
         },
         "/auth/user": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "FrontendKeyAuth": []
+                    }
+                ],
                 "description": "Returns the profile data of the currently authenticated user",
                 "produces": [
                     "application/json"
@@ -1174,7 +1127,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -1191,18 +1144,10 @@ const docTemplate = `{
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    },
-                    {
-                        "FrontendKeyAuth": []
-                    }
-                ]
+                }
             }
         },
         "/categories": {
@@ -1229,7 +1174,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -1237,7 +1182,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Category"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Category"
                                             }
                                         }
                                     }
@@ -1248,7 +1193,7 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -1285,13 +1230,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Category"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Category"
                                         }
                                     }
                                 }
@@ -1301,19 +1246,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -1321,6 +1266,14 @@ const docTemplate = `{
         },
         "/dashboard": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "FrontendKeyAuth": []
+                    }
+                ],
                 "description": "Returns the main dashboard summary including articles, posts, and file counts",
                 "produces": [
                     "application/json"
@@ -1343,13 +1296,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.DashboardSummaryResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.DashboardSummaryResponse"
                                         }
                                     }
                                 }
@@ -1359,10 +1312,14 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/articles": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -1370,11 +1327,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/articles": {
-            "get": {
+                ],
                 "description": "Returns a paginated list of all articles for dashboard management",
                 "produces": [
                     "application/json"
@@ -1421,7 +1374,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -1429,7 +1382,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Article"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Article"
                                             }
                                         }
                                     }
@@ -1440,10 +1393,12 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -1451,9 +1406,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "post": {
+                ],
                 "description": "Create a new article from the dashboard",
                 "consumes": [
                     "application/json"
@@ -1478,7 +1431,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.ArticleInput"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.ArticleInput"
                         }
                     }
                 ],
@@ -1488,13 +1441,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Article"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Article"
                                         }
                                     }
                                 }
@@ -1504,22 +1457,26 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/articles/create": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -1527,11 +1484,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/articles/create": {
-            "get": {
+                ],
                 "description": "Returns necessary data (subjects, classes, semesters) to populate the article creation form",
                 "produces": [
                     "application/json"
@@ -1554,7 +1507,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -1571,10 +1524,14 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/articles/stats": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -1582,11 +1539,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/articles/stats": {
-            "get": {
+                ],
                 "description": "Returns dashboard statistics for articles (total, published, draft, pending)",
                 "produces": [
                     "application/json"
@@ -1609,13 +1562,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.ArticleDashboardStats"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.ArticleDashboardStats"
                                         }
                                     }
                                 }
@@ -1625,10 +1578,14 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/articles/{id}": {
+            "put": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -1636,11 +1593,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/articles/{id}": {
-            "put": {
+                ],
                 "description": "Update an existing article from the dashboard",
                 "consumes": [
                     "application/json"
@@ -1672,7 +1625,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.ArticleInput"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.ArticleInput"
                         }
                     }
                 ],
@@ -1682,13 +1635,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Article"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Article"
                                         }
                                     }
                                 }
@@ -1698,22 +1651,24 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "delete": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -1721,9 +1676,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "delete": {
+                ],
                 "description": "Delete an article by ID",
                 "produces": [
                     "application/json"
@@ -1751,28 +1704,32 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/articles/{id}/edit": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -1780,11 +1737,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/articles/{id}/edit": {
-            "get": {
+                ],
                 "description": "Returns the article details along with necessary data (subjects, classes) to populate the edit form",
                 "produces": [
                     "application/json"
@@ -1814,7 +1767,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -1831,22 +1784,26 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/articles/{id}/publish": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -1854,11 +1811,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/articles/{id}/publish": {
-            "post": {
+                ],
                 "description": "Change article status to published",
                 "produces": [
                     "application/json"
@@ -1888,20 +1841,24 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Article"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Article"
                                         }
                                     }
                                 }
                             ]
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/articles/{id}/unpublish": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -1909,11 +1866,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/articles/{id}/unpublish": {
-            "post": {
+                ],
                 "description": "Change article status to draft/unpublished",
                 "produces": [
                     "application/json"
@@ -1943,20 +1896,24 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Article"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Article"
                                         }
                                     }
                                 }
                             ]
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/calendar/databases": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -1964,11 +1921,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/calendar/databases": {
-            "get": {
+                ],
                 "description": "Returns available calendar databases/countries",
                 "produces": [
                     "application/json"
@@ -1983,7 +1936,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -1991,7 +1944,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.DatabaseInfo"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.DatabaseInfo"
                                             }
                                         }
                                     }
@@ -1999,7 +1952,11 @@ const docTemplate = `{
                             ]
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/calendar/events": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -2007,11 +1964,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/calendar/events": {
-            "get": {
+                ],
                 "description": "Returns a list of calendar events for dashboard management, optionally filtered by date range",
                 "produces": [
                     "application/json"
@@ -2046,7 +1999,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -2054,7 +2007,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Event"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Event"
                                             }
                                         }
                                     }
@@ -2065,10 +2018,12 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -2076,9 +2031,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "post": {
+                ],
                 "description": "Create a new calendar event",
                 "consumes": [
                     "application/json"
@@ -2103,7 +2056,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.EventInput"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.EventInput"
                         }
                     }
                 ],
@@ -2113,13 +2066,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Event"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Event"
                                         }
                                     }
                                 }
@@ -2129,22 +2082,26 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/calendar/events/{id}": {
+            "put": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -2152,11 +2109,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/calendar/events/{id}": {
-            "put": {
+                ],
                 "description": "Update an existing calendar event by ID",
                 "consumes": [
                     "application/json"
@@ -2188,7 +2141,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.EventInput"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.EventInput"
                         }
                     }
                 ],
@@ -2198,13 +2151,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Event"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Event"
                                         }
                                     }
                                 }
@@ -2214,16 +2167,18 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "delete": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -2231,9 +2186,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "delete": {
+                ],
                 "description": "Delete an existing calendar event by ID",
                 "produces": [
                     "application/json"
@@ -2261,22 +2214,26 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/categories": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -2284,11 +2241,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/categories": {
-            "get": {
+                ],
                 "description": "Returns a paginated list of categories for dashboard management",
                 "produces": [
                     "application/json"
@@ -2335,7 +2288,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -2343,7 +2296,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Category"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Category"
                                             }
                                         }
                                     }
@@ -2354,10 +2307,12 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -2365,9 +2320,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "post": {
+                ],
                 "description": "Create a new category",
                 "consumes": [
                     "application/json"
@@ -2392,7 +2345,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.CreateCategoryRequest"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.CreateCategoryRequest"
                         }
                     }
                 ],
@@ -2402,13 +2355,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Category"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Category"
                                         }
                                     }
                                 }
@@ -2418,22 +2371,26 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/categories/{id}": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -2441,11 +2398,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/categories/{id}": {
-            "get": {
+                ],
                 "description": "Get a single category for dashboard viewing/editing",
                 "produces": [
                     "application/json"
@@ -2475,13 +2428,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Category"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Category"
                                         }
                                     }
                                 }
@@ -2491,22 +2444,24 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "put": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -2514,9 +2469,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "put": {
+                ],
                 "description": "Update an existing category",
                 "consumes": [
                     "application/json"
@@ -2548,7 +2501,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.UpdateCategoryRequest"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.UpdateCategoryRequest"
                         }
                     }
                 ],
@@ -2558,13 +2511,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Category"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Category"
                                         }
                                     }
                                 }
@@ -2574,22 +2527,24 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "delete": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -2597,9 +2552,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "delete": {
+                ],
                 "description": "Delete a category by ID",
                 "produces": [
                     "application/json"
@@ -2627,22 +2580,26 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/categories/{id}/toggle": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -2650,11 +2607,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/categories/{id}/toggle": {
-            "post": {
+                ],
                 "description": "Toggle the is_active status of a category",
                 "produces": [
                     "application/json"
@@ -2684,13 +2637,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Category"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Category"
                                         }
                                     }
                                 }
@@ -2700,22 +2653,26 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/content-analytics": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -2723,11 +2680,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/content-analytics": {
-            "get": {
+                ],
                 "description": "Get performance metrics for articles and posts (e.g., views)",
                 "produces": [
                     "application/json"
@@ -2750,13 +2703,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.ContentAnalyticsResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.ContentAnalyticsResponse"
                                         }
                                     }
                                 }
@@ -2766,10 +2719,14 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/files": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -2777,11 +2734,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/files": {
-            "get": {
+                ],
                 "description": "Returns a paginated list of all files for dashboard management",
                 "produces": [
                     "application/json"
@@ -2828,7 +2781,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -2836,7 +2789,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.File"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.File"
                                             }
                                         }
                                     }
@@ -2847,10 +2800,12 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -2858,9 +2813,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "post": {
+                ],
                 "description": "Upload a file and attach it to an article or post, or upload it independently",
                 "consumes": [
                     "multipart/form-data"
@@ -2917,13 +2870,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.File"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.File"
                                         }
                                     }
                                 }
@@ -2933,16 +2886,20 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/files/{id}": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -2950,11 +2907,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/files/{id}": {
-            "get": {
+                ],
                 "description": "Get metadata for a specific file by ID",
                 "produces": [
                     "application/json"
@@ -2984,13 +2937,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.File"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.File"
                                         }
                                     }
                                 }
@@ -3000,22 +2953,24 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "put": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -3023,9 +2978,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "put": {
+                ],
                 "description": "Update the metadata (name, category, association) of a file",
                 "consumes": [
                     "application/json"
@@ -3057,7 +3010,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.UpdateFileInput"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.UpdateFileInput"
                         }
                     }
                 ],
@@ -3067,13 +3020,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.File"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.File"
                                         }
                                     }
                                 }
@@ -3083,22 +3036,24 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "delete": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -3106,9 +3061,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "delete": {
+                ],
                 "description": "Delete a file record and remove the file from storage",
                 "produces": [
                     "application/json"
@@ -3136,28 +3089,32 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/files/{id}/download": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -3165,11 +3122,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/files/{id}/download": {
-            "get": {
+                ],
                 "description": "Direct download of a file via dashboard",
                 "produces": [
                     "application/octet-stream"
@@ -3203,22 +3156,26 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/messages/draft": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -3226,11 +3183,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/messages/draft": {
-            "post": {
+                ],
                 "description": "Save a message as a draft for later sending",
                 "consumes": [
                     "application/json"
@@ -3259,13 +3212,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Message"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Message"
                                         }
                                     }
                                 }
@@ -3275,22 +3228,26 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/messages/drafts": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -3298,11 +3255,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/messages/drafts": {
-            "get": {
+                ],
                 "description": "Returns a paginated list of draft messages for the authenticated user",
                 "produces": [
                     "application/json"
@@ -3331,7 +3284,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -3339,7 +3292,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Message"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Message"
                                             }
                                         }
                                     }
@@ -3350,16 +3303,20 @@ const docTemplate = `{
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/messages/inbox": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -3367,11 +3324,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/messages/inbox": {
-            "get": {
+                ],
                 "description": "Returns a paginated list of received messages for the authenticated user",
                 "produces": [
                     "application/json"
@@ -3400,7 +3353,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -3408,7 +3361,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Message"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Message"
                                             }
                                         }
                                     }
@@ -3419,16 +3372,20 @@ const docTemplate = `{
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/messages/send": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -3436,11 +3393,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/messages/send": {
-            "post": {
+                ],
                 "description": "Send a new message to another user",
                 "consumes": [
                     "application/json"
@@ -3469,13 +3422,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Message"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Message"
                                         }
                                     }
                                 }
@@ -3485,28 +3438,32 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/messages/sent": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -3514,11 +3471,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/messages/sent": {
-            "get": {
+                ],
                 "description": "Returns a paginated list of messages sent by the authenticated user",
                 "produces": [
                     "application/json"
@@ -3547,7 +3500,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -3555,7 +3508,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Message"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Message"
                                             }
                                         }
                                     }
@@ -3566,16 +3519,20 @@ const docTemplate = `{
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/messages/stats": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -3583,11 +3540,34 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Get Message Statistics",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
+                        }
+                    }
+                }
             }
         },
         "/dashboard/messages/{id}": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "FrontendKeyAuth": []
+                    }
+                ],
                 "description": "Returns the details of a single message by ID",
                 "produces": [
                     "application/json"
@@ -3611,13 +3591,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Message"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Message"
                                         }
                                     }
                                 }
@@ -3627,22 +3607,24 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "delete": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -3650,9 +3632,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "delete": {
+                ],
                 "description": "Soft-delete a message",
                 "produces": [
                     "application/json"
@@ -3674,28 +3654,32 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/messages/{id}/important": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -3703,11 +3687,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/messages/{id}/important": {
-            "post": {
+                ],
                 "description": "Toggle the importance flag (star) on a message",
                 "produces": [
                     "application/json"
@@ -3729,28 +3709,32 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/messages/{id}/read": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -3758,11 +3742,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/messages/{id}/read": {
-            "post": {
+                ],
                 "description": "Mark a specific received message as read",
                 "produces": [
                     "application/json"
@@ -3784,28 +3764,32 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/notifications": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -3813,11 +3797,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/notifications": {
-            "get": {
+                ],
                 "description": "Returns a paginated list of notifications for the authenticated user",
                 "produces": [
                     "application/json"
@@ -3852,7 +3832,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -3860,7 +3840,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Notification"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Notification"
                                             }
                                         }
                                     }
@@ -3871,16 +3851,18 @@ const docTemplate = `{
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -3888,10 +3870,8 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "post": {
-                "description": "Programmatically create a new notification for a user",
+                ],
+                "description": "Create a notification for the current user, or for a specific user if target_user_id is provided",
                 "consumes": [
                     "application/json"
                 ],
@@ -3919,13 +3899,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Notification"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Notification"
                                         }
                                     }
                                 }
@@ -3935,22 +3915,26 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/notifications/broadcast": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -3958,11 +3942,73 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
+                ],
+                "description": "Send a notification to all active users or to users with a specific role",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Notifications"
+                ],
+                "summary": "Broadcast Notification",
+                "parameters": [
+                    {
+                        "description": "Broadcast payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_notifications.BroadcastRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
+                        }
+                    }
+                }
             }
         },
         "/dashboard/notifications/bulk": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "FrontendKeyAuth": []
+                    }
+                ],
                 "description": "Perform an action (e.g., read, delete) on multiple notifications",
                 "consumes": [
                     "application/json"
@@ -3989,34 +4035,38 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/notifications/latest": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -4024,11 +4074,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/notifications/latest": {
-            "get": {
+                ],
                 "description": "Returns the 10 most recent notifications and the total unread count",
                 "produces": [
                     "application/json"
@@ -4043,13 +4089,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.LatestNotificationsResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.LatestNotificationsResponse"
                                         }
                                     }
                                 }
@@ -4059,16 +4105,20 @@ const docTemplate = `{
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/notifications/prune": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -4076,11 +4126,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/notifications/prune": {
-            "post": {
+                ],
                 "description": "Delete old, already-read notifications (e.g., older than 30 days)",
                 "produces": [
                     "application/json"
@@ -4095,13 +4141,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.PruneNotificationsResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.PruneNotificationsResponse"
                                         }
                                     }
                                 }
@@ -4111,10 +4157,14 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/notifications/read-all": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -4122,11 +4172,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/notifications/read-all": {
-            "post": {
+                ],
                 "description": "Mark all notifications as read for the authenticated user",
                 "produces": [
                     "application/json"
@@ -4139,22 +4185,26 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/notifications/{id}": {
+            "delete": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -4162,11 +4212,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/notifications/{id}": {
-            "delete": {
+                ],
                 "description": "Delete a specific notification by ID",
                 "produces": [
                     "application/json"
@@ -4188,22 +4234,26 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/notifications/{id}/read": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -4211,11 +4261,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/notifications/{id}/read": {
-            "post": {
+                ],
                 "description": "Mark a specific notification as read",
                 "produces": [
                     "application/json"
@@ -4237,22 +4283,26 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/performance/cache": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -4260,11 +4310,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/performance/cache": {
-            "get": {
+                ],
                 "description": "Returns the Redis cache hit ratio and total keys",
                 "produces": [
                     "application/json"
@@ -4279,7 +4325,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -4293,7 +4339,11 @@ const docTemplate = `{
                             ]
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/performance/live": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -4301,11 +4351,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/performance/live": {
-            "get": {
+                ],
                 "description": "Fast lightweight endpoint for polling live server load (CPU, Mem)",
                 "produces": [
                     "application/json"
@@ -4320,7 +4366,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -4334,7 +4380,11 @@ const docTemplate = `{
                             ]
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/performance/response-time": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -4342,11 +4392,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/performance/response-time": {
-            "get": {
+                ],
                 "description": "Returns the latency of an internal cache (Redis) ping",
                 "produces": [
                     "application/json"
@@ -4361,7 +4407,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -4375,7 +4421,11 @@ const docTemplate = `{
                             ]
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/performance/summary": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -4383,11 +4433,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/performance/summary": {
-            "get": {
+                ],
                 "description": "Get comprehensive backend performance metrics (uptime, memory, GC)",
                 "produces": [
                     "application/json"
@@ -4402,13 +4448,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.PerformanceSummaryResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.PerformanceSummaryResponse"
                                         }
                                     }
                                 }
@@ -4418,10 +4464,14 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/permissions": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -4429,11 +4479,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/permissions": {
-            "get": {
+                ],
                 "description": "Returns a list of all permissions",
                 "produces": [
                     "application/json"
@@ -4448,7 +4494,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -4456,7 +4502,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Permission"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Permission"
                                             }
                                         }
                                     }
@@ -4467,10 +4513,12 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -4478,9 +4526,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "post": {
+                ],
                 "description": "Create a new system permission",
                 "consumes": [
                     "application/json"
@@ -4509,13 +4555,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Permission"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Permission"
                                         }
                                     }
                                 }
@@ -4525,22 +4571,26 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/permissions/{id}": {
+            "put": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -4548,11 +4598,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/permissions/{id}": {
-            "put": {
+                ],
                 "description": "Update an existing permission by ID",
                 "consumes": [
                     "application/json"
@@ -4586,22 +4632,24 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "delete": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -4609,9 +4657,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "delete": {
+                ],
                 "description": "Delete a permission by ID",
                 "produces": [
                     "application/json"
@@ -4633,101 +4679,50 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    },
-                    {
-                        "FrontendKeyAuth": []
-                    }
-                ]
+                }
             }
         },
         "/dashboard/posts": {
-            "post": {
-                "description": "Create a new post from the dashboard",
-                "consumes": [
-                    "application/json",
-                    "multipart/form-data"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Posts"
-                ],
-                "summary": "Create Post",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Country ID",
-                        "name": "X-Country-Id",
-                        "in": "header"
-                    },
-                    {
-                        "description": "Post data",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.CreatePostRequest"
-                        }
-                    }
-                ],
+            "get": {
                 "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Post"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
-                        }
-                    },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "post": {
+                "responses": {}
+            }
+        },
+        "/dashboard/posts/{id}": {
+            "get": {
+                "responses": {}
+            },
+            "put": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -4735,11 +4730,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/posts/{id}": {
-            "put": {
+                ],
                 "description": "Update an existing post from the dashboard",
                 "consumes": [
                     "application/json",
@@ -4772,7 +4763,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.UpdatePostRequest"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.UpdatePostRequest"
                         }
                     }
                 ],
@@ -4782,13 +4773,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Post"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Post"
                                         }
                                     }
                                 }
@@ -4798,28 +4789,30 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "delete": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -4827,9 +4820,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "delete": {
+                ],
                 "description": "Delete a post by ID",
                 "produces": [
                     "application/json"
@@ -4857,34 +4848,38 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/posts/{id}/toggle-status": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -4892,11 +4887,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/posts/{id}/toggle-status": {
-            "post": {
+                ],
                 "description": "Toggle the is_active status of a post",
                 "produces": [
                     "application/json"
@@ -4926,13 +4917,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Post"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Post"
                                         }
                                     }
                                 }
@@ -4942,390 +4933,40 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    },
-                    {
-                        "FrontendKeyAuth": []
-                    }
-                ]
-            }
-        },
-        "/dashboard/redis": {
-            "post": {
-                "description": "Set a key-value pair in Redis with an optional TTL",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Redis"
-                ],
-                "summary": "Set Redis Key",
-                "parameters": [
-                    {
-                        "description": "Redis key payload",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/internal_handlers_redis.SetRedisKeyRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
-                        }
-                    },
-                    "422": {
-                        "description": "Unprocessable Entity",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
-                        }
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    },
-                    {
-                        "FrontendKeyAuth": []
-                    }
-                ]
-            }
-        },
-        "/dashboard/redis/env": {
-            "post": {
-                "description": "Validate and update Redis connection settings (Requires restart to apply fully)",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Redis"
-                ],
-                "summary": "Update Redis Config",
-                "parameters": [
-                    {
-                        "description": "Key-Value pairs of Redis config",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "type": "object",
-                                            "additionalProperties": {
-                                                "type": "string"
-                                            }
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
-                        }
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    },
-                    {
-                        "FrontendKeyAuth": []
-                    }
-                ]
-            }
-        },
-        "/dashboard/redis/expired/clean": {
-            "delete": {
-                "description": "Clean up expired keys from Redis",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Redis"
-                ],
-                "summary": "Clean Expired Keys",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
-                        }
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    },
-                    {
-                        "FrontendKeyAuth": []
-                    }
-                ]
-            }
-        },
-        "/dashboard/redis/info": {
-            "get": {
-                "description": "Returns internal Redis server information and statistics",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Redis"
-                ],
-                "summary": "Get Redis Info",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.RedisInfoResponse"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
-                        }
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    },
-                    {
-                        "FrontendKeyAuth": []
-                    }
-                ]
-            }
-        },
-        "/dashboard/redis/keys": {
-            "get": {
-                "description": "Returns a list of Redis keys matching a specific pattern",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Redis"
-                ],
-                "summary": "List Redis Keys",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Key pattern to match (e.g. *)",
-                        "name": "pattern",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.RedisKeysResponse"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
-                        }
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    },
-                    {
-                        "FrontendKeyAuth": []
-                    }
-                ]
-            }
-        },
-        "/dashboard/redis/test": {
-            "get": {
-                "description": "Ping the Redis server to check connectivity and health",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Redis"
-                ],
-                "summary": "Test Redis Connection",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "type": "object",
-                                            "additionalProperties": true
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
-                        }
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    },
-                    {
-                        "FrontendKeyAuth": []
-                    }
-                ]
-            }
-        },
-        "/dashboard/redis/{key}": {
-            "delete": {
-                "description": "Delete a specific Redis key",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Redis"
-                ],
-                "summary": "Delete Redis Key",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Redis Key",
-                        "name": "key",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
-                        }
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    },
-                    {
-                        "FrontendKeyAuth": []
-                    }
-                ]
+                }
             }
         },
         "/dashboard/roles": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "FrontendKeyAuth": []
+                    }
+                ],
                 "description": "Returns a list of all roles",
                 "produces": [
                     "application/json"
@@ -5340,7 +4981,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -5348,7 +4989,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Role"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Role"
                                             }
                                         }
                                     }
@@ -5359,10 +5000,12 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -5370,9 +5013,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "post": {
+                ],
                 "description": "Create a new role with associated permissions",
                 "consumes": [
                     "application/json"
@@ -5401,13 +5042,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Role"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Role"
                                         }
                                     }
                                 }
@@ -5417,22 +5058,26 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/roles/{id}": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -5440,11 +5085,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/roles/{id}": {
-            "get": {
+                ],
                 "description": "Get role details by ID",
                 "produces": [
                     "application/json"
@@ -5468,13 +5109,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Role"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Role"
                                         }
                                     }
                                 }
@@ -5484,16 +5125,18 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "put": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -5501,9 +5144,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "put": {
+                ],
                 "description": "Update an existing role",
                 "consumes": [
                     "application/json"
@@ -5539,13 +5180,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Role"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Role"
                                         }
                                     }
                                 }
@@ -5555,16 +5196,18 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "delete": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -5572,9 +5215,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "delete": {
+                ],
                 "description": "Delete a role by ID",
                 "produces": [
                     "application/json"
@@ -5596,22 +5237,26 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/school-classes": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -5619,11 +5264,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/school-classes": {
-            "get": {
+                ],
                 "description": "Get a paginated list of school classes for dashboard management",
                 "produces": [
                     "application/json"
@@ -5658,7 +5299,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -5666,7 +5307,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.SchoolClass"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.SchoolClass"
                                             }
                                         }
                                     }
@@ -5677,10 +5318,12 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -5688,9 +5331,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "post": {
+                ],
                 "description": "Create a new school class",
                 "consumes": [
                     "application/json"
@@ -5715,7 +5356,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.SchoolClassInput"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.SchoolClassInput"
                         }
                     }
                 ],
@@ -5725,13 +5366,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.SchoolClass"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.SchoolClass"
                                         }
                                     }
                                 }
@@ -5741,22 +5382,26 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/school-classes/{id}": {
+            "put": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -5764,11 +5409,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/school-classes/{id}": {
-            "put": {
+                ],
                 "description": "Update an existing school class",
                 "consumes": [
                     "application/json"
@@ -5800,7 +5441,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.SchoolClassInput"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.SchoolClassInput"
                         }
                     }
                 ],
@@ -5810,13 +5451,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.SchoolClass"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.SchoolClass"
                                         }
                                     }
                                 }
@@ -5826,22 +5467,24 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "delete": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -5849,9 +5492,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "delete": {
+                ],
                 "description": "Delete a school class by ID",
                 "produces": [
                     "application/json"
@@ -5879,22 +5520,26 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/secure/upload-document": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -5902,11 +5547,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/secure/upload-document": {
-            "post": {
+                ],
                 "description": "Securely upload a document",
                 "consumes": [
                     "multipart/form-data"
@@ -5933,13 +5574,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.UploadResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.UploadResponse"
                                         }
                                     }
                                 }
@@ -5949,10 +5590,14 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/secure/upload-image": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -5960,11 +5605,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/secure/upload-image": {
-            "post": {
+                ],
                 "description": "Securely upload an image (e.g. from authenticated dashboard)",
                 "consumes": [
                     "multipart/form-data"
@@ -5991,13 +5632,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.UploadResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.UploadResponse"
                                         }
                                     }
                                 }
@@ -6007,10 +5648,14 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/security/ip/{ip}": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -6018,11 +5663,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/security/ip/{ip}": {
-            "get": {
+                ],
                 "description": "Returns details, status, and recent logs for a specific IP address",
                 "produces": [
                     "application/json"
@@ -6046,13 +5687,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.IPDetailsResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.IPDetailsResponse"
                                         }
                                     }
                                 }
@@ -6062,10 +5703,14 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/security/ip/{ip}/block": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -6073,11 +5718,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/security/ip/{ip}/block": {
-            "post": {
+                ],
                 "description": "Block a specific IP address",
                 "consumes": [
                     "application/json"
@@ -6110,22 +5751,26 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/security/ip/{ip}/trust": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -6133,11 +5778,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/security/ip/{ip}/trust": {
-            "post": {
+                ],
                 "description": "Mark a specific IP address as trusted (bypassing certain limits)",
                 "consumes": [
                     "application/json"
@@ -6170,22 +5811,26 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/security/ip/{ip}/unblock": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -6193,11 +5838,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/security/ip/{ip}/unblock": {
-            "post": {
+                ],
                 "description": "Unblock a previously blocked IP address",
                 "produces": [
                     "application/json"
@@ -6219,22 +5860,26 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/security/ip/{ip}/untrust": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -6242,11 +5887,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/security/ip/{ip}/untrust": {
-            "post": {
+                ],
                 "description": "Remove a specific IP address from the trusted list",
                 "produces": [
                     "application/json"
@@ -6268,22 +5909,26 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/security/logs": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -6291,11 +5936,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/security/logs": {
-            "get": {
+                ],
                 "description": "Returns paginated security logs with optional filters",
                 "produces": [
                     "application/json"
@@ -6348,7 +5989,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -6356,7 +5997,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.SecurityLog"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.SecurityLog"
                                             }
                                         }
                                     }
@@ -6367,10 +6008,12 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "delete": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -6378,9 +6021,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "delete": {
+                ],
                 "description": "Delete all security logs",
                 "produces": [
                     "application/json"
@@ -6393,16 +6034,20 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/security/logs/{id}": {
+            "delete": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -6410,11 +6055,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/security/logs/{id}": {
-            "delete": {
+                ],
                 "description": "Delete a specific security log entry by ID",
                 "produces": [
                     "application/json"
@@ -6436,22 +6077,26 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/security/logs/{id}/resolve": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -6459,11 +6104,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/security/logs/{id}/resolve": {
-            "post": {
+                ],
                 "description": "Marks a specific security log entry as resolved",
                 "produces": [
                     "application/json"
@@ -6485,22 +6126,26 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/security/monitor/dashboard": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -6508,11 +6153,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/security/monitor/dashboard": {
-            "get": {
+                ],
                 "description": "Returns a comprehensive payload (stats, recent logs) for the frontend monitor view",
                 "produces": [
                     "application/json"
@@ -6527,7 +6168,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -6544,10 +6185,14 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/security/overview": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -6555,11 +6200,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/security/overview": {
-            "get": {
+                ],
                 "description": "Returns an overview of security metrics (last 24h, 7d, total attacks, and top IPs)",
                 "produces": [
                     "application/json"
@@ -6574,13 +6215,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.SecurityOverviewResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.SecurityOverviewResponse"
                                         }
                                     }
                                 }
@@ -6590,10 +6231,14 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/security/stats": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -6601,11 +6246,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/security/stats": {
-            "get": {
+                ],
                 "description": "Get overall security statistics including total logs, critical logs, and blocked IPs",
                 "produces": [
                     "application/json"
@@ -6620,13 +6261,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.SecurityStatsResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.SecurityStatsResponse"
                                         }
                                     }
                                 }
@@ -6636,10 +6277,14 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/semesters": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -6647,11 +6292,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/semesters": {
-            "get": {
+                ],
                 "description": "Get a paginated list of semesters for dashboard management",
                 "produces": [
                     "application/json"
@@ -6686,7 +6327,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -6694,7 +6335,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Semester"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Semester"
                                             }
                                         }
                                     }
@@ -6705,10 +6346,12 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -6716,9 +6359,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "post": {
+                ],
                 "description": "Create a new semester",
                 "consumes": [
                     "application/json"
@@ -6743,7 +6384,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.SemesterInput"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.SemesterInput"
                         }
                     }
                 ],
@@ -6753,13 +6394,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Semester"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Semester"
                                         }
                                     }
                                 }
@@ -6769,22 +6410,26 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/semesters/{id}": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -6792,11 +6437,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/semesters/{id}": {
-            "get": {
+                ],
                 "description": "Get a single semester by ID",
                 "produces": [
                     "application/json"
@@ -6826,13 +6467,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Semester"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Semester"
                                         }
                                     }
                                 }
@@ -6842,22 +6483,24 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "put": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -6865,9 +6508,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "put": {
+                ],
                 "description": "Update an existing semester",
                 "consumes": [
                     "application/json"
@@ -6899,7 +6540,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.SemesterInput"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.SemesterInput"
                         }
                     }
                 ],
@@ -6909,13 +6550,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Semester"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Semester"
                                         }
                                     }
                                 }
@@ -6925,22 +6566,24 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "delete": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -6948,9 +6591,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "delete": {
+                ],
                 "description": "Delete a semester by ID",
                 "produces": [
                     "application/json"
@@ -6978,22 +6619,26 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/settings": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -7001,11 +6646,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/settings": {
-            "get": {
+                ],
                 "description": "Returns all system settings as a key-value map for the admin dashboard",
                 "produces": [
                     "application/json"
@@ -7028,7 +6669,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -7047,10 +6688,12 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -7058,9 +6701,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "post": {
+                ],
                 "description": "Update system settings. Supports both JSON and Multipart Form Data for logo/favicon uploads.",
                 "consumes": [
                     "application/json",
@@ -7096,16 +6737,20 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/settings/robots": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -7113,11 +6758,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/settings/robots": {
-            "post": {
+                ],
                 "description": "Updates the site's robots.txt content",
                 "consumes": [
                     "application/json"
@@ -7150,16 +6791,20 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/settings/smtp/send-test": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -7167,11 +6812,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/settings/smtp/send-test": {
-            "post": {
+                ],
                 "description": "Sends a test email via SMTP to the authenticated user's email address",
                 "produces": [
                     "application/json"
@@ -7184,22 +6825,26 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/settings/smtp/test": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -7207,11 +6852,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/settings/smtp/test": {
-            "post": {
+                ],
                 "description": "Tests the configured SMTP server connection",
                 "produces": [
                     "application/json"
@@ -7224,16 +6865,20 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/subjects": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -7241,11 +6886,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/subjects": {
-            "get": {
+                ],
                 "description": "Get a paginated list of subjects for dashboard management",
                 "produces": [
                     "application/json"
@@ -7280,7 +6921,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -7288,7 +6929,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Subject"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Subject"
                                             }
                                         }
                                     }
@@ -7299,10 +6940,12 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -7310,9 +6953,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "post": {
+                ],
                 "description": "Create a new subject",
                 "consumes": [
                     "application/json"
@@ -7337,7 +6978,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.SubjectInput"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.SubjectInput"
                         }
                     }
                 ],
@@ -7347,13 +6988,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Subject"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Subject"
                                         }
                                     }
                                 }
@@ -7363,22 +7004,26 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/subjects/{id}": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -7386,11 +7031,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/subjects/{id}": {
-            "get": {
+                ],
                 "description": "Get a single subject by ID",
                 "produces": [
                     "application/json"
@@ -7420,13 +7061,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Subject"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Subject"
                                         }
                                     }
                                 }
@@ -7436,22 +7077,24 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "put": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -7459,9 +7102,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "put": {
+                ],
                 "description": "Update an existing subject",
                 "consumes": [
                     "application/json"
@@ -7493,7 +7134,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.SubjectInput"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.SubjectInput"
                         }
                     }
                 ],
@@ -7503,13 +7144,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Subject"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Subject"
                                         }
                                     }
                                 }
@@ -7519,22 +7160,24 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "delete": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -7542,9 +7185,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "delete": {
+                ],
                 "description": "Delete a subject by ID",
                 "produces": [
                     "application/json"
@@ -7572,22 +7213,26 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/users": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -7595,11 +7240,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/users": {
-            "get": {
+                ],
                 "description": "Returns a paginated list of all users",
                 "produces": [
                     "application/json"
@@ -7628,6 +7269,12 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "string",
+                        "description": "Filter by email verification (verified/unverified)",
+                        "name": "email_verified",
+                        "in": "query"
+                    },
+                    {
                         "type": "integer",
                         "description": "Page number",
                         "name": "page",
@@ -7646,7 +7293,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -7654,7 +7301,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.UserResponse"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.UserResponse"
                                             }
                                         }
                                     }
@@ -7665,10 +7312,12 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -7676,9 +7325,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "post": {
+                ],
                 "description": "Create a new user from the dashboard",
                 "consumes": [
                     "application/json"
@@ -7697,7 +7344,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.CreateUserRequest"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.CreateUserRequest"
                         }
                     }
                 ],
@@ -7707,13 +7354,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.UserResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.UserResponse"
                                         }
                                     }
                                 }
@@ -7723,22 +7370,26 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/users/bulk-delete": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -7746,11 +7397,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/users/bulk-delete": {
-            "post": {
+                ],
                 "description": "Delete multiple users by providing a list of IDs",
                 "consumes": [
                     "application/json"
@@ -7779,13 +7426,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.BulkDeleteUsersResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.BulkDeleteUsersResponse"
                                         }
                                     }
                                 }
@@ -7795,16 +7442,20 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/users/search": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -7812,11 +7463,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/users/search": {
-            "get": {
+                ],
                 "description": "Search users by name or email (used for autocomplete)",
                 "produces": [
                     "application/json"
@@ -7839,7 +7486,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -7847,7 +7494,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.UserResponse"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.UserResponse"
                                             }
                                         }
                                     }
@@ -7858,10 +7505,14 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/users/update-status": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -7869,11 +7520,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/users/update-status": {
-            "post": {
+                ],
                 "description": "Update the status (active, inactive, banned) for multiple users simultaneously",
                 "consumes": [
                     "application/json"
@@ -7900,28 +7547,32 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/users/{user}": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -7929,11 +7580,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/users/{user}": {
-            "get": {
+                ],
                 "description": "Get user details by ID",
                 "produces": [
                     "application/json"
@@ -7957,13 +7604,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.UserResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.UserResponse"
                                         }
                                     }
                                 }
@@ -7973,22 +7620,24 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "put": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -7996,9 +7645,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "put": {
+                ],
                 "description": "Update an existing user from the dashboard",
                 "consumes": [
                     "application/json"
@@ -8024,7 +7671,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.UpdateUserRequest"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.UpdateUserRequest"
                         }
                     }
                 ],
@@ -8034,13 +7681,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.UserResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.UserResponse"
                                         }
                                     }
                                 }
@@ -8050,22 +7697,24 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            },
+            "delete": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -8073,9 +7722,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            },
-            "delete": {
+                ],
                 "description": "Delete a user by ID",
                 "produces": [
                     "application/json"
@@ -8097,28 +7744,37 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/users/{user}/activity": {
+            "get": {
+                "responses": {}
+            }
+        },
+        "/dashboard/users/{user}/roles-permissions": {
+            "put": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -8126,11 +7782,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/users/{user}/roles-permissions": {
-            "put": {
+                ],
                 "description": "Update the roles and direct permissions for a specific user",
                 "consumes": [
                     "application/json"
@@ -8156,7 +7808,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.RolesPermissionsRequest"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.RolesPermissionsRequest"
                         }
                     }
                 ],
@@ -8164,28 +7816,32 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/visitor-analytics": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -8193,11 +7849,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/visitor-analytics": {
-            "get": {
+                ],
                 "description": "Returns comprehensive visitor analytics (e.g., page views, unique visitors, browser stats)",
                 "produces": [
                     "application/json"
@@ -8226,13 +7878,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.VisitorAnalyticsResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.VisitorAnalyticsResponse"
                                         }
                                     }
                                 }
@@ -8242,10 +7894,14 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
+                }
+            }
+        },
+        "/dashboard/visitor-analytics/prune": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -8253,11 +7909,7 @@ const docTemplate = `{
                     {
                         "FrontendKeyAuth": []
                     }
-                ]
-            }
-        },
-        "/dashboard/visitor-analytics/prune": {
-            "post": {
+                ],
                 "description": "Delete visitor analytics data older than a specified number of days",
                 "consumes": [
                     "application/json"
@@ -8291,13 +7943,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.PruneAnalyticsResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.PruneAnalyticsResponse"
                                         }
                                     }
                                 }
@@ -8307,24 +7959,16 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    },
-                    {
-                        "FrontendKeyAuth": []
-                    }
-                ]
+                }
             }
         },
         "/files/{id}/increment-view": {
@@ -8356,19 +8000,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -8405,13 +8049,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.FileInfoResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.FileInfoResponse"
                                         }
                                     }
                                 }
@@ -8421,19 +8065,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -8463,13 +8107,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.FilterMetaResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.FilterMetaResponse"
                                         }
                                     }
                                 }
@@ -8479,7 +8123,7 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -8516,13 +8160,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.SemestersResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.SemestersResponse"
                                         }
                                     }
                                 }
@@ -8532,19 +8176,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -8581,7 +8225,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -8589,7 +8233,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Subject"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Subject"
                                             }
                                         }
                                     }
@@ -8600,13 +8244,13 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -8646,19 +8290,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -8688,7 +8332,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -8750,7 +8394,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -8758,7 +8402,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Article"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Article"
                                             }
                                         }
                                     }
@@ -8769,13 +8413,13 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -8816,19 +8460,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -8848,13 +8492,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.HealthStatusResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.HealthStatusResponse"
                         }
                     },
                     "503": {
                         "description": "Service Unavailable",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.HealthStatusResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.HealthStatusResponse"
                         }
                     }
                 }
@@ -8884,13 +8528,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.HomeData"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.HomeData"
                                         }
                                     }
                                 }
@@ -8900,7 +8544,7 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -8930,7 +8574,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -8938,7 +8582,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Event"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Event"
                                             }
                                         }
                                     }
@@ -8949,7 +8593,7 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -8986,13 +8630,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Event"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Event"
                                         }
                                     }
                                 }
@@ -9002,13 +8646,13 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -9062,7 +8706,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -9079,7 +8723,7 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -9140,7 +8784,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -9157,7 +8801,7 @@ const docTemplate = `{
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -9177,7 +8821,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.PingResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.PingResponse"
                         }
                     }
                 }
@@ -9237,7 +8881,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -9245,7 +8889,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Post"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Post"
                                             }
                                         }
                                     }
@@ -9256,7 +8900,7 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -9293,13 +8937,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Post"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Post"
                                         }
                                     }
                                 }
@@ -9309,19 +8953,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -9356,19 +9000,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -9398,7 +9042,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
@@ -9406,7 +9050,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.SchoolClass"
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.SchoolClass"
                                             }
                                         }
                                     }
@@ -9417,7 +9061,7 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -9454,13 +9098,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.SchoolClass"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.SchoolClass"
                                         }
                                     }
                                 }
@@ -9470,19 +9114,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -9490,6 +9134,14 @@ const docTemplate = `{
         },
         "/secure/view": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "FrontendKeyAuth": []
+                    }
+                ],
                 "description": "Serve a file securely using its relative path",
                 "produces": [
                     "application/octet-stream"
@@ -9517,18 +9169,58 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
-                },
-                "security": [
+                }
+            }
+        },
+        "/team": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Public Team List",
+                "parameters": [
                     {
-                        "BearerAuth": []
+                        "type": "string",
+                        "description": "Search by name",
+                        "name": "search",
+                        "in": "query"
                     },
                     {
-                        "FrontendKeyAuth": []
+                        "type": "string",
+                        "description": "Filter by role name",
+                        "name": "role",
+                        "in": "query"
                     }
-                ]
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.User"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
             }
         },
         "/upload/file": {
@@ -9559,13 +9251,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.UploadResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.UploadResponse"
                                         }
                                     }
                                 }
@@ -9575,7 +9267,7 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -9609,13 +9301,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.UploadResponse"
+                                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.UploadResponse"
                                         }
                                     }
                                 }
@@ -9625,7 +9317,7 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.APIResponse"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.APIResponse"
                         }
                     }
                 }
@@ -9633,7 +9325,33 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "github_com_alemancenter_fiber-api_internal_models.Article": {
+        "github_com_imanjo_fiber-api_internal_database.RedisStats": {
+            "type": "object",
+            "properties": {
+                "connected_clients": {
+                    "type": "integer"
+                },
+                "healthy": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "boolean"
+                    }
+                },
+                "hit_ratio": {
+                    "type": "number"
+                },
+                "keyspace_hits": {
+                    "type": "integer"
+                },
+                "keyspace_misses": {
+                    "type": "integer"
+                },
+                "memory_used": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_imanjo_fiber-api_internal_models.Article": {
             "type": "object",
             "properties": {
                 "author_id": {
@@ -9642,7 +9360,7 @@ const docTemplate = `{
                 "comments": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Comment"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Comment"
                     }
                 },
                 "content": {
@@ -9654,7 +9372,7 @@ const docTemplate = `{
                 "files": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.File"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.File"
                     }
                 },
                 "grade_level": {
@@ -9666,7 +9384,7 @@ const docTemplate = `{
                 "keywords_rel": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Keyword"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Keyword"
                     }
                 },
                 "meta_description": {
@@ -9676,10 +9394,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "school_class": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.SchoolClass"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.SchoolClass"
                 },
                 "semester": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Semester"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Semester"
                 },
                 "semester_id": {
                     "type": "integer"
@@ -9692,7 +9410,7 @@ const docTemplate = `{
                     "description": "Relationships",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Subject"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Subject"
                         }
                     ]
                 },
@@ -9710,7 +9428,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_models.Category": {
+        "github_com_imanjo_fiber-api_internal_models.Category": {
             "type": "object",
             "properties": {
                 "country": {
@@ -9746,7 +9464,7 @@ const docTemplate = `{
                 "posts": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Post"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Post"
                     }
                 },
                 "slug": {
@@ -9757,7 +9475,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_models.Comment": {
+        "github_com_imanjo_fiber-api_internal_models.Comment": {
             "type": "object",
             "properties": {
                 "body": {
@@ -9781,21 +9499,24 @@ const docTemplate = `{
                 "reactions": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Reaction"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Reaction"
                     }
+                },
+                "status": {
+                    "type": "string"
                 },
                 "updated_at": {
                     "type": "string"
                 },
                 "user": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.User"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.User"
                 },
                 "user_id": {
                     "type": "integer"
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_models.Conversation": {
+        "github_com_imanjo_fiber-api_internal_models.Conversation": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -9814,20 +9535,20 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "user1": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.User"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.User"
                 },
                 "user1_id": {
                     "type": "integer"
                 },
                 "user2": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.User"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.User"
                 },
                 "user2_id": {
                     "type": "integer"
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_models.Event": {
+        "github_com_imanjo_fiber-api_internal_models.Event": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -9850,17 +9571,20 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_models.File": {
+        "github_com_imanjo_fiber-api_internal_models.File": {
             "type": "object",
             "properties": {
                 "article": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Article"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Article"
                 },
                 "article_id": {
                     "type": "integer"
                 },
                 "created_at": {
                     "type": "string"
+                },
+                "download_count": {
+                    "type": "integer"
                 },
                 "file_category": {
                     "type": "string"
@@ -9880,30 +9604,52 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
+                "is_premium": {
+                    "type": "boolean"
+                },
                 "mime_type": {
                     "type": "string"
                 },
                 "post": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Post"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Post"
                 },
                 "post_id": {
                     "type": "integer"
+                },
+                "premium_audience": {
+                    "type": "string"
+                },
+                "premium_category": {
+                    "type": "string"
+                },
+                "premium_download_count": {
+                    "type": "integer"
+                },
+                "premium_requires_subscription": {
+                    "type": "boolean"
+                },
+                "premium_subject": {
+                    "type": "string"
                 },
                 "updated_at": {
                     "type": "string"
                 },
                 "view_count": {
+                    "description": "ViewCount is the modern file view counter column. Some legacy databases still use views_count.",
+                    "type": "integer"
+                },
+                "views_count": {
                     "type": "integer"
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_models.Keyword": {
+        "github_com_imanjo_fiber-api_internal_models.Keyword": {
             "type": "object",
             "properties": {
                 "articles": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Article"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Article"
                     }
                 },
                 "created_at": {
@@ -9918,7 +9664,7 @@ const docTemplate = `{
                 "posts": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Post"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Post"
                     }
                 },
                 "updated_at": {
@@ -9926,14 +9672,14 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_models.Message": {
+        "github_com_imanjo_fiber-api_internal_models.Message": {
             "type": "object",
             "properties": {
                 "body": {
                     "type": "string"
                 },
                 "conversation": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Conversation"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Conversation"
                 },
                 "conversation_id": {
                     "type": "integer"
@@ -9963,12 +9709,12 @@ const docTemplate = `{
                     "description": "Recipient is populated at query time from the conversation, not stored in DB.",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.User"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.User"
                         }
                     ]
                 },
                 "sender": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.User"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.User"
                 },
                 "sender_id": {
                     "type": "integer"
@@ -9981,14 +9727,17 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_models.Notification": {
+        "github_com_imanjo_fiber-api_internal_models.Notification": {
             "type": "object",
             "properties": {
                 "created_at": {
                     "type": "string"
                 },
                 "data": {
-                    "type": "string"
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
                 },
                 "id": {
                     "type": "string"
@@ -10007,7 +9756,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_models.Permission": {
+        "github_com_imanjo_fiber-api_internal_models.Permission": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -10027,14 +9776,14 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_models.Post": {
+        "github_com_imanjo_fiber-api_internal_models.Post": {
             "type": "object",
             "properties": {
                 "alt": {
                     "type": "string"
                 },
                 "author": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.User"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.User"
                 },
                 "author_id": {
                     "type": "integer"
@@ -10043,7 +9792,7 @@ const docTemplate = `{
                     "description": "Relationships",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Category"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Category"
                         }
                     ]
                 },
@@ -10053,7 +9802,7 @@ const docTemplate = `{
                 "comments": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Comment"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Comment"
                     }
                 },
                 "content": {
@@ -10068,7 +9817,7 @@ const docTemplate = `{
                 "files": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.File"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.File"
                     }
                 },
                 "id": {
@@ -10093,7 +9842,7 @@ const docTemplate = `{
                 "keywords_rel": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Keyword"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Keyword"
                     }
                 },
                 "meta_description": {
@@ -10113,7 +9862,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_models.PushToken": {
+        "github_com_imanjo_fiber-api_internal_models.PushToken": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -10136,11 +9885,11 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_models.Reaction": {
+        "github_com_imanjo_fiber-api_internal_models.Reaction": {
             "type": "object",
             "properties": {
                 "comment": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Comment"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Comment"
                 },
                 "comment_id": {
                     "type": "integer"
@@ -10158,14 +9907,14 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "user": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.User"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.User"
                 },
                 "user_id": {
                     "type": "integer"
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_models.Role": {
+        "github_com_imanjo_fiber-api_internal_models.Role": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -10183,7 +9932,7 @@ const docTemplate = `{
                 "permissions": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Permission"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Permission"
                     }
                 },
                 "updated_at": {
@@ -10191,7 +9940,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_models.SchoolClass": {
+        "github_com_imanjo_fiber-api_internal_models.SchoolClass": {
             "type": "object",
             "properties": {
                 "country_id": {
@@ -10212,14 +9961,14 @@ const docTemplate = `{
                 "semesters": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Semester"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Semester"
                     }
                 },
                 "subjects": {
                     "description": "subjects.grade_level is FK to school_classes.id",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Subject"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Subject"
                     }
                 },
                 "updated_at": {
@@ -10227,7 +9976,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_models.SecurityLog": {
+        "github_com_imanjo_fiber-api_internal_models.SecurityLog": {
             "type": "object",
             "properties": {
                 "attack_type": {
@@ -10292,7 +10041,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_models.Semester": {
+        "github_com_imanjo_fiber-api_internal_models.Semester": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -10308,7 +10057,7 @@ const docTemplate = `{
                     "description": "grade_level is FK to school_classes.id",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.SchoolClass"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.SchoolClass"
                         }
                     ]
                 },
@@ -10320,11 +10069,17 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_models.Subject": {
+        "github_com_imanjo_fiber-api_internal_models.Subject": {
             "type": "object",
             "properties": {
+                "articles_count": {
+                    "type": "integer"
+                },
                 "created_at": {
                     "type": "string"
+                },
+                "files_count": {
+                    "type": "integer"
                 },
                 "grade_level": {
                     "type": "integer"
@@ -10336,7 +10091,7 @@ const docTemplate = `{
                     "description": "grade_level is FK to school_classes.id",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.SchoolClass"
+                            "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.SchoolClass"
                         }
                     ]
                 },
@@ -10348,7 +10103,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_models.User": {
+        "github_com_imanjo_fiber-api_internal_models.User": {
             "type": "object",
             "properties": {
                 "bio": {
@@ -10363,7 +10118,22 @@ const docTemplate = `{
                 "email": {
                     "type": "string"
                 },
+                "email_bounce_count": {
+                    "type": "integer"
+                },
+                "email_bounce_reason": {
+                    "type": "string"
+                },
+                "email_bounce_status": {
+                    "type": "string"
+                },
+                "email_last_bounce_at": {
+                    "type": "string"
+                },
                 "email_verified_at": {
+                    "type": "string"
+                },
+                "facebook_id": {
                     "type": "string"
                 },
                 "gender": {
@@ -10390,7 +10160,7 @@ const docTemplate = `{
                 "permissions": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Permission"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Permission"
                     }
                 },
                 "phone": {
@@ -10402,14 +10172,14 @@ const docTemplate = `{
                 "push_tokens": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.PushToken"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.PushToken"
                     }
                 },
                 "roles": {
                     "description": "Relationships",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Role"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Role"
                     }
                 },
                 "social_links": {
@@ -10423,7 +10193,70 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_repositories.ArticleView": {
+        "github_com_imanjo_fiber-api_internal_monitoring.ErrorSample": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "integer"
+                },
+                "timestamp": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_imanjo_fiber-api_internal_monitoring.RouteSnapshot": {
+            "type": "object",
+            "properties": {
+                "avg_latency_ms": {
+                    "type": "number"
+                },
+                "count": {
+                    "type": "integer"
+                },
+                "errors": {
+                    "type": "integer"
+                },
+                "max_latency_ms": {
+                    "type": "number"
+                },
+                "recent_errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_monitoring.ErrorSample"
+                    }
+                }
+            }
+        },
+        "github_com_imanjo_fiber-api_internal_monitoring.Snapshot": {
+            "type": "object",
+            "properties": {
+                "avg_latency_ms": {
+                    "type": "number"
+                },
+                "errors_total": {
+                    "type": "integer"
+                },
+                "requests_total": {
+                    "type": "integer"
+                },
+                "routes": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_monitoring.RouteSnapshot"
+                    }
+                },
+                "uptime_seconds": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_imanjo_fiber-api_internal_repositories.ArticleView": {
             "type": "object",
             "properties": {
                 "id": {
@@ -10437,7 +10270,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_repositories.CountryRow": {
+        "github_com_imanjo_fiber-api_internal_repositories.CountryRow": {
             "type": "object",
             "properties": {
                 "count": {
@@ -10448,7 +10281,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_repositories.PostView": {
+        "github_com_imanjo_fiber-api_internal_repositories.PostView": {
             "type": "object",
             "properties": {
                 "id": {
@@ -10462,7 +10295,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_repositories.TopAttackingIP": {
+        "github_com_imanjo_fiber-api_internal_repositories.TopAttackingIP": {
             "type": "object",
             "properties": {
                 "count": {
@@ -10473,7 +10306,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.ActiveVisitorRow": {
+        "github_com_imanjo_fiber-api_internal_services.ActiveVisitorRow": {
             "type": "object",
             "properties": {
                 "browser": {
@@ -10520,7 +10353,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.ActivityOut": {
+        "github_com_imanjo_fiber-api_internal_services.ActivityOut": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -10536,11 +10369,11 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "user": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.ActivityUser"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.ActivityUser"
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.ActivityUser": {
+        "github_com_imanjo_fiber-api_internal_services.ActivityUser": {
             "type": "object",
             "properties": {
                 "name": {
@@ -10548,7 +10381,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.ArticleDashboardStats": {
+        "github_com_imanjo_fiber-api_internal_services.ArticleDashboardStats": {
             "type": "object",
             "properties": {
                 "drafts": {
@@ -10565,7 +10398,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.ArticleInput": {
+        "github_com_imanjo_fiber-api_internal_services.ArticleInput": {
             "type": "object",
             "required": [
                 "content",
@@ -10605,7 +10438,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.BulkDeleteUsersResponse": {
+        "github_com_imanjo_fiber-api_internal_services.BulkDeleteUsersResponse": {
             "type": "object",
             "properties": {
                 "deleted": {
@@ -10613,7 +10446,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.ChartDataRow": {
+        "github_com_imanjo_fiber-api_internal_services.ChartDataRow": {
             "type": "object",
             "properties": {
                 "full_date": {
@@ -10630,7 +10463,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.ContentAnalyticsResponse": {
+        "github_com_imanjo_fiber-api_internal_services.ContentAnalyticsResponse": {
             "type": "object",
             "properties": {
                 "draft_articles": {
@@ -10642,68 +10475,49 @@ const docTemplate = `{
                 "top_articles": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_repositories.ArticleView"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_repositories.ArticleView"
                     }
                 },
                 "top_posts": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_repositories.PostView"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_repositories.PostView"
                     }
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.CreateCategoryRequest": {
+        "github_com_imanjo_fiber-api_internal_services.CreateCategoryRequest": {
             "type": "object",
             "required": [
                 "name"
             ],
             "properties": {
+                "icon": {
+                    "type": "string"
+                },
+                "icon_image": {
+                    "type": "string"
+                },
+                "image": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string",
                     "maxLength": 255,
                     "minLength": 2
+                },
+                "parent_id": {
+                    "type": "integer"
                 },
                 "slug": {
                     "type": "string"
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.CreatePostRequest": {
-            "type": "object",
-            "required": [
-                "category_id",
-                "content",
-                "title"
-            ],
-            "properties": {
-                "category_id": {
-                    "type": "integer"
-                },
-                "content": {
-                    "type": "string"
-                },
-                "is_active": {
-                    "type": "boolean"
-                },
-                "is_featured": {
-                    "type": "boolean"
-                },
-                "keywords": {
-                    "type": "string"
-                },
-                "meta_description": {
-                    "type": "string",
-                    "maxLength": 500
-                },
-                "title": {
-                    "type": "string",
-                    "maxLength": 500,
-                    "minLength": 3
-                }
-            }
-        },
-        "github_com_alemancenter_fiber-api_internal_services.CreateUserRequest": {
+        "github_com_imanjo_fiber-api_internal_services.CreateUserRequest": {
             "type": "object",
             "required": [
                 "email",
@@ -10731,7 +10545,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.DashboardAnalytics": {
+        "github_com_imanjo_fiber-api_internal_services.DashboardAnalytics": {
             "type": "object",
             "properties": {
                 "articles": {
@@ -10772,11 +10586,11 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.DashboardSummaryResponse": {
+        "github_com_imanjo_fiber-api_internal_services.DashboardSummaryResponse": {
             "type": "object",
             "properties": {
                 "analytics": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.DashboardAnalytics"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.DashboardAnalytics"
                 },
                 "onlineUsers": {
                     "type": "array",
@@ -10785,18 +10599,18 @@ const docTemplate = `{
                 "recentActivities": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.ActivityOut"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.ActivityOut"
                     }
                 },
                 "totals": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.DashboardTotals"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.DashboardTotals"
                 },
                 "trends": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.DashboardTrends"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.DashboardTrends"
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.DashboardTotals": {
+        "github_com_imanjo_fiber-api_internal_services.DashboardTotals": {
             "type": "object",
             "properties": {
                 "articles": {
@@ -10813,21 +10627,21 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.DashboardTrends": {
+        "github_com_imanjo_fiber-api_internal_services.DashboardTrends": {
             "type": "object",
             "properties": {
                 "articles": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.TrendData"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.TrendData"
                 },
                 "news": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.TrendData"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.TrendData"
                 },
                 "users": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.TrendData"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.TrendData"
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.DatabaseInfo": {
+        "github_com_imanjo_fiber-api_internal_services.DatabaseInfo": {
             "type": "object",
             "properties": {
                 "code": {
@@ -10841,7 +10655,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.DeviceStatRow": {
+        "github_com_imanjo_fiber-api_internal_services.DeviceStatRow": {
             "type": "object",
             "properties": {
                 "color": {
@@ -10858,7 +10672,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.EventInput": {
+        "github_com_imanjo_fiber-api_internal_services.EventInput": {
             "type": "object",
             "required": [
                 "event_date",
@@ -10878,11 +10692,11 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.FileInfoResponse": {
+        "github_com_imanjo_fiber-api_internal_services.FileInfoResponse": {
             "type": "object",
             "properties": {
                 "file": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.File"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.File"
                 },
                 "item": {},
                 "type": {
@@ -10890,18 +10704,18 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.FilterMetaResponse": {
+        "github_com_imanjo_fiber-api_internal_services.FilterMetaResponse": {
             "type": "object",
             "properties": {
                 "classes": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.SchoolClass"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.SchoolClass"
                     }
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.HealthStatusResponse": {
+        "github_com_imanjo_fiber-api_internal_services.HealthStatusResponse": {
             "type": "object",
             "properties": {
                 "app_name": {
@@ -10917,13 +10731,19 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "memory": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.MemoryStats"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.MemoryStats"
+                },
+                "metrics": {
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_monitoring.Snapshot"
                 },
                 "redis": {
                     "type": "object",
                     "additionalProperties": {
                         "type": "boolean"
                     }
+                },
+                "redis_stats": {
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_database.RedisStats"
                 },
                 "status": {
                     "type": "string"
@@ -10936,37 +10756,37 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.HomeData": {
+        "github_com_imanjo_fiber-api_internal_services.HomeData": {
             "type": "object",
             "properties": {
                 "articles": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Article"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Article"
                     }
                 },
                 "categories": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Category"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Category"
                     }
                 },
                 "classes": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.SchoolClass"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.SchoolClass"
                     }
                 },
                 "featured_posts": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Post"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Post"
                     }
                 },
                 "posts": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Post"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Post"
                     }
                 },
                 "settings": {
@@ -10977,7 +10797,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.IPDetailsResponse": {
+        "github_com_imanjo_fiber-api_internal_services.IPDetailsResponse": {
             "type": "object",
             "properties": {
                 "ip": {
@@ -10992,7 +10812,7 @@ const docTemplate = `{
                 "recent_logs": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.SecurityLog"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.SecurityLog"
                     }
                 },
                 "total_events": {
@@ -11000,13 +10820,13 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.LatestNotificationsResponse": {
+        "github_com_imanjo_fiber-api_internal_services.LatestNotificationsResponse": {
             "type": "object",
             "properties": {
                 "notifications": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Notification"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Notification"
                     }
                 },
                 "unread_count": {
@@ -11014,7 +10834,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.MemoryStats": {
+        "github_com_imanjo_fiber-api_internal_services.MemoryStats": {
             "type": "object",
             "properties": {
                 "alloc_mb": {
@@ -11031,7 +10851,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.PerformanceSummaryResponse": {
+        "github_com_imanjo_fiber-api_internal_services.PerformanceSummaryResponse": {
             "type": "object",
             "properties": {
                 "redis_info": {
@@ -11042,7 +10862,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.PingResponse": {
+        "github_com_imanjo_fiber-api_internal_services.PingResponse": {
             "type": "object",
             "properties": {
                 "message": {
@@ -11053,7 +10873,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.PruneAnalyticsResponse": {
+        "github_com_imanjo_fiber-api_internal_services.PruneAnalyticsResponse": {
             "type": "object",
             "properties": {
                 "deleted": {
@@ -11061,7 +10881,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.PruneNotificationsResponse": {
+        "github_com_imanjo_fiber-api_internal_services.PruneNotificationsResponse": {
             "type": "object",
             "properties": {
                 "deleted": {
@@ -11069,29 +10889,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.RedisInfoResponse": {
-            "type": "object",
-            "properties": {
-                "info": {
-                    "type": "string"
-                }
-            }
-        },
-        "github_com_alemancenter_fiber-api_internal_services.RedisKeysResponse": {
-            "type": "object",
-            "properties": {
-                "count": {
-                    "type": "integer"
-                },
-                "keys": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                }
-            }
-        },
-        "github_com_alemancenter_fiber-api_internal_services.RegisterResponse": {
+        "github_com_imanjo_fiber-api_internal_services.RegisterResponse": {
             "type": "object",
             "properties": {
                 "message": {
@@ -11104,11 +10902,14 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "user": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.UserResponse"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.UserResponse"
+                },
+                "verification_email_sent": {
+                    "type": "boolean"
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.RolesPermissionsRequest": {
+        "github_com_imanjo_fiber-api_internal_services.RolesPermissionsRequest": {
             "type": "object",
             "properties": {
                 "permissions": {
@@ -11125,7 +10926,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.SchoolClassInput": {
+        "github_com_imanjo_fiber-api_internal_services.SchoolClassInput": {
             "type": "object",
             "required": [
                 "grade_name"
@@ -11141,7 +10942,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.SecurityOverviewResponse": {
+        "github_com_imanjo_fiber-api_internal_services.SecurityOverviewResponse": {
             "type": "object",
             "properties": {
                 "last_24h_events": {
@@ -11153,7 +10954,7 @@ const docTemplate = `{
                 "top_ips": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_repositories.TopAttackingIP"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_repositories.TopAttackingIP"
                     }
                 },
                 "total_attacks": {
@@ -11161,7 +10962,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.SecurityStatsResponse": {
+        "github_com_imanjo_fiber-api_internal_services.SecurityStatsResponse": {
             "type": "object",
             "properties": {
                 "blocked_ips": {
@@ -11181,7 +10982,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.SemesterInput": {
+        "github_com_imanjo_fiber-api_internal_services.SemesterInput": {
             "type": "object",
             "required": [
                 "semester_name"
@@ -11197,7 +10998,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.SemestersResponse": {
+        "github_com_imanjo_fiber-api_internal_services.SemestersResponse": {
             "type": "object",
             "properties": {
                 "class_id": {
@@ -11206,15 +11007,15 @@ const docTemplate = `{
                 "semesters": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Semester"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Semester"
                     }
                 },
                 "subject": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Subject"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Subject"
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.SubjectInput": {
+        "github_com_imanjo_fiber-api_internal_services.SubjectInput": {
             "type": "object",
             "required": [
                 "grade_level",
@@ -11231,7 +11032,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.TrafficSourceRow": {
+        "github_com_imanjo_fiber-api_internal_services.TrafficSourceRow": {
             "type": "object",
             "properties": {
                 "change": {
@@ -11245,7 +11046,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.TrendData": {
+        "github_com_imanjo_fiber-api_internal_services.TrendData": {
             "type": "object",
             "properties": {
                 "percentage": {
@@ -11256,13 +11057,16 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.UpdateCategoryRequest": {
+        "github_com_imanjo_fiber-api_internal_services.UpdateCategoryRequest": {
             "type": "object",
             "properties": {
                 "depth": {
                     "type": "integer"
                 },
                 "icon": {
+                    "type": "string"
+                },
+                "icon_image": {
                     "type": "string"
                 },
                 "image": {
@@ -11282,7 +11086,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.UpdateFileInput": {
+        "github_com_imanjo_fiber-api_internal_services.UpdateFileInput": {
             "type": "object",
             "properties": {
                 "article_id": {
@@ -11299,9 +11103,12 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.UpdatePostRequest": {
+        "github_com_imanjo_fiber-api_internal_services.UpdatePostRequest": {
             "type": "object",
             "properties": {
+                "alt": {
+                    "type": "string"
+                },
                 "category_id": {
                     "type": "integer"
                 },
@@ -11328,7 +11135,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.UpdateProfileInput": {
+        "github_com_imanjo_fiber-api_internal_services.UpdateProfileInput": {
             "type": "object",
             "properties": {
                 "bio": {
@@ -11357,7 +11164,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.UpdateUserRequest": {
+        "github_com_imanjo_fiber-api_internal_services.UpdateUserRequest": {
             "type": "object",
             "properties": {
                 "country": {
@@ -11396,7 +11203,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.UploadResponse": {
+        "github_com_imanjo_fiber-api_internal_services.UploadResponse": {
             "type": "object",
             "properties": {
                 "name": {
@@ -11416,13 +11223,16 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.UserResponse": {
+        "github_com_imanjo_fiber-api_internal_services.UserResponse": {
             "type": "object",
             "properties": {
                 "bio": {
                     "type": "string"
                 },
                 "country": {
+                    "type": "string"
+                },
+                "created_at": {
                     "type": "string"
                 },
                 "email": {
@@ -11440,13 +11250,16 @@ const docTemplate = `{
                 "job_title": {
                     "type": "string"
                 },
+                "last_activity": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },
                 "permissions": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Permission"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Permission"
                     }
                 },
                 "phone": {
@@ -11461,18 +11274,21 @@ const docTemplate = `{
                 "roles": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_models.Role"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_models.Role"
                     }
                 },
                 "social_links": {
-                    "type": "string"
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 },
                 "status": {
                     "type": "string"
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.UserStatsData": {
+        "github_com_imanjo_fiber-api_internal_services.UserStatsData": {
             "type": "object",
             "properties": {
                 "active": {
@@ -11486,48 +11302,48 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.VisitorAnalyticsResponse": {
+        "github_com_imanjo_fiber-api_internal_services.VisitorAnalyticsResponse": {
             "type": "object",
             "properties": {
                 "chart_data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.ChartDataRow"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.ChartDataRow"
                     }
                 },
                 "country_stats": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_repositories.CountryRow"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_repositories.CountryRow"
                     }
                 },
                 "device_stats": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.DeviceStatRow"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.DeviceStatRow"
                     }
                 },
                 "traffic_sources": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.TrafficSourceRow"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.TrafficSourceRow"
                     }
                 },
                 "user_stats": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.UserStatsData"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.UserStatsData"
                 },
                 "visitor_stats": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.VisitorStatsData"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.VisitorStatsData"
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_services.VisitorStatsData": {
+        "github_com_imanjo_fiber-api_internal_services.VisitorStatsData": {
             "type": "object",
             "properties": {
                 "active_visitors": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.ActiveVisitorRow"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.ActiveVisitorRow"
                     }
                 },
                 "change": {
@@ -11545,7 +11361,7 @@ const docTemplate = `{
                 "history": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_services.ChartDataRow"
+                        "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_services.ChartDataRow"
                     }
                 },
                 "total_combined_today": {
@@ -11556,19 +11372,22 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_utils.APIResponse": {
+        "github_com_imanjo_fiber-api_internal_utils.APIResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "string"
+                },
                 "data": {},
                 "errors": {},
                 "message": {
                     "type": "string"
                 },
                 "meta": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.PaginationMeta"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.PaginationMeta"
                 },
                 "pagination": {
-                    "$ref": "#/definitions/github_com_alemancenter_fiber-api_internal_utils.PaginationMeta"
+                    "$ref": "#/definitions/github_com_imanjo_fiber-api_internal_utils.PaginationMeta"
                 },
                 "success": {
                     "type": "boolean"
@@ -11578,7 +11397,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alemancenter_fiber-api_internal_utils.PaginationMeta": {
+        "github_com_imanjo_fiber-api_internal_utils.PaginationMeta": {
             "type": "object",
             "properties": {
                 "current_page": {
@@ -11598,19 +11417,6 @@ const docTemplate = `{
                 },
                 "total": {
                     "type": "integer"
-                }
-            }
-        },
-        "internal_handlers_ai.GenerateRequest": {
-            "type": "object",
-            "required": [
-                "title"
-            ],
-            "properties": {
-                "title": {
-                    "type": "string",
-                    "maxLength": 255,
-                    "minLength": 3
                 }
             }
         },
@@ -11682,9 +11488,6 @@ const docTemplate = `{
         },
         "internal_handlers_auth.RefreshRequest": {
             "type": "object",
-            "required": [
-                "refresh_token"
-            ],
             "properties": {
                 "refresh_token": {
                     "type": "string"
@@ -11755,7 +11558,7 @@ const docTemplate = `{
         "internal_handlers_messages.SaveDraftRequest": {
             "type": "object",
             "required": [
-                "body"
+                "recipient_id"
             ],
             "properties": {
                 "body": {
@@ -11773,7 +11576,8 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "body",
-                "recipient_id"
+                "recipient_id",
+                "subject"
             ],
             "properties": {
                 "body": {
@@ -11784,6 +11588,34 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "subject": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "minLength": 1
+                }
+            }
+        },
+        "internal_handlers_notifications.BroadcastRequest": {
+            "type": "object",
+            "required": [
+                "message",
+                "title",
+                "type"
+            ],
+            "properties": {
+                "action_url": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "role": {
+                    "description": "empty = all active users; otherwise filter by role name",
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
                     "type": "string"
                 }
             }
@@ -11813,37 +11645,25 @@ const docTemplate = `{
         "internal_handlers_notifications.CreateNotificationRequest": {
             "type": "object",
             "required": [
-                "data",
-                "notifiable_id",
+                "message",
+                "title",
                 "type"
             ],
             "properties": {
-                "data": {
+                "action_url": {
                     "type": "string"
                 },
-                "notifiable_id": {
+                "message": {
+                    "type": "string"
+                },
+                "target_user_id": {
+                    "description": "nil or 0 = self; admin can set a specific user ID",
                     "type": "integer"
+                },
+                "title": {
+                    "type": "string"
                 },
                 "type": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_handlers_redis.SetRedisKeyRequest": {
-            "type": "object",
-            "required": [
-                "key",
-                "value"
-            ],
-            "properties": {
-                "key": {
-                    "type": "string"
-                },
-                "ttl": {
-                    "description": "seconds",
-                    "type": "integer"
-                },
-                "value": {
                     "type": "string"
                 }
             }
@@ -11912,6 +11732,9 @@ const docTemplate = `{
         "internal_handlers_security.ipPayload": {
             "type": "object",
             "properties": {
+                "days": {
+                    "type": "integer"
+                },
                 "ip": {
                     "type": "string"
                 },
@@ -12030,11 +11853,11 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "2.0.0",
-	Host:             "api.alemancenter.com",
+	Host:             "api.imanjo.com",
 	BasePath:         "/api",
 	Schemes:          []string{"https", "http"},
-	Title:            "Alemancenter API",
-	Description:      "Backend API for Alemancenter Educational Platform.",
+	Title:            "Imanjo API",
+	Description:      "Backend API for Imanjo Educational Platform.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

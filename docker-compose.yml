@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: alemancenter-fiber-api
+    container_name: imanjo-fiber-api
     restart: unless-stopped
     ports:
       - "8082:8082"
@@ -17,7 +17,7 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - alemancenter
+      - imanjo
     volumes:
       - ./storage:/app/storage
     healthcheck:
@@ -28,7 +28,7 @@ services:
 
   mysql-jo:
     image: mysql:8.0
-    container_name: alemancenter-mysql-jo
+    container_name: imanjo-mysql-jo
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASS:-rootpass}
@@ -41,7 +41,7 @@ services:
       - mysql_jo_data:/var/lib/mysql
       - ./database/init:/docker-entrypoint-initdb.d
     networks:
-      - alemancenter
+      - imanjo
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
@@ -51,14 +51,14 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: alemancenter-redis
+    container_name: imanjo-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
     networks:
-      - alemancenter
+      - imanjo
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -68,7 +68,7 @@ services:
 
   nginx:
     image: nginx:alpine
-    container_name: alemancenter-nginx
+    container_name: imanjo-nginx
     restart: unless-stopped
     ports:
       - "80:80"
@@ -79,12 +79,12 @@ services:
     depends_on:
       - api
     networks:
-      - alemancenter
+      - imanjo
 
 volumes:
   mysql_jo_data:
   redis_data:
 
 networks:
-  alemancenter:
+  imanjo:
     driver: bridge

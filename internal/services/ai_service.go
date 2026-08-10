@@ -15,8 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/database"
-	"github.com/alemancenter/fiber-api/internal/models"
+	"github.com/imanjo/fiber-api/internal/config"
+	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/models"
 )
 
 const (
@@ -26,7 +27,6 @@ const (
 	// minutes. Per-request timeout is generous enough for the slowest fallback.
 	AIOverallTimeout = 110 * time.Second
 	AIRequestTimeout = 55 * time.Second
-	siteBaseURL      = "https://alemancenter.com"
 
 	defaultAIBaseURL = "https://api.together.ai/v1"
 	// DeepSeek-V4-Pro is serverless on this account and far stronger for Arabic
@@ -2230,6 +2230,13 @@ func generateArticleSchema(article *SEOArticle) string {
 		MainEntityPage schemaPage   `json:"mainEntityOfPage"`
 	}
 
+	// Was a hardcoded "https://alemancenter.com" const — silently baked the old domain into
+	// every AI-generated article's schema.org JSON-LD regardless of which domain the site
+	// actually runs on. cfg.App.URL matches sitemap_service.go's own fallback tier.
+	siteBaseURL := strings.TrimRight(strings.TrimSpace(config.Get().Frontend.URL), "/")
+	if siteBaseURL == "" {
+		siteBaseURL = strings.TrimRight(strings.TrimSpace(config.Get().App.URL), "/")
+	}
 	pageURL := siteBaseURL + "/" + article.Slug
 
 	schema := articleSchema{

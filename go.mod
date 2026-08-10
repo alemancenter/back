@@ -1,4 +1,4 @@
-module github.com/alemancenter/fiber-api
+module github.com/imanjo/fiber-api
 
 go 1.25.0
 

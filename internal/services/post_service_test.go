@@ -4,10 +4,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/alemancenter/fiber-api/internal/database"
-	"github.com/alemancenter/fiber-api/internal/models"
-	"github.com/alemancenter/fiber-api/internal/repositories"
-	"github.com/alemancenter/fiber-api/internal/utils"
+	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/models"
+	"github.com/imanjo/fiber-api/internal/repositories"
+	"github.com/imanjo/fiber-api/internal/utils"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 )
@@ -23,6 +23,7 @@ type MockPostRepository struct {
 	CreateFunc        func(countryID database.CountryID, post *models.Post) error
 	UpdateFunc        func(countryID database.CountryID, post *models.Post) error
 	DeleteFunc        func(countryID database.CountryID, id uint64) error
+	UpdateKeywordsFunc func(countryID database.CountryID, postID uint64, keywordsStr string) error
 }
 
 func (m *MockPostRepository) ListPaginated(countryID database.CountryID, filter *models.PostFilter, limit, offset int) ([]models.Post, int64, error) {
@@ -70,6 +71,13 @@ func (m *MockPostRepository) Update(countryID database.CountryID, post *models.P
 func (m *MockPostRepository) Delete(countryID database.CountryID, id uint64) error {
 	if m.DeleteFunc != nil {
 		return m.DeleteFunc(countryID, id)
+	}
+	return nil
+}
+
+func (m *MockPostRepository) UpdateKeywords(countryID database.CountryID, postID uint64, keywordsStr string) error {
+	if m.UpdateKeywordsFunc != nil {
+		return m.UpdateKeywordsFunc(countryID, postID, keywordsStr)
 	}
 	return nil
 }
@@ -195,7 +203,21 @@ func TestPostService_Create(t *testing.T) {
 			return nil
 		}
 
+		// Regression guard: UpdateKeywords used to receive the raw, unsanitized request value
+		// directly (fixed in post_service.go's Create) — this was previously unmocked entirely,
+		// which panicked (nil embedded-interface dispatch) the moment a test actually supplied
+		// keywords, rather than catching that the value reaching the repository was still raw.
+		keywordsUpdateCalled := false
+		mockRepo.UpdateKeywordsFunc = func(countryID database.CountryID, postID uint64, keywordsStr string) error {
+			keywordsUpdateCalled = true
+			assert.NotContains(t, keywordsStr, "<")
+			assert.NotContains(t, keywordsStr, "script")
+			assert.NotContains(t, keywordsStr, "alert")
+			return nil
+		}
+
 		post, err := svc.Create(database.CountryJordan, "jo", nil, req, "")
+		assert.True(t, keywordsUpdateCalled, "expected UpdateKeywords to be called since req.Keywords was non-empty")
 
 		assert.NoError(t, err)
 		assert.NotNil(t, post)

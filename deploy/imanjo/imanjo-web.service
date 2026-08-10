@@ -1,0 +1,30 @@
+[Unit]
+Description=Imanjo Astro Frontend — imanjo.com (internal 127.0.0.1:8080)
+After=network.target imanjo-api.service
+
+[Service]
+Type=simple
+User=root
+# Confirm this path against the real VHost layout for imanjo.com before deploying — this
+# mirrors the api service's convention (httpdocs under a per-domain VHost dir), but there
+# was no existing frontend systemd unit to confirm against: the OLD frontend ran under PM2
+# (see back/deploy-alemancenter.sh, ooole/front/deploy/), not systemd, since it was Next.js.
+# This file exists BECAUSE that PM2/Next.js deployment is being retired in this migration —
+# there's no established convention to copy for a systemd-managed Astro frontend yet.
+WorkingDirectory=/var/www/vhosts/imanjo.com/httpdocs
+Environment=PORT=8080
+Environment=HOST=127.0.0.1
+Environment=NODE_ENV=production
+EnvironmentFile=/var/www/vhosts/imanjo.com/httpdocs/.env
+ExecStart=/usr/bin/node dist/server/entry.mjs
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=imanjo-web
+
+LimitNOFILE=65536
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

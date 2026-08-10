@@ -9,12 +9,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/alemancenter/fiber-api/internal/config"
-	"github.com/alemancenter/fiber-api/internal/database"
-	"github.com/alemancenter/fiber-api/internal/models"
-	"github.com/alemancenter/fiber-api/internal/repositories"
-	"github.com/alemancenter/fiber-api/internal/services"
-	"github.com/alemancenter/fiber-api/internal/utils"
+	"github.com/imanjo/fiber-api/internal/config"
+	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/models"
+	"github.com/imanjo/fiber-api/internal/repositories"
+	"github.com/imanjo/fiber-api/internal/services"
+	"github.com/imanjo/fiber-api/internal/utils"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -492,7 +492,7 @@ func (h *Handler) SendTestEmail(c *fiber.Ctx) error {
 		toEmail = req.Email
 	}
 	mailSvc := services.NewMailServiceWithConfig(mailConfigFromRequest(req))
-	if err := mailSvc.Send(toEmail, "رسالة اختبار - Alemancenter",
+	if err := mailSvc.Send(toEmail, "رسالة اختبار - Imanjo",
 		"<p>هذه رسالة اختبار لإعدادات البريد الإلكتروني.</p>", true); err != nil {
 		return utils.BadRequest(c, "فشل إرسال البريد: "+err.Error())
 	}

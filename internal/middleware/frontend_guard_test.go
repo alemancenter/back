@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/alemancenter/fiber-api/internal/config"
+	"github.com/imanjo/fiber-api/internal/config"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -13,11 +13,11 @@ func testFrontendGuardConfig() *config.Config {
 	return &config.Config{
 		App: config.AppConfig{
 			Env: "production",
-			URL: "https://api.alemancenter.com",
+			URL: "https://api.imanjo.com",
 		},
 		Frontend: config.FrontendConfig{
 			APIKey:          "frontend-secret",
-			CORSOrigins:     []string{"https://alemancenter.com", "https://www.alemancenter.com"},
+			CORSOrigins:     []string{"https://imanjo.com", "https://www.imanjo.com"},
 			RateLimit:       false,
 			SSRTrustedIPs:   []string{"127.0.0.1"},
 			SSRRateLimitMax: 2000,
@@ -40,8 +40,8 @@ func TestFrontendGuardBlocksDirectPublicAPIHostEvenWithAllowedOrigin(t *testing.
 	app := newFrontendGuardTestApp()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/articles", nil)
-	req.Host = "api.alemancenter.com"
-	req.Header.Set("Origin", "https://alemancenter.com")
+	req.Host = "api.imanjo.com"
+	req.Header.Set("Origin", "https://imanjo.com")
 	req.Header.Set("X-Forwarded-For", "198.51.100.10")
 
 	resp, err := app.Test(req)
@@ -57,7 +57,7 @@ func TestFrontendGuardBlocksDirectPublicAPIHostEvenWithBearerHeader(t *testing.T
 	app := newFrontendGuardTestApp()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/articles", nil)
-	req.Host = "api.alemancenter.com"
+	req.Host = "api.imanjo.com"
 	req.Header.Set("Authorization", "Bearer not-a-validated-token")
 	req.Header.Set("X-Forwarded-For", "198.51.100.10")
 
@@ -74,7 +74,7 @@ func TestFrontendGuardAllowsFrontendProxyKey(t *testing.T) {
 	app := newFrontendGuardTestApp()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/articles", nil)
-	req.Host = "api.alemancenter.com"
+	req.Host = "api.imanjo.com"
 	req.Header.Set("X-Frontend-Key", "frontend-secret")
 	req.Header.Set("X-Forwarded-For", "198.51.100.10")
 
@@ -91,7 +91,7 @@ func TestFrontendGuardKeepsOAuthRedirectPublic(t *testing.T) {
 	app := newFrontendGuardTestApp()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/google/redirect", nil)
-	req.Host = "api.alemancenter.com"
+	req.Host = "api.imanjo.com"
 	req.Header.Set("X-Forwarded-For", "198.51.100.10")
 
 	resp, err := app.Test(req)

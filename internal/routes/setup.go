@@ -3,7 +3,7 @@ package routes
 import (
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/middleware"
+	"github.com/imanjo/fiber-api/internal/middleware"
 	"github.com/gofiber/fiber/v2"
 	fiberCompress "github.com/gofiber/fiber/v2/middleware/compress"
 	"github.com/gofiber/fiber/v2/middleware/etag"

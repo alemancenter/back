@@ -5,10 +5,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/database"
-	"github.com/alemancenter/fiber-api/internal/models"
-	"github.com/alemancenter/fiber-api/internal/repositories"
-	"github.com/alemancenter/fiber-api/internal/utils"
+	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/models"
+	"github.com/imanjo/fiber-api/internal/repositories"
+	"github.com/imanjo/fiber-api/internal/utils"
 )
 
 type ArticleInput struct {
@@ -349,7 +349,9 @@ func (s *articleService) CreateArticle(countryID database.CountryID, req *Articl
 
 	// Handle Keywords using KeywordsRel many-to-many relationship
 	if req.Keywords != "" {
-		if err := s.repo.UpdateKeywords(countryID, article.ID, req.Keywords); err != nil {
+		// Same fix as post_service.go's UpdateKeywords calls: this was passing the raw request
+		// value straight into stored Keyword rows with no sanitization at all.
+		if err := s.repo.UpdateKeywords(countryID, article.ID, utils.SanitizeInput(req.Keywords)); err != nil {
 			// Log the error but don't fail the article creation
 			fmt.Printf("failed to update keywords for article %d: %v\n", article.ID, err)
 		}
@@ -404,7 +406,7 @@ func (s *articleService) UpdateArticle(countryID database.CountryID, id uint64, 
 
 	// Handle Keywords using KeywordsRel many-to-many relationship
 	if req.Keywords != "" {
-		if err := s.repo.UpdateKeywords(countryID, article.ID, req.Keywords); err != nil {
+		if err := s.repo.UpdateKeywords(countryID, article.ID, utils.SanitizeInput(req.Keywords)); err != nil {
 			// Log the error but don't fail the article update
 			fmt.Printf("failed to update keywords for article %d: %v\n", article.ID, err)
 		}

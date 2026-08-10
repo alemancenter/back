@@ -233,7 +233,7 @@ func Load() *Config {
 		v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 		// Set defaults
-		v.SetDefault("APP_NAME", "Alemancenter API")
+		v.SetDefault("APP_NAME", "Imanjo API")
 		v.SetDefault("APP_ENV", "production")
 		v.SetDefault("APP_DEBUG", false)
 		v.SetDefault("APP_HOST", "0.0.0.0")
@@ -255,7 +255,7 @@ func Load() *Config {
 		v.SetDefault("REDIS_DB", 0)
 		v.SetDefault("REDIS_CACHE_DB", 1)
 		v.SetDefault("REDIS_QUEUE_DB", 2)
-		v.SetDefault("REDIS_PREFIX", "alemancenter")
+		v.SetDefault("REDIS_PREFIX", "imanjo")
 		v.SetDefault("TRUSTED_PROXIES", "127.0.0.1")
 		v.SetDefault("FRONTEND_RATE_LIMIT", true)
 		v.SetDefault("FRONTEND_RATE_LIMIT_MAX", 100)

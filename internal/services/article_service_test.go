@@ -4,10 +4,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/alemancenter/fiber-api/internal/database"
-	"github.com/alemancenter/fiber-api/internal/models"
-	"github.com/alemancenter/fiber-api/internal/repositories"
-	"github.com/alemancenter/fiber-api/internal/utils"
+	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/models"
+	"github.com/imanjo/fiber-api/internal/repositories"
+	"github.com/imanjo/fiber-api/internal/utils"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 )
@@ -27,6 +27,7 @@ type MockArticleRepository struct {
 	GetClassesFunc           func(countryID database.CountryID) ([]models.SchoolClass, error)
 	GetAllSubjectsFunc       func(countryID database.CountryID) ([]models.Subject, error)
 	GetAllSemestersFunc      func(countryID database.CountryID) ([]models.Semester, error)
+	UpdateKeywordsFunc       func(countryID database.CountryID, articleID uint, keywordsStr string) error
 }
 
 func (m *MockArticleRepository) List(countryID database.CountryID, pag utils.Pagination, filters *models.ArticleFilter) ([]models.Article, int64, error) {
@@ -77,6 +78,13 @@ func (m *MockArticleRepository) Update(countryID database.CountryID, article *mo
 func (m *MockArticleRepository) Delete(countryID database.CountryID, article *models.Article) error {
 	if m.DeleteFunc != nil {
 		return m.DeleteFunc(countryID, article)
+	}
+	return nil
+}
+
+func (m *MockArticleRepository) UpdateKeywords(countryID database.CountryID, articleID uint, keywordsStr string) error {
+	if m.UpdateKeywordsFunc != nil {
+		return m.UpdateKeywordsFunc(countryID, articleID, keywordsStr)
 	}
 	return nil
 }

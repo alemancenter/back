@@ -3,8 +3,8 @@ package sitemap
 import (
 	"strings"
 
-	"github.com/alemancenter/fiber-api/internal/services"
-	"github.com/alemancenter/fiber-api/internal/utils"
+	"github.com/imanjo/fiber-api/internal/services"
+	"github.com/imanjo/fiber-api/internal/utils"
 	"github.com/gofiber/fiber/v2"
 )
 

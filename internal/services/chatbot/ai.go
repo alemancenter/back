@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/database"
-	repo "github.com/alemancenter/fiber-api/internal/repositories/chatbot"
+	"github.com/imanjo/fiber-api/internal/database"
+	repo "github.com/imanjo/fiber-api/internal/repositories/chatbot"
 )
 
 const (
@@ -261,7 +261,7 @@ func buildChatbotAIPrompt(req chatbotAIRequest) (string, string) {
 	linksJSON, _ := json.Marshal(req.Links)
 	actionsJSON, _ := json.Marshal(req.AllowedActions)
 	entitiesJSON, _ := json.Marshal(req.Entities)
-	system := `أنت مساعد دعم ذكي لموقع Alemancenter التعليمي.
+	system := `أنت مساعد دعم ذكي لموقع Imanjo التعليمي.
 القواعد الصارمة:
 - أجب بنفس لغة أو لهجة المستخدم قدر الإمكان.
 - استخدم فقط المعلومات والروابط الموجودة في السياق المرسل لك.

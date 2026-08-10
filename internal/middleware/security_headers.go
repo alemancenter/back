@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"github.com/alemancenter/fiber-api/internal/config"
+	"github.com/imanjo/fiber-api/internal/config"
 	"github.com/gofiber/fiber/v2"
 )
 

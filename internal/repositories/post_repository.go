@@ -1,9 +1,9 @@
 package repositories
 
 import (
-	"github.com/alemancenter/fiber-api/internal/database"
-	"github.com/alemancenter/fiber-api/internal/models"
-	"github.com/alemancenter/fiber-api/internal/utils"
+	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/models"
+	"github.com/imanjo/fiber-api/internal/utils"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

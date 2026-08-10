@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/models"
-	"github.com/alemancenter/fiber-api/internal/repositories"
-	coreai "github.com/alemancenter/fiber-api/internal/services"
-	"github.com/alemancenter/fiber-api/pkg/logger"
+	"github.com/imanjo/fiber-api/internal/models"
+	"github.com/imanjo/fiber-api/internal/repositories"
+	coreai "github.com/imanjo/fiber-api/internal/services"
+	"github.com/imanjo/fiber-api/pkg/logger"
 	"go.uber.org/zap"
 )
 

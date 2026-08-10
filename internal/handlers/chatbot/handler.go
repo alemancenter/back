@@ -4,11 +4,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/alemancenter/fiber-api/internal/database"
-	"github.com/alemancenter/fiber-api/internal/middleware"
-	"github.com/alemancenter/fiber-api/internal/models"
-	chatbotSvc "github.com/alemancenter/fiber-api/internal/services/chatbot"
-	"github.com/alemancenter/fiber-api/internal/utils"
+	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/middleware"
+	"github.com/imanjo/fiber-api/internal/models"
+	chatbotSvc "github.com/imanjo/fiber-api/internal/services/chatbot"
+	"github.com/imanjo/fiber-api/internal/utils"
 	"github.com/gofiber/fiber/v2"
 )
 

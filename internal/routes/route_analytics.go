@@ -1,7 +1,7 @@
 package routes
 
 import (
-	"github.com/alemancenter/fiber-api/internal/middleware"
+	"github.com/imanjo/fiber-api/internal/middleware"
 	"github.com/gofiber/fiber/v2"
 )
 

@@ -9,18 +9,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/config"
-	"github.com/alemancenter/fiber-api/internal/database"
-	"github.com/alemancenter/fiber-api/internal/middleware"
-	"github.com/alemancenter/fiber-api/internal/models"
-	"github.com/alemancenter/fiber-api/internal/repositories"
-	"github.com/alemancenter/fiber-api/internal/routes"
-	"github.com/alemancenter/fiber-api/internal/services"
-	contentauditService "github.com/alemancenter/fiber-api/internal/services/contentaudit"
-	"github.com/alemancenter/fiber-api/internal/utils"
-	"github.com/alemancenter/fiber-api/pkg/logger"
+	"github.com/imanjo/fiber-api/internal/config"
+	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/middleware"
+	"github.com/imanjo/fiber-api/internal/models"
+	"github.com/imanjo/fiber-api/internal/repositories"
+	"github.com/imanjo/fiber-api/internal/routes"
+	"github.com/imanjo/fiber-api/internal/services"
+	contentauditService "github.com/imanjo/fiber-api/internal/services/contentaudit"
+	"github.com/imanjo/fiber-api/internal/utils"
+	"github.com/imanjo/fiber-api/pkg/logger"
 
-	_ "github.com/alemancenter/fiber-api/docs" // Swagger docs
+	_ "github.com/imanjo/fiber-api/docs" // Swagger docs
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/recover"
@@ -29,19 +29,19 @@ import (
 	"gorm.io/gorm"
 )
 
-// @title Alemancenter API
+// @title Imanjo API
 // @version 2.0.0
-// @description Backend API for Alemancenter Educational Platform.
+// @description Backend API for Imanjo Educational Platform.
 // @termsOfService http://swagger.io/terms/
 // @security FrontendKeyAuth
 
 // @contact.name API Support
-// @contact.email support@alemedu.com
+// @contact.email support@imanjo.com
 
 // @license.name MIT
 // @license.url https://opensource.org/licenses/MIT
 
-// @host api.alemedu.com
+// @host api.imanjo.com
 // @BasePath /api
 // @schemes https http
 
@@ -70,7 +70,7 @@ func main() {
 	})
 	defer log.Sync()
 
-	logger.Info("Starting Alemancenter Fiber API",
+	logger.Info("Starting Imanjo Fiber API",
 		zap.String("app", cfg.App.Name),
 		zap.String("env", cfg.App.Env),
 		zap.String("version", "2.0.0"),

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/alemancenter/fiber-api/internal/database"
-	"github.com/alemancenter/fiber-api/internal/models"
-	repo "github.com/alemancenter/fiber-api/internal/repositories/chatbot"
+	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/models"
+	repo "github.com/imanjo/fiber-api/internal/repositories/chatbot"
 )
 
 type MessageRequest struct {
@@ -1063,7 +1063,12 @@ func contextualAnswer(intent, step, message, lastIntent string) string {
 	case "privacy_request":
 		return "يمكنك مراجعة صفحات سياسة الخصوصية، شروط الاستخدام، سياسة الكوكيز، إخلاء المسؤولية، حقوق الملكية، وسياسة التحرير من روابط أسفل الموقع."
 	case "contact_support":
-		return "للتواصل مع الإدارة استخدم صفحة اتصل بنا. اكتب: الاسم، البريد الإلكتروني، الموضوع، وصف المشكلة، ورابط الصفحة إن وجد.\n\nإذا ظهر أن نموذج التواصل غير مهيأ أو لم تتمكن من الإرسال، استخدم البريد الموجود في صفحة من نحن: info@alemancenter.com."
+		// contextualAnswer() is a pure function (intent/step/message/lastIntent in, string out) with
+		// no settings/DB access, so this can't read the live contact_email setting directly — was
+		// previously hardcoded to a specific address here, which silently went stale on any domain
+		// or contact-email change. Point to the pages that already read the setting correctly
+		// instead of duplicating the value.
+		return "للتواصل مع الإدارة استخدم صفحة اتصل بنا. اكتب: الاسم، البريد الإلكتروني، الموضوع، وصف المشكلة، ورابط الصفحة إن وجد.\n\nإذا ظهر أن نموذج التواصل غير مهيأ أو لم تتمكن من الإرسال، ستجد البريد الإلكتروني الرسمي في صفحة من نحن."
 	default:
 		return ruleAnswer(intent)
 	}

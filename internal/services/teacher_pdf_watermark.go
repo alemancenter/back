@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/models"
+	"github.com/imanjo/fiber-api/internal/models"
 )
 
 // TeacherWatermarkedFile describes the file that should be sent to the user.
@@ -37,7 +37,7 @@ func BuildTeacherWatermarkTextForUser(user *models.User, downloadCode string) st
 		name = fmt.Sprintf("User %d", userID)
 	}
 
-	return fmt.Sprintf("Alemancenter Teacher Pro | مرخص للمعلم: %s | البريد: %s | الرمز: %s | التاريخ: %s",
+	return fmt.Sprintf("Imanjo Teacher Pro | مرخص للمعلم: %s | البريد: %s | الرمز: %s | التاريخ: %s",
 		name,
 		email,
 		downloadCode,

@@ -8,20 +8,23 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/config"
-	"github.com/alemancenter/fiber-api/internal/database"
-	"github.com/alemancenter/fiber-api/internal/models"
-	"github.com/alemancenter/fiber-api/internal/repositories"
-	"github.com/alemancenter/fiber-api/pkg/logger"
+	"github.com/imanjo/fiber-api/internal/config"
+	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/models"
+	"github.com/imanjo/fiber-api/internal/repositories"
+	"github.com/imanjo/fiber-api/pkg/logger"
 	"go.uber.org/zap"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"gorm.io/gorm"
 )
 
+// Meta supports each Graph API version for ~2 years from release — v19.0 (Jan 2024) is past
+// its sunset date. Bump this alongside SocialLoginButtons.astro's FB.init version when Meta
+// ships new releases, rather than leaving both to drift independently.
 var facebookEndpoint = oauth2.Endpoint{
-	AuthURL:  "https://www.facebook.com/v19.0/dialog/oauth",
-	TokenURL: "https://graph.facebook.com/v19.0/oauth/access_token",
+	AuthURL:  "https://www.facebook.com/v26.0/dialog/oauth",
+	TokenURL: "https://graph.facebook.com/v26.0/oauth/access_token",
 }
 
 var (

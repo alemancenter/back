@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/alemancenter/fiber-api/internal/services"
+	"github.com/imanjo/fiber-api/internal/services"
 	"github.com/gofiber/fiber/v2"
 )
 

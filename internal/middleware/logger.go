@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/utils"
-	"github.com/alemancenter/fiber-api/pkg/logger"
+	"github.com/imanjo/fiber-api/internal/utils"
+	"github.com/imanjo/fiber-api/pkg/logger"
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
 )

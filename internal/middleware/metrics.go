@@ -3,7 +3,7 @@ package middleware
 import (
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/monitoring"
+	"github.com/imanjo/fiber-api/internal/monitoring"
 	"github.com/gofiber/fiber/v2"
 )
 

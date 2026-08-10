@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alemancenter/fiber-api/internal/config"
-	"github.com/alemancenter/fiber-api/internal/models"
-	"github.com/alemancenter/fiber-api/internal/repositories"
-	"github.com/alemancenter/fiber-api/internal/services"
-	"github.com/alemancenter/fiber-api/internal/utils"
+	"github.com/imanjo/fiber-api/internal/config"
+	"github.com/imanjo/fiber-api/internal/models"
+	"github.com/imanjo/fiber-api/internal/repositories"
+	"github.com/imanjo/fiber-api/internal/services"
+	"github.com/imanjo/fiber-api/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	"golang.org/x/oauth2"
 )
@@ -70,8 +70,8 @@ func (h *Handler) isProduction() bool {
 	return strings.EqualFold(strings.TrimSpace(h.cfg.App.Env), "production") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(h.cfg.Frontend.URL)), "https://")
 }
 
-// cookieDomain returns the apex domain with a leading dot (e.g. ".alemancenter.com")
-// so that cookies set on api.alemancenter.com are also sent to alemancenter.com.
+// cookieDomain returns the apex domain with a leading dot (e.g. ".imanjo.com")
+// so that cookies set on api.imanjo.com are also sent to imanjo.com.
 // Returns "" for localhost/loopback so dev environments stay as host-only cookies.
 func (h *Handler) cookieDomain() string {
 	raw := strings.TrimRight(h.cfg.Frontend.URL, "/")
@@ -1014,7 +1014,11 @@ func (h *Handler) verifyFacebookToken(accessToken string) (*services.FacebookUse
 }
 
 func (h *Handler) fetchFacebookUserInfo(accessToken string) (*services.FacebookUserInfo, error) {
-	url := "https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=" + accessToken
+	// Explicitly versioned (was calling the unversioned /me endpoint) — an unversioned Graph
+	// API call gets silently pinned to whichever version was active when this app first made
+	// its first-ever call, not "whatever is current now", which is its own source of drift
+	// independent of the facebookEndpoint URLs in auth_service.go.
+	url := "https://graph.facebook.com/v26.0/me?fields=id,name,email,picture.type(large)&access_token=" + accessToken
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(url)

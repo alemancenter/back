@@ -300,6 +300,7 @@ func main() {
 	if err := app.ShutdownWithTimeout(10 * time.Second); err != nil {
 		logger.Error("error during shutdown", zap.Error(err))
 	}
+	services.CloseGeoIP()
 
 	logger.Info("Server stopped gracefully")
 }

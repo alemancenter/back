@@ -64,6 +64,8 @@ type ActiveVisitorRow struct {
 	CurrentPage     string `json:"current_page"`
 	CurrentPageFull string `json:"current_page_full"`
 	IsMember        bool   `json:"is_member"`
+	IsBot           bool   `json:"is_bot"`
+	DeviceType      string `json:"device_type"`
 	LastActive      string `json:"last_active"`
 	SessionStart    string `json:"session_start"`
 	UserID          *uint  `json:"user_id,omitempty"`
@@ -239,6 +241,8 @@ func (s *analyticsService) GetVisitorAnalytics(dbCode database.CountryID, days i
 			CurrentPage:     strVal(r.URL),
 			CurrentPageFull: strVal(r.URL),
 			IsMember:        r.UserID != nil,
+			IsBot:           isBotUserAgent(r.UserAgent),
+			DeviceType:      classifyDeviceType(r.UserAgent),
 			LastActive:      r.LastAct,
 			SessionStart:    r.CreatedAt,
 		}

@@ -19,13 +19,17 @@ import (
 // noTrackPrefixes lists high-traffic/internal endpoints excluded from visitor tracking.
 // Dashboard/API polling and AI batch endpoints are intentionally excluded to keep
 // visitor analytics focused on real public traffic and to reduce DB write pressure.
+//
+// /api/home, /api/articles, /api/posts, /api/categories, and /api/school-classes used to be
+// listed here too — but those ARE the routes the public Astro frontend calls to render the
+// homepage, article/post pages, category pages, and class pages. Excluding them meant almost
+// every genuine page view was silently dropped before ever reaching visitors_tracking, leaving
+// the dashboard's "current visitors" / audience analytics effectively empty regardless of real
+// traffic. Only endpoints that are never themselves a distinct page view stay excluded:
+// settings/filter lookups a page fires alongside its real request, and the dashboard/auth/
+// notifications polling the admin UI itself generates.
 var noTrackPrefixes = []string{
 	"/api/front/settings",
-	"/api/home",
-	"/api/articles",
-	"/api/posts",
-	"/api/categories",
-	"/api/school-classes",
 	"/api/filter",
 	"/api/dashboard",
 	"/api/auth",

@@ -100,9 +100,14 @@ func flushVisitorBatch(events []VisitorEvent) {
 		records := make([]models.VisitorTracking, 0, len(s.events))
 		for _, ev := range s.events {
 			browser, os := parseUserAgent(ev.UserAgent)
+			geo := LookupGeoIP(ev.IPAddress)
 			records = append(records, models.VisitorTracking{
 				IPAddress:    ev.IPAddress,
 				UserAgent:    ev.UserAgent,
+				Country:      visStrPtr(geo.Country),
+				City:         visStrPtr(geo.City),
+				Latitude:     visF64Ptr(geo.Latitude),
+				Longitude:    visF64Ptr(geo.Longitude),
 				Browser:      visStrPtr(browser),
 				OS:           visStrPtr(os),
 				URL:          visStrPtr(ev.URL),
@@ -159,6 +164,50 @@ func parseUserAgent(ua string) (browser, os string) {
 	}
 
 	return
+}
+
+// botUserAgentMarkers catches search-engine crawlers, social-preview fetchers, and common
+// scripted/HTTP-client user agents. Checked as case-insensitive substrings against the raw UA
+// — deliberately broad (crawler UAs are self-identifying almost universally) rather than an
+// allowlist of known-good browsers, since new legitimate browsers/versions appear constantly.
+var botUserAgentMarkers = []string{
+	"bot", "spider", "crawl", "slurp", "facebookexternalhit", "whatsapp",
+	"headlesschrome", "phantomjs", "curl/", "wget/", "python-requests",
+	"go-http-client", "postmanruntime", "scrapy",
+}
+
+// isBotUserAgent reports whether ua identifies an automated client rather than a real visitor.
+func isBotUserAgent(ua string) bool {
+	if ua == "" {
+		return false
+	}
+	lower := strings.ToLower(ua)
+	for _, marker := range botUserAgentMarkers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// classifyDeviceType buckets a raw user agent into mobile/tablet/desktop. Reads the raw UA
+// (not the already-collapsed OS string from parseUserAgent) because "iOS"/"Android" alone
+// don't distinguish a phone from a tablet — Android tablets conventionally omit the "Mobile"
+// token that Android phones include.
+func classifyDeviceType(ua string) string {
+	if ua == "" {
+		return "unknown"
+	}
+	switch {
+	case strings.Contains(ua, "iPad"):
+		return "tablet"
+	case strings.Contains(ua, "Android") && !strings.Contains(ua, "Mobile"):
+		return "tablet"
+	case strings.Contains(ua, "iPhone"), strings.Contains(ua, "Android"):
+		return "mobile"
+	default:
+		return "desktop"
+	}
 }
 
 func visStrPtr(s string) *string {

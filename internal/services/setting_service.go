@@ -169,6 +169,14 @@ func (s *settingService) Update(ctx context.Context, countryID database.CountryI
 	countryCode := database.CountryCode(countryID)
 	InvalidateCache(database.Redis().Key("settings", countryCode))
 
+	// Some public HTTP responses, especially /api/home, embed settings.
+	// Settings updates are rare, so invalidate cached public responses here
+	// to make dashboard changes visible on the next request.
+	_, _ = database.Redis().DeleteByPattern(
+		ctx,
+		database.Redis().Key("http_cache", "*"),
+	)
+
 	if userID != 0 {
 		LogActivity("حدّث الإعدادات", "Setting", 0, userID)
 	}

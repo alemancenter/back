@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/gofiber/fiber/v2"
+	"github.com/imanjo/fiber-api/internal/database"
 )
 
 type cachedHTTPResponse struct {
@@ -31,8 +31,9 @@ var pathTTLRules = []struct {
 	{"/api/semesters", 10 * time.Minute},
 	{"/api/classes", 10 * time.Minute},
 
-	// Settings loaded on every SSR render — short TTL avoids DB hit on each page
-	{"/api/front/settings", 5 * time.Minute},
+	// /api/front/settings intentionally bypasses HTTP response caching.
+	// SettingService already has a dedicated Redis cache and invalidates
+	// it immediately after dashboard settings updates.
 
 	// Public content feeds
 	{"/api/articles", 2 * time.Minute},

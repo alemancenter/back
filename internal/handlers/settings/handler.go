@@ -9,13 +9,18 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/imanjo/fiber-api/internal/config"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/repositories"
 	"github.com/imanjo/fiber-api/internal/services"
 	"github.com/imanjo/fiber-api/internal/utils"
-	"github.com/gofiber/fiber/v2"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"time"
 )
 
 // smtpRequest holds SMTP settings sent from the dashboard for on-the-fly testing.
@@ -553,6 +558,79 @@ func (h *Handler) GetPublic(c *fiber.Ctx) error {
 	return utils.Success(c, "success", result)
 }
 
+// IMANJO_RECAPTCHA_SERVER_VERIFY_V2
+// verifyRecaptchaResponse validates a reCAPTCHA token with Google.
+// The Secret Key is backend-only and is never exposed to the browser.
+func verifyRecaptchaResponse(token string) (bool, error) {
+	secret := strings.TrimSpace(os.Getenv("RECAPTCHA_SECRET_KEY"))
+	if secret == "" {
+		return false, fmt.Errorf("recaptcha secret key is not configured")
+	}
+
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return false, nil
+	}
+
+	form := url.Values{}
+	form.Set("secret", secret)
+	form.Set("response", token)
+
+	client := &http.Client{
+		Timeout: 8 * time.Second,
+	}
+
+	resp, err := client.PostForm(
+		"https://www.google.com/recaptcha/api/siteverify",
+		form,
+	)
+	if err != nil {
+		return false, fmt.Errorf(
+			"recaptcha siteverify request failed: %w",
+			err,
+		)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf(
+			"recaptcha siteverify returned HTTP %d",
+			resp.StatusCode,
+		)
+	}
+
+	var result struct {
+		Success    bool     `json:"success"`
+		Hostname   string   `json:"hostname"`
+		ErrorCodes []string `json:"error-codes"`
+	}
+
+	decoder := json.NewDecoder(
+		io.LimitReader(resp.Body, 64<<10),
+	)
+
+	if err := decoder.Decode(&result); err != nil {
+		return false, fmt.Errorf(
+			"invalid recaptcha siteverify response: %w",
+			err,
+		)
+	}
+
+	if !result.Success {
+		return false, nil
+	}
+
+	// ImanJo uses the canonical apex domain.
+	if !strings.EqualFold(
+		strings.TrimSpace(result.Hostname),
+		"imanjo.com",
+	) {
+		return false, nil
+	}
+
+	return true, nil
+}
+
 // ContactRequest represents the contact form data
 type ContactRequest struct {
 	Name      string `json:"name"`
@@ -604,8 +682,19 @@ func (h *Handler) Contact(c *fiber.Ctx) error {
 	settings, _ := h.svc.GetPublic(c.Context(), countryIDFromContext(c))
 	// reCAPTCHA is only enforced when a site key is configured in settings.
 	// Without a configured key the widget is not shown, so the token will be empty.
-	if settings["recaptcha_site_key"] != "" && req.Recaptcha == "" {
-		return utils.BadRequest(c, "recaptcha token is required")
+	if settings["recaptcha_site_key"] != "" {
+		if req.Recaptcha == "" {
+			return utils.BadRequest(c, "recaptcha token is required")
+		}
+
+		verified, verifyErr := verifyRecaptchaResponse(req.Recaptcha)
+		if verifyErr != nil {
+			return utils.InternalError(c, "تعذر التحقق من reCAPTCHA")
+		}
+
+		if !verified {
+			return utils.BadRequest(c, "فشل التحقق من reCAPTCHA")
+		}
 	}
 	recipient := firstSetting(settings, "contact_email", "site_email")
 	if recipient == "" {

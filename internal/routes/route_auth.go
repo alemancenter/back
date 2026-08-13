@@ -1,8 +1,8 @@
 package routes
 
 import (
-	"github.com/imanjo/fiber-api/internal/middleware"
 	"github.com/gofiber/fiber/v2"
+	"github.com/imanjo/fiber-api/internal/middleware"
 )
 
 // registerAuthRoutes handles user authentication, profile management,
@@ -13,21 +13,21 @@ func registerAuthRoutes(api, dash fiber.Router, h *Handlers) {
 	// =====================
 	authGroup := api.Group("/auth")
 
-	// Brute-force-sensitive endpoints get a dedicated per-IP rate limiter
-	authGroup.Post("/check-email", middleware.AuthRateLimit(), h.Auth.CheckEmail)
-	authGroup.Post("/email/preflight", middleware.AuthRateLimit(), h.Auth.EmailPreflight)
-	authGroup.Post("/register", middleware.AuthRateLimit(), h.Auth.Register)
-	authGroup.Post("/login", middleware.AuthRateLimit(), h.Auth.Login)
-	authGroup.Post("/refresh", middleware.AuthRateLimit(), h.Auth.RefreshToken)
-	authGroup.Post("/password/forgot", middleware.AuthRateLimit(), h.Auth.ForgotPassword)
+	// Auth rate limiting is applied centrally by Setup() before routing.
+	authGroup.Post("/check-email", h.Auth.CheckEmail)
+	authGroup.Post("/email/preflight", h.Auth.EmailPreflight)
+	authGroup.Post("/register", h.Auth.Register)
+	authGroup.Post("/login", h.Auth.Login)
+	authGroup.Post("/refresh", h.Auth.RefreshToken)
+	authGroup.Post("/password/forgot", h.Auth.ForgotPassword)
 
-	authGroup.Get("/google/redirect", middleware.AuthRateLimit(), h.Auth.GoogleRedirect)
-	authGroup.Get("/google/callback", middleware.AuthRateLimit(), h.Auth.GoogleCallback)
-	authGroup.Post("/google/token", middleware.AuthRateLimit(), h.Auth.GoogleTokenLogin)
-	authGroup.Get("/facebook/redirect", middleware.AuthRateLimit(), h.Auth.FacebookRedirect)
-	authGroup.Get("/facebook/callback", middleware.AuthRateLimit(), h.Auth.FacebookCallback)
-	authGroup.Post("/facebook/token", middleware.AuthRateLimit(), h.Auth.FacebookTokenLogin)
-	authGroup.Post("/password/reset", middleware.AuthRateLimit(), h.Auth.ResetPassword)
+	authGroup.Get("/google/redirect", h.Auth.GoogleRedirect)
+	authGroup.Get("/google/callback", h.Auth.GoogleCallback)
+	authGroup.Post("/google/token", h.Auth.GoogleTokenLogin)
+	authGroup.Get("/facebook/redirect", h.Auth.FacebookRedirect)
+	authGroup.Get("/facebook/callback", h.Auth.FacebookCallback)
+	authGroup.Post("/facebook/token", h.Auth.FacebookTokenLogin)
+	authGroup.Post("/password/reset", h.Auth.ResetPassword)
 	authGroup.Get("/email/verify/:id/:hash", h.Auth.VerifyEmail)
 
 	// Authenticated auth routes
@@ -35,8 +35,8 @@ func registerAuthRoutes(api, dash fiber.Router, h *Handlers) {
 	authSecure.Post("/logout", h.Auth.Logout)
 	authSecure.Get("/user", h.Auth.Me)
 	authSecure.Put("/profile", middleware.RequireVerifiedEmail(), h.Auth.UpdateProfile)
-	authSecure.Post("/email/resend", middleware.AuthRateLimit(), h.Auth.ResendVerification)
-	authSecure.Post("/email/change", middleware.AuthRateLimit(), h.Auth.ChangeUnverifiedEmail)
+	authSecure.Post("/email/resend", h.Auth.ResendVerification)
+	authSecure.Post("/email/change", h.Auth.ChangeUnverifiedEmail)
 	authSecure.Post("/account/delete", middleware.RequireVerifiedEmail(), h.Auth.DeleteAccount)
 	authSecure.Post("/push-token", middleware.RequireVerifiedEmail(), h.Auth.RegisterPushToken)
 	authSecure.Delete("/push-token", middleware.RequireVerifiedEmail(), h.Auth.DeletePushToken)

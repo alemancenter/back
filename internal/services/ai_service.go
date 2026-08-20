@@ -2245,7 +2245,7 @@ func generateArticleSchema(article *SEOArticle) string {
 		Headline:    article.Title,
 		Description: article.MetaDescription,
 		Abstract:    article.FeaturedSnippet,
-		Author:      schemaAuthor{Type: "Organization", Name: "ImanJo"},
+		Author:      schemaAuthor{Type: "Organization", Name: "Aleman Center"},
 		MainEntityPage: schemaPage{
 			Type: "WebPage",
 			ID:   pageURL,

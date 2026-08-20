@@ -148,19 +148,70 @@ func parseUserAgent(ua string) (browser, os string) {
 		os = "Linux"
 	}
 
+	// Order matters: in-app and iOS browsers often also carry Safari/WebKit
+	// or Chrome-compatible tokens, so identify the specific client first.
 	switch {
+	case strings.Contains(ua, "FBAN/"),
+		strings.Contains(ua, "FBAV/"),
+		strings.Contains(ua, "FB_IAB/"):
+		browser = "Facebook"
+
+	case strings.Contains(ua, "Instagram"):
+		browser = "Instagram"
+
+	case strings.Contains(ua, "TikTok"),
+		strings.Contains(ua, "musical_ly"),
+		strings.Contains(ua, "BytedanceWebview"):
+		browser = "TikTok"
+
+	case strings.Contains(ua, "CriOS/"):
+		browser = "Chrome"
+
+	case strings.Contains(ua, "FxiOS/"):
+		browser = "Firefox"
+
+	case strings.Contains(ua, "EdgiOS/"):
+		browser = "Edge"
+
+	case strings.Contains(ua, "OPiOS/"):
+		browser = "Opera"
+
+	case strings.Contains(ua, "GSA/"):
+		browser = "Google App"
+
+	case strings.Contains(ua, "SamsungBrowser/"):
+		browser = "Samsung Internet"
+
+	case strings.Contains(ua, "Android") &&
+		(strings.Contains(ua, "; wv)") ||
+			strings.Contains(ua, "; wv ")):
+		browser = "Android WebView"
+
 	case strings.Contains(ua, "Edg/"):
 		browser = "Edge"
-	case strings.Contains(ua, "OPR/"), strings.Contains(ua, "Opera"):
+
+	case strings.Contains(ua, "OPR/"),
+		strings.Contains(ua, "Opera"):
 		browser = "Opera"
+
 	case strings.Contains(ua, "Firefox/"):
 		browser = "Firefox"
+
 	case strings.Contains(ua, "Chrome/"):
 		browser = "Chrome"
-	case strings.Contains(ua, "Safari/") && strings.Contains(ua, "Version/"):
+
+	case strings.Contains(ua, "Safari/") &&
+		strings.Contains(ua, "Version/"):
 		browser = "Safari"
-	case strings.Contains(ua, "MSIE"), strings.Contains(ua, "Trident/"):
+
+	case strings.Contains(ua, "MSIE"),
+		strings.Contains(ua, "Trident/"):
 		browser = "IE"
+
+	case strings.TrimSpace(ua) != "":
+		// A non-empty UA that cannot be identified reliably is deliberately
+		// classified as Other instead of being stored as NULL/"unknown".
+		browser = "Other"
 	}
 
 	return

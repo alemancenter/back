@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/imanjo/fiber-api/internal/config"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/repositories"
 	"github.com/imanjo/fiber-api/internal/services"
 	"github.com/imanjo/fiber-api/internal/utils"
-	"github.com/gofiber/fiber/v2"
 	"golang.org/x/oauth2"
 )
 
@@ -238,7 +238,10 @@ func (h *Handler) Register(c *fiber.Ctx) error {
 		return utils.InternalError(c, "فشل إنشاء الحساب")
 	}
 
-	refreshToken, _ := h.svc.GenerateRefreshTokenForUser(user.ID, user.Email)
+	refreshToken, err := h.svc.GenerateRefreshTokenForUser(user.ID, user.Email, token)
+	if err != nil {
+		return utils.InternalError(c, "تم إنشاء الحساب، لكن تعذر بدء جلسة تسجيل الدخول. يرجى تسجيل الدخول مرة أخرى.")
+	}
 	h.setAuthCookies(c, token, refreshToken)
 
 	return c.Status(fiber.StatusCreated).JSON(services.RegisterResponse{
@@ -291,7 +294,10 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 		return utils.InternalError(c)
 	}
 
-	refreshToken, _ := h.svc.GenerateRefreshTokenForUser(user.ID, user.Email)
+	refreshToken, err := h.svc.GenerateRefreshTokenForUser(user.ID, user.Email, token)
+	if err != nil {
+		return utils.InternalError(c, "تعذر بدء جلسة تسجيل الدخول")
+	}
 	h.setAuthCookies(c, token, refreshToken)
 
 	return c.JSON(fiber.Map{
@@ -336,6 +342,9 @@ func (h *Handler) RefreshToken(c *fiber.Ctx) error {
 
 	accessToken, newRefresh, err := h.svc.RefreshToken(refreshTokenStr)
 	if err != nil {
+		if err == services.ErrRefreshTokenReused {
+			return utils.UnauthorizedCode(c, "REFRESH_TOKEN_REUSED", "انتهت صلاحية جلسة تسجيل الدخول. يرجى تسجيل الدخول مرة أخرى.")
+		}
 		return utils.UnauthorizedCode(c, "REFRESH_TOKEN_INVALID", "جلسة الدخول غير صالحة أو منتهية الصلاحية")
 	}
 
@@ -373,11 +382,19 @@ func (h *Handler) Logout(c *fiber.Ctx) error {
 		user = u
 	}
 
-	if err := h.svc.Logout(tokenStr, user); err != nil {
-		return utils.InternalError(c, "فشل تسجيل الخروج")
+	refreshTokenStr := strings.TrimSpace(c.Cookies("refresh_token"))
+
+	err := h.svc.Logout(tokenStr, refreshTokenStr, user)
+
+	// Local credentials must always be removed. If Redis revocation failed,
+	// the browser is still logged out locally while the API correctly reports
+	// that server-side revocation was not fully completed.
+	h.clearAuthCookies(c)
+
+	if err != nil {
+		return utils.InternalError(c, "فشل إبطال جلسة تسجيل الدخول بالكامل")
 	}
 
-	h.clearAuthCookies(c)
 	return utils.Success(c, "تم تسجيل الخروج بنجاح", nil)
 }
 
@@ -684,7 +701,10 @@ func (h *Handler) GoogleCallback(c *fiber.Ctx) error {
 		return c.Redirect(callbackBase + "?error=login_failed")
 	}
 
-	refreshToken, _ := h.svc.GenerateRefreshTokenForUser(user.ID, user.Email)
+	refreshToken, err := h.svc.GenerateRefreshTokenForUser(user.ID, user.Email, token)
+	if err != nil {
+		return c.Redirect(callbackBase + "?error=session_failed")
+	}
 	h.setAuthCookies(c, token, refreshToken)
 
 	return c.Redirect(callbackBase)
@@ -749,7 +769,10 @@ func (h *Handler) FacebookCallback(c *fiber.Ctx) error {
 		return c.Redirect(callbackBase + "?error=login_failed")
 	}
 
-	refreshToken, _ := h.svc.GenerateRefreshTokenForUser(user.ID, user.Email)
+	refreshToken, err := h.svc.GenerateRefreshTokenForUser(user.ID, user.Email, token)
+	if err != nil {
+		return c.Redirect(callbackBase + "?error=session_failed")
+	}
 	h.setAuthCookies(c, token, refreshToken)
 
 	return c.Redirect(callbackBase)
@@ -898,7 +921,10 @@ func (h *Handler) loginOrRegisterGoogleUser(c *fiber.Ctx, info *services.GoogleU
 		return utils.InternalError(c, "فشل معالجة حساب Google")
 	}
 
-	refreshToken, _ := h.svc.GenerateRefreshTokenForUser(user.ID, user.Email)
+	refreshToken, err := h.svc.GenerateRefreshTokenForUser(user.ID, user.Email, token)
+	if err != nil {
+		return utils.InternalError(c, "تعذر بدء جلسة Google")
+	}
 	h.setAuthCookies(c, token, refreshToken)
 
 	return c.JSON(fiber.Map{
@@ -1049,7 +1075,10 @@ func (h *Handler) loginOrRegisterFacebookUser(c *fiber.Ctx, info *services.Faceb
 		return utils.InternalError(c, "فشل معالجة حساب Facebook")
 	}
 
-	refreshToken, _ := h.svc.GenerateRefreshTokenForUser(user.ID, user.Email)
+	refreshToken, err := h.svc.GenerateRefreshTokenForUser(user.ID, user.Email, token)
+	if err != nil {
+		return utils.InternalError(c, "تعذر بدء جلسة Facebook")
+	}
 	h.setAuthCookies(c, token, refreshToken)
 
 	return c.JSON(fiber.Map{

@@ -8,17 +8,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/services"
 	"github.com/imanjo/fiber-api/internal/utils"
 	"github.com/imanjo/fiber-api/pkg/logger"
-	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
 )
 
-// userCacheTTL is intentionally short so permission revocations take effect quickly.
-// 15 seconds balances DB load against the window in which a revoked permission stays active.
+// userCacheTTL is a fallback bound for stale user data if explicit eviction is missed.
+// Security-sensitive role, permission, and status mutations invalidate affected users immediately.
 const userCacheTTL = 15 * time.Minute
 
 // loadUserCached returns the user from Redis cache or falls back to DB.
@@ -62,6 +62,48 @@ func authTokenFromRequest(c *fiber.Ctx) string {
 	return strings.TrimSpace(c.Cookies("token"))
 }
 
+// IMANJO_AUTH_BLACKLIST_UNIFY_V1
+//
+// isTokenBlacklisted centralizes access-token revocation checks so mandatory
+// and optional authentication paths apply the exact same logout semantics.
+//
+// Redis lookup failures intentionally preserve the existing Auth() behavior:
+// a Redis error is not treated as a positive blacklist match.
+func isTokenBlacklisted(tokenStr string) bool {
+	if strings.TrimSpace(tokenStr) == "" {
+		return false
+	}
+
+	ctx := context.Background()
+	rdb := database.Redis()
+
+	hash := sha256.Sum256([]byte(tokenStr))
+	key := rdb.Key("blacklist", fmt.Sprintf("%x", hash))
+
+	exists, _ := rdb.Exists(ctx, key)
+	return exists
+}
+
+// isAuthVersionAllowed compares the JWT against the durable MariaDB state.
+//
+// This intentionally bypasses Redis user-cache state: a password reset must
+// remain authoritative even after Redis restart, cache loss, or cache staleness.
+func isAuthVersionAllowed(claims *services.JWTClaims) bool {
+	if claims == nil || claims.UserID == 0 {
+		return false
+	}
+
+	var user models.User
+	if err := database.DB().
+		Select("auth_version").
+		First(&user, claims.UserID).Error; err != nil {
+		// Revocation state is security-sensitive: fail closed.
+		return false
+	}
+
+	return claims.AuthVersion == user.AuthVersion
+}
+
 // Auth validates JWT token and loads the current user (with Redis caching).
 func Auth() fiber.Handler {
 	return func(c *fiber.Ctx) error {
@@ -77,13 +119,13 @@ func Auth() fiber.Handler {
 			return utils.UnauthorizedCode(c, "TOKEN_INVALID", "رمز المصادقة غير صالح أو منتهي الصلاحية")
 		}
 
-		// Check token blacklist (tokens invalidated by logout)
-		ctx := context.Background()
-		rdb := database.Redis()
-		hash := sha256.Sum256([]byte(tokenStr))
-		blacklistKey := rdb.Key("blacklist", fmt.Sprintf("%x", hash))
-		if exists, _ := rdb.Exists(ctx, blacklistKey); exists {
+		// Check token blacklist (tokens invalidated by logout).
+		if isTokenBlacklisted(tokenStr) {
 			return utils.UnauthorizedCode(c, "TOKEN_INVALID", "رمز المصادقة غير صالح أو منتهي الصلاحية")
+		}
+
+		if !isAuthVersionAllowed(claims) {
+			return utils.UnauthorizedCode(c, "TOKEN_REVOKED", "انتهت صلاحية جلسة تسجيل الدخول")
 		}
 
 		// Load user from Redis cache (falls back to DB on miss)
@@ -120,6 +162,11 @@ func OptionalAuth() fiber.Handler {
 		jwtSvc := services.NewJWTService()
 		claims, err := jwtSvc.ValidateToken(tokenStr)
 		if err != nil {
+			return c.Next()
+		}
+
+		// A revoked token must never restore an optional user session.
+		if isTokenBlacklisted(tokenStr) || !isAuthVersionAllowed(claims) {
 			return c.Next()
 		}
 

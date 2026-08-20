@@ -18,6 +18,10 @@ type SitemapRepository interface {
 		Slug      string    `gorm:"column:slug"`
 		UpdatedAt time.Time `gorm:"column:updated_at"`
 	}, error)
+	GetIndexableDownloads(dbCode string) ([]struct {
+		ID        uint      `gorm:"column:id"`
+		UpdatedAt time.Time `gorm:"column:updated_at"`
+	}, error)
 	GetActiveCategories(dbCode string) ([]models.Category, error)
 	GetActiveSchoolClasses(dbCode string) ([]models.SchoolClass, error)
 }
@@ -65,6 +69,36 @@ func (r *sitemapRepository) GetActivePosts(dbCode string) ([]struct {
 		UpdatedAt time.Time `gorm:"column:updated_at"`
 	}
 	err := db.Raw("SELECT id, slug, updated_at FROM posts WHERE is_active = 1").Scan(&rows).Error
+	return rows, err
+}
+
+func (r *sitemapRepository) GetIndexableDownloads(dbCode string) ([]struct {
+	ID        uint      `gorm:"column:id"`
+	UpdatedAt time.Time `gorm:"column:updated_at"`
+}, error) {
+	db := database.GetManager().GetByCode(dbCode)
+
+	var rows []struct {
+		ID        uint      `gorm:"column:id"`
+		UpdatedAt time.Time `gorm:"column:updated_at"`
+	}
+
+	err := db.Raw(`
+		SELECT DISTINCT
+			f.id,
+			f.updated_at
+		FROM files AS f
+		LEFT JOIN articles AS a
+			ON a.id = f.article_id
+		LEFT JOIN posts AS p
+			ON p.id = f.post_id
+		WHERE
+			(f.article_id IS NOT NULL AND a.status = 1)
+			OR
+			(f.article_id IS NULL AND f.post_id IS NOT NULL AND p.is_active = 1)
+		ORDER BY f.id
+	`).Scan(&rows).Error
+
 	return rows, err
 }
 

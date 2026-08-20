@@ -3,9 +3,9 @@ package sitemap
 import (
 	"strings"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/imanjo/fiber-api/internal/services"
 	"github.com/imanjo/fiber-api/internal/utils"
-	"github.com/gofiber/fiber/v2"
 )
 
 // Handler contains sitemap route handlers
@@ -69,7 +69,7 @@ func (h *Handler) Delete(c *fiber.Ctx) error {
 	sitemapType := c.Params("type")
 	dbCode := c.Params("database")
 
-	allowed := map[string]bool{"articles": true, "post": true, "static": true, "index": true}
+	allowed := map[string]bool{"articles": true, "post": true, "static": true, "download": true, "index": true}
 	if !allowed[sitemapType] {
 		return utils.BadRequest(c, "نوع خريطة موقع غير صحيح")
 	}

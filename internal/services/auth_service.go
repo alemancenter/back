@@ -14,6 +14,7 @@ import (
 	"github.com/imanjo/fiber-api/internal/repositories"
 	"github.com/imanjo/fiber-api/pkg/logger"
 	"go.uber.org/zap"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"gorm.io/gorm"
@@ -31,11 +32,115 @@ var (
 	ErrEmailAlreadyExists      = errors.New("البريد الإلكتروني مستخدم بالفعل")
 	ErrInvalidCredentials      = errors.New("بيانات الاعتماد غير صحيحة")
 	ErrAccountInactive         = errors.New("الحساب غير نشط أو محظور")
+	ErrRefreshTokenReused      = errors.New("refresh token already consumed")
 	ErrInvalidResetToken       = errors.New("رمز إعادة التعيين غير صالح أو منتهي الصلاحية")
 	ErrInvalidVerifyToken      = errors.New("رابط التحقق غير صالح أو منتهي الصلاحية")
 	ErrAlreadyVerified         = errors.New("البريد الإلكتروني مُحقق بالفعل")
 	ErrVerificationEmailFailed = errors.New("تعذر إرسال رسالة تفعيل البريد الإلكتروني")
 )
+
+// IMANJO_LOGIN_TIMING_EQUALIZATION_V2
+//
+// These hashes are not credentials. They exist only to ensure failed login
+// attempts perform equivalent bcrypt work for the two production cost levels.
+const dummyLoginPasswordHashCost10 = "$2a$10$FtUiOIYVm/Wuc7kmU8eSAuJ7Ayj/8.ibjL/KCTrzZBFlUh4k/NKS."
+const dummyLoginPasswordHashCost12 = "$2a$12$3snD12Q9wqWR24nnzu.37OVoQHp/OUEE..xYfcj/NQlmF1PZbMEqq"
+
+// verifyLoginPassword performs the real password comparison and adds only the
+// missing bcrypt work on FAILURE.
+//
+// Successful logins keep their existing one-hash cost.
+//
+// Failure work:
+//
+//	missing user  -> dummy10 + dummy12
+//	cost-10 user  -> real10  + dummy12
+//	cost-12 user  -> real12  + dummy10
+func verifyLoginPassword(passwordHash, password string) bool {
+	if strings.TrimSpace(passwordHash) == "" {
+		_ = bcrypt.CompareHashAndPassword(
+			[]byte(dummyLoginPasswordHashCost10),
+			[]byte(password),
+		)
+		_ = bcrypt.CompareHashAndPassword(
+			[]byte(dummyLoginPasswordHashCost12),
+			[]byte(password),
+		)
+		return false
+	}
+
+	cost, err := bcrypt.Cost([]byte(passwordHash))
+	if err != nil {
+		_ = bcrypt.CompareHashAndPassword(
+			[]byte(dummyLoginPasswordHashCost10),
+			[]byte(password),
+		)
+		_ = bcrypt.CompareHashAndPassword(
+			[]byte(dummyLoginPasswordHashCost12),
+			[]byte(password),
+		)
+		return false
+	}
+
+	matched := bcrypt.CompareHashAndPassword(
+		[]byte(passwordHash),
+		[]byte(password),
+	) == nil
+
+	// No timing equalization is needed after successful authentication:
+	// the response already proves possession of the correct credential.
+	if matched {
+		return true
+	}
+
+	switch cost {
+	case 10:
+		_ = bcrypt.CompareHashAndPassword(
+			[]byte(dummyLoginPasswordHashCost12),
+			[]byte(password),
+		)
+	case 12:
+		_ = bcrypt.CompareHashAndPassword(
+			[]byte(dummyLoginPasswordHashCost10),
+			[]byte(password),
+		)
+	default:
+		// Unknown future cost: preserve authentication semantics while adding
+		// both known production dummy costs on failure rather than creating a
+		// new fast-failure path.
+		_ = bcrypt.CompareHashAndPassword(
+			[]byte(dummyLoginPasswordHashCost10),
+			[]byte(password),
+		)
+		_ = bcrypt.CompareHashAndPassword(
+			[]byte(dummyLoginPasswordHashCost12),
+			[]byte(password),
+		)
+	}
+
+	return false
+}
+
+func logFailedLoginAttempt(
+	email,
+	ip,
+	userAgent,
+	method,
+	path string,
+) {
+	secRepo := repositories.NewSecurityRepository()
+	secSvc := NewSecurityService(secRepo)
+
+	secSvc.LogEvent(
+		ip,
+		models.EventLoginFailed,
+		"فشل تسجيل الدخول للبريد: "+email,
+		models.SeverityWarning,
+		WithRoute(path),
+		WithMethod(method),
+		WithUserAgent(userAgent),
+	)
+}
 
 var invalidateCachedUser = InvalidateUserCache
 var assignDefaultRole = AssignDefaultRole
@@ -79,9 +184,9 @@ type UpdateProfileInput struct {
 type AuthService interface {
 	Register(name, email, password string) (*models.User, string, bool, error)
 	Login(email, password, ip, userAgent, method, path string) (*models.User, string, error)
-	Logout(tokenStr string, user *models.User) error
+	Logout(tokenStr, refreshTokenStr string, user *models.User) error
 	RefreshToken(refreshTokenStr string) (accessToken, newRefreshToken string, err error)
-	GenerateRefreshTokenForUser(userID uint, email string) (string, error)
+	GenerateRefreshTokenForUser(userID uint, email, accessToken string) (string, error)
 	UpdateProfile(user *models.User, req *UpdateProfileInput) (*models.User, error)
 	ForgotPassword(email string) error
 	ResetPassword(token, email, newPassword string) error
@@ -257,7 +362,7 @@ func (s *authService) Register(name, email, password string) (*models.User, stri
 		)
 	}
 
-	token, err := s.jwtSvc.GenerateToken(user.ID, user.Email)
+	token, err := s.generateAccessTokenForUser(&user)
 	if err != nil {
 		return nil, "", verificationSent, MapError(err)
 	}
@@ -269,23 +374,28 @@ func (s *authService) Login(email, password, ip, userAgent, method, path string)
 	user, err := s.repo.FindByEmail(email)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
+			// Equalize bcrypt work with failed logins for existing cost-10/cost-12
+			// accounts, then follow the same failure logging path.
+			_ = verifyLoginPassword("", password)
+			logFailedLoginAttempt(
+				email,
+				ip,
+				userAgent,
+				method,
+				path,
+			)
 			return nil, "", ErrInvalidCredentials
 		}
 		return nil, "", MapError(err)
 	}
 
-	if !user.CheckPassword(password) {
-		// Create security service directly since we don't inject it here yet to avoid circular deps
-		secRepo := repositories.NewSecurityRepository()
-		secSvc := NewSecurityService(secRepo)
-		secSvc.LogEvent(
+	if !verifyLoginPassword(user.Password, password) {
+		logFailedLoginAttempt(
+			email,
 			ip,
-			models.EventLoginFailed,
-			"فشل تسجيل الدخول للبريد: "+email,
-			models.SeverityWarning,
-			WithRoute(path),
-			WithMethod(method),
-			WithUserAgent(userAgent),
+			userAgent,
+			method,
+			path,
 		)
 		return nil, "", ErrInvalidCredentials
 	}
@@ -294,7 +404,7 @@ func (s *authService) Login(email, password, ip, userAgent, method, path string)
 		return nil, "", ErrAccountInactive
 	}
 
-	token, err := s.jwtSvc.GenerateToken(user.ID, user.Email)
+	token, err := s.generateAccessTokenForUser(user)
 	if err != nil {
 		return nil, "", MapError(err)
 	}
@@ -307,26 +417,190 @@ func (s *authService) Login(email, password, ip, userAgent, method, path string)
 	return user, token, nil
 }
 
-func (s *authService) GenerateRefreshTokenForUser(userID uint, email string) (string, error) {
-	return s.jwtSvc.GenerateRefreshToken(userID, email)
+func (s *authService) generateAccessTokenForUser(user *models.User) (string, error) {
+	return s.jwtSvc.GenerateTokenWithAuthVersion(
+		user.ID,
+		user.Email,
+		user.AuthVersion,
+	)
 }
 
-func (s *authService) Logout(tokenStr string, user *models.User) error {
+func (s *authService) issueRefreshTokenForVersion(
+	userID uint,
+	email string,
+	authVersion uint64,
+) (token string, jti string, err error) {
+	token, err = s.jwtSvc.GenerateRefreshTokenWithAuthVersion(
+		userID,
+		email,
+		authVersion,
+	)
+	if err != nil {
+		return "", "", MapError(err)
+	}
+
+	claims, err := s.jwtSvc.ValidateRefreshToken(token)
+	if err != nil || strings.TrimSpace(claims.ID) == "" {
+		return "", "", ErrInvalidCredentials
+	}
+
+	return token, claims.ID, nil
+}
+
+func (s *authService) generateRefreshTokenForVersion(
+	userID uint,
+	email string,
+	authVersion uint64,
+) (string, error) {
+	token, jti, err := s.issueRefreshTokenForVersion(
+		userID,
+		email,
+		authVersion,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	rdb := database.Redis()
+	ctx := context.Background()
+	key := rdb.Key("refresh_session", jti)
+	ttl := time.Duration(s.cfg.JWT.RefreshHours) * time.Hour
+
+	// Initial/login refresh sessions are registered directly.
+	// Rotation uses RotateRefreshSession below so old -> new is atomic.
+	if err := rdb.Set(ctx, key, fmt.Sprintf("%d", userID), ttl); err != nil {
+		return "", MapError(err)
+	}
+
+	return token, nil
+}
+
+func (s *authService) GenerateRefreshTokenForUser(userID uint, email, accessToken string) (string, error) {
+	claims, err := s.jwtSvc.ValidateToken(accessToken)
+	if err != nil || claims.UserID != userID {
+		return "", ErrInvalidCredentials
+	}
+
+	// Re-read the durable user state before issuing the refresh session.
+	// This closes the race where a password reset could occur between access
+	// token generation and refresh-token registration.
+	user, err := s.repo.FindByID(uint64(userID))
+	if err != nil {
+		return "", ErrInvalidCredentials
+	}
+
+	if claims.AuthVersion != user.AuthVersion {
+		return "", ErrInvalidCredentials
+	}
+
+	return s.generateRefreshTokenForVersion(
+		userID,
+		email,
+		claims.AuthVersion,
+	)
+}
+
+func (s *authService) Logout(tokenStr, refreshTokenStr string, user *models.User) error {
 	rdb := database.Redis()
 	ctx := context.Background()
 
-	if tokenStr != "" {
+	var revocationErr error
+
+	// Access-token blacklist is security-sensitive. A Redis write failure must
+	// not be reported as a successful server-side logout.
+	if strings.TrimSpace(tokenStr) != "" {
 		hash := sha256.Sum256([]byte(tokenStr))
 		key := rdb.Key("blacklist", fmt.Sprintf("%x", hash))
-		_ = rdb.Set(ctx, key, "1", time.Duration(s.cfg.JWT.ExpireHours)*time.Hour)
+
+		if err := rdb.Set(
+			ctx,
+			key,
+			"1",
+			time.Duration(s.cfg.JWT.ExpireHours)*time.Hour,
+		); err != nil {
+			revocationErr = fmt.Errorf(
+				"failed to blacklist access token: %w",
+				err,
+			)
+		}
 	}
 
-	// Evict user cache
+	if strings.TrimSpace(refreshTokenStr) != "" {
+		// An invalid/stale refresh cookie does not block local logout. If the
+		// token is valid, however, failure to revoke its server-side state is
+		// a real logout failure and must be surfaced.
+		if claims, err := s.jwtSvc.ValidateRefreshToken(refreshTokenStr); err == nil {
+			if strings.TrimSpace(claims.ID) != "" {
+				key := rdb.Key("refresh_session", claims.ID)
+
+				if err := rdb.Del(ctx, key); err != nil {
+					refreshErr := fmt.Errorf(
+						"failed to revoke refresh session: %w",
+						err,
+					)
+
+					if revocationErr == nil {
+						revocationErr = refreshErr
+					} else {
+						revocationErr = errors.Join(
+							revocationErr,
+							refreshErr,
+						)
+					}
+				}
+			} else {
+				// Legacy pre-JTI refresh token: mark it used for the remainder
+				// of its lifetime so it cannot migrate after logout.
+				hash := sha256.Sum256([]byte(refreshTokenStr))
+				legacyKey := rdb.Key(
+					"refresh_legacy_used",
+					fmt.Sprintf("%x", hash),
+				)
+
+				ttl := time.Duration(s.cfg.JWT.RefreshHours) * time.Hour
+				if claims.ExpiresAt != nil {
+					remaining := time.Until(claims.ExpiresAt.Time)
+					if remaining > 0 && remaining < ttl {
+						ttl = remaining
+					}
+				}
+
+				if ttl > 0 {
+					if err := rdb.Set(
+						ctx,
+						legacyKey,
+						"1",
+						ttl,
+					); err != nil {
+						refreshErr := fmt.Errorf(
+							"failed to revoke legacy refresh token: %w",
+							err,
+						)
+
+						if revocationErr == nil {
+							revocationErr = refreshErr
+						} else {
+							revocationErr = errors.Join(
+								revocationErr,
+								refreshErr,
+							)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Cache eviction is not the security boundary. auth_version is checked
+	// against MariaDB and refresh/access revocation is handled above.
 	if user != nil {
-		_ = rdb.Del(ctx, rdb.Key("user", fmt.Sprintf("%d", user.ID)))
+		_ = rdb.Del(
+			ctx,
+			rdb.Key("user", fmt.Sprintf("%d", user.ID)),
+		)
 	}
 
-	return nil
+	return revocationErr
 }
 
 func (s *authService) RefreshToken(refreshTokenStr string) (string, string, error) {
@@ -343,14 +617,105 @@ func (s *authService) RefreshToken(refreshTokenStr string) (string, string, erro
 		return "", "", ErrAccountInactive
 	}
 
-	accessToken, err := s.jwtSvc.GenerateToken(user.ID, user.Email)
+	authVersion := claims.AuthVersion
+	if authVersion != user.AuthVersion {
+		return "", "", ErrInvalidCredentials
+	}
+
+	// Build the entire successor token pair before consuming the old refresh
+	// session. Internal token-generation failures therefore leave the old
+	// session usable instead of forcing an unnecessary re-login.
+	accessToken, err := s.jwtSvc.GenerateTokenWithAuthVersion(
+		user.ID,
+		user.Email,
+		authVersion,
+	)
 	if err != nil {
 		return "", "", MapError(err)
 	}
-	newRefresh, err := s.jwtSvc.GenerateRefreshToken(user.ID, user.Email)
+
+	newRefresh, newJTI, err := s.issueRefreshTokenForVersion(
+		user.ID,
+		user.Email,
+		authVersion,
+	)
 	if err != nil {
-		return "", "", MapError(err)
+		return "", "", err
 	}
+
+	rdb := database.Redis()
+	ctx := context.Background()
+
+	owner := fmt.Sprintf("%d", user.ID)
+	newKey := rdb.Key("refresh_session", newJTI)
+	newTTL := time.Duration(s.cfg.JWT.RefreshHours) * time.Hour
+
+	if strings.TrimSpace(claims.ID) != "" {
+		oldKey := rdb.Key("refresh_session", claims.ID)
+
+		result, err := rdb.RotateRefreshSession(
+			ctx,
+			oldKey,
+			newKey,
+			owner,
+			newTTL,
+		)
+		if err != nil {
+			return "", "", MapError(err)
+		}
+
+		switch result {
+		case 1:
+			// Atomic old -> new session replacement succeeded.
+		case 0:
+			return "", "", ErrRefreshTokenReused
+		case -1:
+			return "", "", ErrInvalidCredentials
+		default:
+			return "", "", ErrInvalidCredentials
+		}
+	} else {
+		// Compatibility migration for refresh JWTs issued before JTI tracking.
+		// The legacy-used marker and first tracked session are committed by one
+		// Redis Lua script, so a failure cannot consume the legacy token without
+		// creating its successor.
+		hash := sha256.Sum256([]byte(refreshTokenStr))
+		legacyKey := rdb.Key(
+			"refresh_legacy_used",
+			fmt.Sprintf("%x", hash),
+		)
+
+		legacyTTL := time.Duration(s.cfg.JWT.RefreshHours) * time.Hour
+		if claims.ExpiresAt != nil {
+			remaining := time.Until(claims.ExpiresAt.Time)
+			if remaining > 0 && remaining < legacyTTL {
+				legacyTTL = remaining
+			}
+		}
+
+		if legacyTTL <= 0 {
+			return "", "", ErrInvalidCredentials
+		}
+
+		migrated, err := rdb.MigrateLegacyRefreshSession(
+			ctx,
+			legacyKey,
+			newKey,
+			owner,
+			legacyTTL,
+			newTTL,
+		)
+		if err != nil {
+			return "", "", MapError(err)
+		}
+		if !migrated {
+			return "", "", ErrRefreshTokenReused
+		}
+	}
+
+	// Rotation preserves the exact durable authentication version.
+	// A concurrent password reset therefore leaves these returned tokens stale
+	// instead of upgrading an old session into the new authentication state.
 	return accessToken, newRefresh, nil
 }
 
@@ -416,11 +781,14 @@ func (s *authService) ForgotPassword(email string) error {
 	token := s.jwtSvc.GenerateRandomString(32) // We will need to add this method to JWTService or use a helper
 	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(token)))
 
-	// Store in Redis with 60-minute expiry
+	// Store in Redis with 60-minute expiry. Do not send a reset link unless
+	// the server-side reset-token state was persisted successfully.
 	rdb := database.Redis()
 	ctx := context.Background()
 	key := rdb.Key("password_reset", hash)
-	_ = rdb.Set(ctx, key, fmt.Sprintf("%d", user.ID), 60*time.Minute)
+	if err := rdb.Set(ctx, key, fmt.Sprintf("%d", user.ID), 60*time.Minute); err != nil {
+		return MapError(err)
+	}
 
 	// Send reset email
 	resetURL := fmt.Sprintf("%s/reset-password?token=%s&email=%s",
@@ -444,8 +812,13 @@ func (s *authService) ResetPassword(token, email, newPassword string) error {
 	ctx := context.Background()
 	key := rdb.Key("password_reset", hash)
 
-	userIDStr, err := rdb.Get(ctx, key)
+	// Consume the reset token atomically. Only one request can successfully
+	// use a given reset token, even under concurrent requests.
+	userIDStr, consumed, err := rdb.Consume(ctx, key)
 	if err != nil {
+		return MapError(err)
+	}
+	if !consumed {
 		return ErrInvalidResetToken
 	}
 
@@ -460,12 +833,19 @@ func (s *authService) ResetPassword(token, email, newPassword string) error {
 		return MapError(err)
 	}
 
+	// Increment the durable authentication version in the same User update as
+	// the new password. Every JWT issued before this reset immediately carries
+	// an older version and becomes invalid.
+	user.AuthVersion++
+
 	if err := s.repo.Update(user); err != nil {
 		return MapError(err)
 	}
 
-	// Delete used token
-	_ = rdb.Del(ctx, key)
+	// Evict the cached User object. Security checks below still read the
+	// authoritative auth_version directly from MariaDB, so Redis cache loss or
+	// stale cache entries cannot resurrect revoked sessions.
+	_ = rdb.Del(ctx, rdb.Key("user", fmt.Sprintf("%d", user.ID)))
 
 	return nil
 }
@@ -645,7 +1025,7 @@ func (s *authService) LoginOrRegisterGoogleUser(info *GoogleUserInfo) (*models.U
 		}
 	}
 
-	token, err := s.jwtSvc.GenerateToken(user.ID, user.Email)
+	token, err := s.generateAccessTokenForUser(user)
 	if err != nil {
 		return nil, "", MapError(err)
 	}
@@ -701,7 +1081,7 @@ func (s *authService) LoginOrRegisterFacebookUser(info *FacebookUserInfo) (*mode
 		}
 	}
 
-	token, err := s.jwtSvc.GenerateToken(user.ID, user.Email)
+	token, err := s.generateAccessTokenForUser(user)
 	if err != nil {
 		return nil, "", MapError(err)
 	}

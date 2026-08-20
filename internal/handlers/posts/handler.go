@@ -6,13 +6,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/repositories"
 	"github.com/imanjo/fiber-api/internal/services"
 	"github.com/imanjo/fiber-api/internal/utils"
 	"github.com/imanjo/fiber-api/pkg/logger"
-	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
 )
 
@@ -39,6 +39,7 @@ func isAdminUser(user *models.User) bool {
 type Handler struct {
 	svc          services.PostService
 	notification services.NotificationService
+	fileSvc      *services.FileService
 }
 
 // New creates a new posts Handler
@@ -47,6 +48,18 @@ func New(svc services.PostService, notification ...services.NotificationService)
 	if len(notification) > 0 {
 		h.notification = notification[0]
 	}
+	return h
+}
+
+// NewWithFileService creates a posts Handler with the shared FileService.
+// The shared service keeps attachment-record mutations synchronized with sitemap generation.
+func NewWithFileService(
+	svc services.PostService,
+	notification services.NotificationService,
+	fileSvc *services.FileService,
+) *Handler {
+	h := New(svc, notification)
+	h.fileSvc = fileSvc
 	return h
 }
 
@@ -296,8 +309,12 @@ func (h *Handler) DashboardCreate(c *fiber.Ctx) error {
 		files := form.File["attachments[]"]
 		files = append(files, form.File["attachments"]...)
 		if len(files) > 0 {
-			fileRepo := repositories.NewFileRepository()
-			fileSvc := services.NewFileService(fileRepo)
+			fileSvc := h.fileSvc
+			if fileSvc == nil {
+				fileSvc = services.NewFileService(
+					repositories.NewFileRepository(),
+				)
+			}
 			postID := post.ID
 			fileCategory := "post_attachment"
 			for _, file := range files {
@@ -406,8 +423,12 @@ func (h *Handler) DashboardUpdate(c *fiber.Ctx) error {
 		files := form.File["attachments[]"]
 		files = append(files, form.File["attachments"]...)
 		if len(files) > 0 {
-			fileRepo := repositories.NewFileRepository()
-			fileSvc := services.NewFileService(fileRepo)
+			fileSvc := h.fileSvc
+			if fileSvc == nil {
+				fileSvc = services.NewFileService(
+					repositories.NewFileRepository(),
+				)
+			}
 			postID := post.ID
 			fileCategory := "post_attachment"
 			for _, file := range files {

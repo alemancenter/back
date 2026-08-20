@@ -1,4 +1,4 @@
-﻿package repositories
+package repositories
 
 import (
 	"context"
@@ -31,6 +31,7 @@ type AnalyticsRepository interface {
 
 	GetAnalyticsData(dbCode database.CountryID, days int) (dates []string, articles, news, comments, views, authors []int)
 	GetOnlineUsers(fiveMinAgo time.Time) ([]models.User, error)
+	GetResponseTimeStats(dbCode database.CountryID, since time.Time) (averageMS, minMS, maxMS float64, sampleCount int64, err error)
 
 	GetRedisInfo() (string, error)
 	PingRedis() error
@@ -71,8 +72,8 @@ type DailyRow struct {
 }
 
 type DeviceRow struct {
-	OS    *string `gorm:"column:os"`
-	Count int64   `gorm:"column:count"`
+	DeviceType string `gorm:"column:device_type"`
+	Count      int64  `gorm:"column:count"`
 }
 
 type RefRow struct {
@@ -107,40 +108,129 @@ type PostView struct {
 
 // â”€â”€â”€ Implementations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-func (r *analyticsRepository) GetVisitorStats(dbCode database.CountryID, activeWindow, todayStart, yesterdayStart time.Time) (currentActive, currentMembers, currentGuests, totalToday, totalYesterday int64) {
+// humanPublicVisitorFilterSQL defines the dashboard's human-audience population.
+//
+// Bot markers intentionally mirror services.botUserAgentMarkers. The URL filter operates
+// on the resolved analytics URL, so a server-side API call carrying a valid X-Page can still
+// represent the actual public Astro page while raw runtime/API fallbacks are excluded.
+const humanPublicVisitorFilterSQL = `
+	LOWER(COALESCE(vt.user_agent, '')) NOT REGEXP
+		'bot|spider|crawl|slurp|facebookexternalhit|whatsapp|headlesschrome|phantomjs|curl/|wget/|python-requests|go-http-client|postmanruntime|scrapy'
+	AND vt.url IS NOT NULL
+	AND vt.url <> ''
+	AND vt.url LIKE '/%'
+	AND vt.url <> '/api'
+	AND vt.url NOT LIKE '/api/%'
+	AND vt.url NOT LIKE '/_server-islands%'
+	AND vt.url NOT LIKE '/api/img-islands%'
+	AND vt.url NOT LIKE '/_astro/%'
+	AND vt.url NOT LIKE '/storage/%'
+	AND vt.url NOT LIKE '/backend-api/%'
+	AND vt.url NOT LIKE '/dashboard%'
+	AND vt.url NOT LIKE '/assets/%'
+	AND vt.url NOT LIKE '/fonts/%'
+	AND vt.url NOT LIKE '/favicon%'
+	AND vt.url NOT LIKE '/health%'
+	AND vt.url NOT LIKE '/ping%'
+`
+
+func (r *analyticsRepository) GetVisitorStats(
+	dbCode database.CountryID,
+	activeWindow, todayStart, yesterdayStart time.Time,
+) (currentActive, currentMembers, currentGuests, totalToday, totalYesterday int64) {
 	db := database.DBForCountry(dbCode)
-	// Count unique visitors (not raw page-view rows) for the "active now" badge.
-	db.Raw(`SELECT COUNT(DISTINCT COALESCE(CAST(user_id AS CHAR), ip_address)) FROM visitors_tracking WHERE last_activity >= ?`, activeWindow).Scan(&currentActive)
-	db.Raw(`SELECT COUNT(DISTINCT user_id) FROM visitors_tracking WHERE last_activity >= ? AND user_id IS NOT NULL`, activeWindow).Scan(&currentMembers)
-	db.Raw(`SELECT COUNT(DISTINCT ip_address) FROM visitors_tracking WHERE last_activity >= ? AND user_id IS NULL`, activeWindow).Scan(&currentGuests)
-	db.Model(&models.VisitorTracking{}).Where("created_at >= ?", todayStart).Count(&totalToday)
-	db.Model(&models.VisitorTracking{}).Where("created_at >= ? AND created_at < ?", yesterdayStart, todayStart).Count(&totalYesterday)
+
+	// "Active now" means unique human visitors with at least one real public page
+	// during the active window. Bots and unresolved runtime/API requests do not count.
+	db.Raw(`
+		SELECT COUNT(DISTINCT COALESCE(CAST(vt.user_id AS CHAR), vt.ip_address))
+		FROM visitors_tracking vt
+		WHERE vt.last_activity >= ?
+		  AND `+humanPublicVisitorFilterSQL,
+		activeWindow,
+	).Scan(&currentActive)
+
+	db.Raw(`
+		SELECT COUNT(DISTINCT vt.user_id)
+		FROM visitors_tracking vt
+		WHERE vt.last_activity >= ?
+		  AND vt.user_id IS NOT NULL
+		  AND `+humanPublicVisitorFilterSQL,
+		activeWindow,
+	).Scan(&currentMembers)
+
+	db.Raw(`
+		SELECT COUNT(DISTINCT vt.ip_address)
+		FROM visitors_tracking vt
+		WHERE vt.last_activity >= ?
+		  AND vt.user_id IS NULL
+		  AND `+humanPublicVisitorFilterSQL,
+		activeWindow,
+	).Scan(&currentGuests)
+
+	// "Visits today" remains a page-view style metric, but only for public human traffic.
+	db.Raw(`
+		SELECT COUNT(*)
+		FROM visitors_tracking vt
+		WHERE vt.created_at >= ?
+		  AND `+humanPublicVisitorFilterSQL,
+		todayStart,
+	).Scan(&totalToday)
+
+	db.Raw(`
+		SELECT COUNT(*)
+		FROM visitors_tracking vt
+		WHERE vt.created_at >= ?
+		  AND vt.created_at < ?
+		  AND `+humanPublicVisitorFilterSQL,
+		yesterdayStart,
+		todayStart,
+	).Scan(&totalYesterday)
+
 	return
 }
 
-func (r *analyticsRepository) GetActiveVisitors(dbCode database.CountryID, activeWindow time.Time) ([]ActiveRow, error) {
+func (r *analyticsRepository) GetActiveVisitors(
+	dbCode database.CountryID,
+	activeWindow time.Time,
+) ([]ActiveRow, error) {
 	db := database.DBForCountry(dbCode)
 	var activeRows []ActiveRow
-	// ROW_NUMBER deduplicates: one row per unique visitor (by user_id for members,
-	// ip_address for guests), keeping their most-recently-visited page.
+
+	// Keep the most recent real public page for each unique HUMAN visitor.
+	// Filtering happens before ROW_NUMBER so a later runtime/API request cannot
+	// overwrite the visitor's last meaningful frontend page.
 	err := db.Raw(`
 		SELECT ip_address, country, city, browser, os, user_agent, url, user_id,
 		       user_name, user_email, last_activity, created_at
 		FROM (
-		  SELECT vt.ip_address, vt.country, vt.city, vt.browser, vt.os, vt.user_agent,
-		         vt.url, vt.user_id, u.name AS user_name, u.email AS user_email,
-		         vt.last_activity, vt.created_at,
-		         ROW_NUMBER() OVER (
-		           PARTITION BY COALESCE(CAST(vt.user_id AS CHAR), vt.ip_address)
-		           ORDER BY vt.last_activity DESC
-		         ) AS rn
-		  FROM visitors_tracking vt
-		  LEFT JOIN users u ON u.id = vt.user_id
-		  WHERE vt.last_activity >= ?
+			SELECT
+				vt.ip_address,
+				vt.country,
+				vt.city,
+				vt.browser,
+				vt.os,
+				vt.user_agent,
+				vt.url,
+				vt.user_id,
+				u.name AS user_name,
+				u.email AS user_email,
+				vt.last_activity,
+				vt.created_at,
+				ROW_NUMBER() OVER (
+					PARTITION BY COALESCE(CAST(vt.user_id AS CHAR), vt.ip_address)
+					ORDER BY vt.last_activity DESC
+				) AS rn
+			FROM visitors_tracking vt
+			LEFT JOIN users u ON u.id = vt.user_id
+			WHERE vt.last_activity >= ?
+			  AND `+humanPublicVisitorFilterSQL+`
 		) ranked
 		WHERE rn = 1
 		ORDER BY last_activity DESC
-		LIMIT 100`, activeWindow).Scan(&activeRows).Error
+		LIMIT 250
+	`, activeWindow).Scan(&activeRows).Error
+
 	return activeRows, err
 }
 
@@ -152,34 +242,89 @@ func (r *analyticsRepository) GetUserStats(todayStart, activeWindow time.Time) (
 	return
 }
 
-func (r *analyticsRepository) GetCountryStats(dbCode database.CountryID, since time.Time) ([]CountryRow, error) {
+func (r *analyticsRepository) GetCountryStats(
+	dbCode database.CountryID,
+	since time.Time,
+) ([]CountryRow, error) {
 	db := database.DBForCountry(dbCode)
 	var countryStats []CountryRow
-	err := db.Raw(`SELECT COALESCE(country, 'Unknown') AS country, COUNT(*) AS count
-		        FROM visitors_tracking
-		        WHERE created_at >= ? AND country IS NOT NULL
-		        GROUP BY country ORDER BY count DESC LIMIT 20`, since).Scan(&countryStats).Error
+
+	// Country ranking is people, not tracking rows/page views.
+	err := db.Raw(`
+		SELECT
+			COALESCE(vt.country, 'Unknown') AS country,
+			COUNT(
+				DISTINCT COALESCE(
+					CAST(vt.user_id AS CHAR),
+					vt.ip_address
+				)
+			) AS count
+		FROM visitors_tracking vt
+		WHERE vt.created_at >= ?
+		  AND vt.country IS NOT NULL
+		  AND `+humanPublicVisitorFilterSQL+`
+		GROUP BY vt.country
+		ORDER BY count DESC
+		LIMIT 20
+	`, since).Scan(&countryStats).Error
+
 	return countryStats, err
 }
 
-func (r *analyticsRepository) GetDailyChartData(dbCode database.CountryID, since time.Time) ([]DailyRow, error) {
+func (r *analyticsRepository) GetDailyChartData(
+	dbCode database.CountryID,
+	since time.Time,
+) ([]DailyRow, error) {
 	db := database.DBForCountry(dbCode)
 	var dailyRows []DailyRow
-	err := db.Raw(`SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS date,
-		               COUNT(DISTINCT ip_address) AS visitors,
-		               COUNT(*) AS page_views
-		        FROM visitors_tracking
-		        WHERE created_at >= ?
-		        GROUP BY DATE_FORMAT(created_at, '%Y-%m-%d') ORDER BY date ASC`, since).Scan(&dailyRows).Error
+
+	// Visitors = unique human identities.
+	// Page views = tracked human public-page rows.
+	err := db.Raw(`
+		SELECT
+			DATE_FORMAT(vt.created_at, '%Y-%m-%d') AS date,
+			COUNT(
+				DISTINCT COALESCE(
+					CAST(vt.user_id AS CHAR),
+					vt.ip_address
+				)
+			) AS visitors,
+			COUNT(*) AS page_views
+		FROM visitors_tracking vt
+		WHERE vt.created_at >= ?
+		  AND `+humanPublicVisitorFilterSQL+`
+		GROUP BY DATE_FORMAT(vt.created_at, '%Y-%m-%d')
+		ORDER BY date ASC
+	`, since).Scan(&dailyRows).Error
+
 	return dailyRows, err
 }
 
 func (r *analyticsRepository) GetDeviceStats(dbCode database.CountryID, since time.Time) ([]DeviceRow, error) {
 	db := database.DBForCountry(dbCode)
 	var deviceRows []DeviceRow
-	err := db.Raw(`SELECT os, COUNT(*) AS count FROM visitors_tracking
-		        WHERE created_at >= ?
-		        GROUP BY os`, since).Scan(&deviceRows).Error
+
+	// Device type must be derived from the raw User-Agent, not the collapsed OS
+	// column. Android tablets conventionally omit the "Mobile" token, while
+	// Android phones include it. Grouping only by OS therefore counted tablets
+	// as mobile and made the dashboard distribution materially incorrect.
+	err := db.Raw(`
+		SELECT
+			CASE
+				WHEN COALESCE(user_agent, '') = '' THEN 'unknown'
+				WHEN user_agent LIKE '%iPad%' THEN 'tablet'
+				WHEN user_agent LIKE '%Android%'
+				     AND user_agent NOT LIKE '%Mobile%' THEN 'tablet'
+				WHEN user_agent LIKE '%iPhone%'
+				     OR user_agent LIKE '%Android%' THEN 'mobile'
+				ELSE 'desktop'
+			END AS device_type,
+			COUNT(*) AS count
+		FROM visitors_tracking
+		WHERE created_at >= ?
+		GROUP BY device_type
+	`, since).Scan(&deviceRows).Error
+
 	return deviceRows, err
 }
 
@@ -392,6 +537,43 @@ func (r *analyticsRepository) GetOnlineUsers(fiveMinAgo time.Time) ([]models.Use
 		Limit(5).
 		Find(&users).Error
 	return users, err
+}
+
+func (r *analyticsRepository) GetResponseTimeStats(
+	dbCode database.CountryID,
+	since time.Time,
+) (
+	averageMS float64,
+	minMS float64,
+	maxMS float64,
+	sampleCount int64,
+	err error,
+) {
+	db := database.DBForCountry(dbCode)
+
+	var row struct {
+		AverageMS   float64 `gorm:"column:average_ms"`
+		MinMS       float64 `gorm:"column:min_ms"`
+		MaxMS       float64 `gorm:"column:max_ms"`
+		SampleCount int64   `gorm:"column:sample_count"`
+	}
+
+	err = db.Raw(`
+		SELECT
+			COALESCE(AVG(response_time), 0) AS average_ms,
+			COALESCE(MIN(response_time), 0) AS min_ms,
+			COALESCE(MAX(response_time), 0) AS max_ms,
+			COUNT(response_time) AS sample_count
+		FROM visitors_tracking
+		WHERE created_at >= ?
+		  AND response_time IS NOT NULL
+	`, since).Scan(&row).Error
+
+	return row.AverageMS,
+		row.MinMS,
+		row.MaxMS,
+		row.SampleCount,
+		err
 }
 
 func (r *analyticsRepository) GetRedisInfo() (string, error) {

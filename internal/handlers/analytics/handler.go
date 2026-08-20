@@ -3,11 +3,11 @@ package analytics
 import (
 	"fmt"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/imanjo/fiber-api/internal/database"
 	_ "github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/services"
 	"github.com/imanjo/fiber-api/internal/utils"
-	"github.com/gofiber/fiber/v2"
 )
 
 // Handler contains analytics route handlers
@@ -141,9 +141,9 @@ func (h *Handler) PerformanceLive(c *fiber.Ctx) error {
 	return utils.Success(c, "success", data)
 }
 
-// PerformanceResponseTime measures a cheap internal Redis ping.
-// @Summary API Response Time
-// @Description Returns the latency of an internal cache (Redis) ping
+// PerformanceResponseTime returns sampled backend request latency.
+// @Summary Backend Response Time
+// @Description Returns real response-time statistics from tracked successful public requests.
 // @Tags Analytics
 // @Produce json
 // @Security BearerAuth
@@ -151,7 +151,9 @@ func (h *Handler) PerformanceLive(c *fiber.Ctx) error {
 // @Success 200 {object} utils.APIResponse{data=map[string]interface{}}
 // @Router /dashboard/performance/response-time [get]
 func (h *Handler) PerformanceResponseTime(c *fiber.Ctx) error {
-	data := h.svc.GetPerformanceResponseTime()
+	countryID, _ := c.Locals("country_id").(database.CountryID)
+
+	data := h.svc.GetPerformanceResponseTime(countryID)
 	return utils.Success(c, "success", data)
 }
 

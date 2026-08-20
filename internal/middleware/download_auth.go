@@ -3,11 +3,11 @@ package middleware
 import (
 	"strings"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/services"
 	"github.com/imanjo/fiber-api/internal/utils"
-	"github.com/gofiber/fiber/v2"
 )
 
 // DownloadAuthGate conditionally requires authentication for file downloads
@@ -64,6 +64,11 @@ func attachOptionalUser(c *fiber.Ctx) {
 	jwtSvc := services.NewJWTService()
 	claims, err := jwtSvc.ValidateToken(tokenStr)
 	if err != nil {
+		return
+	}
+
+	// Logout and password-reset revocation use the same authentication rules.
+	if isTokenBlacklisted(tokenStr) || !isAuthVersionAllowed(claims) {
 		return
 	}
 

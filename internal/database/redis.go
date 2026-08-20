@@ -192,6 +192,122 @@ func (r *RedisManager) SetNX(ctx context.Context, key string, value interface{},
 	return r.default_.SetNX(ctx, key, value, ttl).Result()
 }
 
+// Consume atomically returns and deletes a cache value.
+// It is used by refresh-token rotation so two concurrent requests cannot
+// successfully consume the same server-side refresh session.
+func (r *RedisManager) Consume(ctx context.Context, key string) (string, bool, error) {
+	const script = `
+local value = redis.call("GET", KEYS[1])
+if not value then
+    return ""
+end
+redis.call("DEL", KEYS[1])
+return value
+`
+
+	value, err := r.cache.Eval(ctx, script, []string{key}).Text()
+	if err != nil {
+		return "", false, err
+	}
+	if value == "" {
+		return "", false, nil
+	}
+	return value, true, nil
+}
+
+// RotateRefreshSession atomically replaces one tracked refresh session with another.
+//
+// Return values:
+//
+//	 1  = rotated successfully
+//	 0  = old session does not exist (already consumed/replayed)
+//	-1  = old session exists but belongs to another user
+func (r *RedisManager) RotateRefreshSession(
+	ctx context.Context,
+	oldKey string,
+	newKey string,
+	expectedOwner string,
+	ttl time.Duration,
+) (int64, error) {
+	if ttl <= 0 {
+		return 0, fmt.Errorf("refresh session ttl must be positive")
+	}
+	if oldKey == "" || newKey == "" || oldKey == newKey {
+		return 0, fmt.Errorf("invalid refresh rotation keys")
+	}
+
+	const script = `
+local value = redis.call("GET", KEYS[1])
+
+if not value then
+    return 0
+end
+
+if value ~= ARGV[1] then
+    return -1
+end
+
+redis.call("SET", KEYS[2], ARGV[1], "PX", ARGV[2])
+redis.call("DEL", KEYS[1])
+
+return 1
+`
+
+	return r.cache.Eval(
+		ctx,
+		script,
+		[]string{oldKey, newKey},
+		expectedOwner,
+		ttl.Milliseconds(),
+	).Int64()
+}
+
+// MigrateLegacyRefreshSession atomically marks a pre-JTI refresh token as used
+// and creates its first tracked refresh session.
+//
+// It returns false when the legacy token has already crossed the migration
+// boundary, including a concurrent request that lost the race.
+func (r *RedisManager) MigrateLegacyRefreshSession(
+	ctx context.Context,
+	legacyUsedKey string,
+	newSessionKey string,
+	owner string,
+	legacyTTL time.Duration,
+	newSessionTTL time.Duration,
+) (bool, error) {
+	if legacyTTL <= 0 || newSessionTTL <= 0 {
+		return false, fmt.Errorf("refresh session ttl must be positive")
+	}
+	if legacyUsedKey == "" || newSessionKey == "" {
+		return false, fmt.Errorf("invalid legacy refresh migration keys")
+	}
+
+	const script = `
+if redis.call("EXISTS", KEYS[1]) == 1 then
+    return 0
+end
+
+redis.call("SET", KEYS[1], "1", "PX", ARGV[2])
+redis.call("SET", KEYS[2], ARGV[1], "PX", ARGV[3])
+
+return 1
+`
+
+	result, err := r.cache.Eval(
+		ctx,
+		script,
+		[]string{legacyUsedKey, newSessionKey},
+		owner,
+		legacyTTL.Milliseconds(),
+		newSessionTTL.Milliseconds(),
+	).Int64()
+	if err != nil {
+		return false, err
+	}
+
+	return result == 1, nil
+}
+
 // ListKeys returns one bounded page of keys matching a pattern from the cache DB.
 func (r *RedisManager) ListKeys(ctx context.Context, pattern string, limit, offset int) ([]string, bool, error) {
 	if pattern == "" {

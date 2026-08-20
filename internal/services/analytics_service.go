@@ -1,4 +1,4 @@
-﻿package services
+package services
 
 import (
 	"runtime"
@@ -20,7 +20,7 @@ type AnalyticsService interface {
 	GetContentAnalytics(dbCode database.CountryID) *ContentAnalyticsResponse
 	GetPerformanceSummary() *PerformanceSummaryResponse
 	GetPerformanceLive() map[string]interface{}
-	GetPerformanceResponseTime() map[string]interface{}
+	GetPerformanceResponseTime(dbCode database.CountryID) map[string]interface{}
 	GetPerformanceCache() map[string]interface{}
 	GetPerformanceRaw() map[string]interface{}
 }
@@ -275,19 +275,16 @@ func (s *analyticsService) GetVisitorAnalytics(dbCode database.CountryID, days i
 	// ---- device_stats ----
 	var mobile, tablet, desktop int64
 	for _, r := range deviceRows {
-		os := ""
-		if r.OS != nil {
-			os = *r.OS
-		}
-		switch {
-		case containsAny(os, "Android", "iPhone", "iOS"):
+		switch r.DeviceType {
+		case "mobile":
 			mobile += r.Count
-		case containsAny(os, "iPad", "Tablet"):
+		case "tablet":
 			tablet += r.Count
-		default:
+		case "desktop":
 			desktop += r.Count
 		}
 	}
+
 	totalDevices := mobile + tablet + desktop
 	deviceStats := []DeviceStatRow{
 		{Name: "Desktop", Value: pct(desktop, totalDevices), Count: desktop, Color: "#63E6E2"},
@@ -594,51 +591,72 @@ func (s *analyticsService) GetPerformanceSummary() *PerformanceSummaryResponse {
 }
 
 func (s *analyticsService) GetPerformanceLive() map[string]interface{} {
-	var mem runtime.MemStats
-	runtime.ReadMemStats(&mem)
-
-	total := int64(mem.Sys)
-	used := int64(mem.Alloc)
-	free := total - used
-	if free < 0 {
-		free = 0
-	}
-
-	usage := 0.0
-	if total > 0 {
-		usage = (float64(used) / float64(total)) * 100
-	}
+	host := readHostPerformance()
 
 	return map[string]interface{}{
 		"cpu": map[string]interface{}{
-			"usage": 0,
-			"cores": runtime.NumCPU(),
-			"load":  0,
+			"usage":          host.CPUUsage,
+			"cores":          host.CPUCores,
+			"load":           host.Load1,
+			"available":      host.CPUAvailable,
+			"load_available": host.LoadAvailable,
+			"source":         "linux_host",
 		},
 		"memory": map[string]interface{}{
-			"total":            total,
-			"free":             free,
-			"used":             used,
-			"usage_percentage": usage,
-			"percentage":       usage,
+			"total":            host.MemoryTotal,
+			"free":             host.MemoryFree,
+			"used":             host.MemoryUsed,
+			"usage_percentage": host.MemoryPercentage,
+			"percentage":       host.MemoryPercentage,
+			"available":        host.MemoryAvailable,
+			"source":           "linux_host",
 		},
 		"disk": map[string]interface{}{
-			"total":            0,
-			"free":             0,
-			"used":             0,
-			"usage_percentage": 0,
-			"percentage":       0,
+			"total":            host.DiskTotal,
+			"free":             host.DiskFree,
+			"used":             host.DiskUsed,
+			"usage_percentage": host.DiskPercentage,
+			"percentage":       host.DiskPercentage,
+			"available":        host.DiskAvailable,
+			"source":           "linux_host",
 		},
 		"timestamp": time.Now(),
 	}
 }
 
-func (s *analyticsService) GetPerformanceResponseTime() map[string]interface{} {
-	start := time.Now()
-	_ = s.repo.PingRedis()
+func (s *analyticsService) GetPerformanceResponseTime(dbCode database.CountryID) map[string]interface{} {
+	const windowMinutes = 15
+
+	since := time.Now().Add(
+		-windowMinutes * time.Minute,
+	)
+
+	averageMS,
+		minMS,
+		maxMS,
+		sampleCount,
+		err := s.repo.GetResponseTimeStats(
+		dbCode,
+		since,
+	)
+
+	available := err == nil && sampleCount > 0
+
+	if err != nil {
+		averageMS = 0
+		minMS = 0
+		maxMS = 0
+		sampleCount = 0
+	}
 
 	return map[string]interface{}{
-		"average_ms": time.Since(start).Milliseconds(),
+		"average_ms":     averageMS,
+		"min_ms":         minMS,
+		"max_ms":         maxMS,
+		"sample_count":   sampleCount,
+		"window_minutes": windowMinutes,
+		"available":      available,
+		"source":         "sampled_public_requests",
 	}
 }
 

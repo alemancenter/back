@@ -74,12 +74,47 @@ func ClearPermissions(db *gorm.DB, userID uint) error {
 	).Error
 }
 
-// InvalidateUserCache evicts the cached user entry from Redis.
+// InvalidateUserCache evicts one cached user entry from Redis.
 // Call after any change to roles, permissions, status, or on logout.
 func InvalidateUserCache(userID uint) {
+	InvalidateUserCaches([]uint{userID})
+}
+
+// InvalidateUserCaches evicts cached User objects in bounded Redis batches.
+// User cache entries embed account status, roles, and permissions.
+func InvalidateUserCaches(userIDs []uint) {
+	if len(userIDs) == 0 {
+		return
+	}
+
 	ctx := context.Background()
 	rdb := database.Redis()
-	_ = rdb.Del(ctx, rdb.Key("user", fmt.Sprintf("%d", userID)))
+
+	keys := make([]string, 0, len(userIDs))
+	seen := make(map[uint]struct{}, len(userIDs))
+
+	for _, userID := range userIDs {
+		if userID == 0 {
+			continue
+		}
+		if _, exists := seen[userID]; exists {
+			continue
+		}
+
+		seen[userID] = struct{}{}
+		keys = append(keys, rdb.Key("user", fmt.Sprintf("%d", userID)))
+	}
+
+	const batchSize = 500
+
+	for start := 0; start < len(keys); start += batchSize {
+		end := start + batchSize
+		if end > len(keys) {
+			end = len(keys)
+		}
+
+		_ = rdb.Del(ctx, keys[start:end]...)
+	}
 }
 
 // AssignDefaultRole assigns the "User" role to a user if the role exists.

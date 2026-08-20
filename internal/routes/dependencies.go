@@ -79,10 +79,11 @@ func NewDependencies() *Handlers {
 
 	cacheSvc := services.NewCacheService(database.Redis().Cache())
 
-	fileRepo := repositories.NewFileRepository()
-	fileSvc := services.NewFileService(fileRepo)
 	sitemapRepo := repositories.NewSitemapRepository()
 	sitemapSvc := services.NewSitemapService(sitemapRepo)
+
+	fileRepo := repositories.NewFileRepository()
+	fileSvc := services.NewFileService(fileRepo, sitemapSvc)
 	articleRepo := repositories.NewArticleRepository()
 	articleSvc := services.NewArticleService(articleRepo, fileSvc, cacheSvc, sitemapSvc)
 
@@ -170,7 +171,7 @@ func NewDependencies() *Handlers {
 		Dashboard:           dashboard.New(dashboardSvc),
 		Auth:                auth.New(authSvc),
 		Articles:            articles.New(articleSvc, notificationSvc),
-		Posts:               posts.New(postSvc, notificationSvc),
+		Posts:               posts.NewWithFileService(postSvc, notificationSvc, fileSvc),
 		Users:               users.New(userSvc, notificationSvc),
 		Files:               files.New(fileSvc),
 		Comments:            comments.New(commentSvc),

@@ -1,8 +1,8 @@
 package routes
 
 import (
-	"github.com/imanjo/fiber-api/internal/middleware"
 	"github.com/gofiber/fiber/v2"
+	"github.com/imanjo/fiber-api/internal/middleware"
 )
 
 // registerAnalyticsRoutes handles dashboard overviews, monitoring,
@@ -20,8 +20,16 @@ func registerAnalyticsRoutes(public, dash fiber.Router, h *Handlers) {
 	// =====================
 
 	// Dashboard Home Summaries
-	dash.Get("/content-analytics", h.Analytics.ContentAnalytics)
-	dash.Get("", h.Analytics.DashboardSummary)
+	// Dashboard entry follows the same permission used by the frontend.
+	dash.Get("", middleware.Can("access dashboard"), h.Analytics.DashboardSummary)
+
+	// Content analytics can be viewed by dashboard users or accounts carrying
+	// one of the dedicated analytics permissions.
+	dash.Get(
+		"/content-analytics",
+		middleware.CanAny("access dashboard", "view analytics", "manage analytics"),
+		h.Analytics.ContentAnalytics,
+	)
 
 	// Activities Log
 	dashActivities := dash.Group("", middleware.CanAny("manage monitoring", "manage performance", "manage security"))

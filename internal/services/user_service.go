@@ -56,6 +56,54 @@ func NewUserService(repo repositories.UserRepository, securitySvc SecurityServic
 	return &userService{repo: repo, securitySvc: securitySvc}
 }
 
+// Test seam only. Production behavior remains InvalidateUserCache.
+var invalidateUserServiceCache = InvalidateUserCache
+
+// requireSuperAdminForProtectedUser prevents ordinary administrators from
+// mutating a Super Admin account. Ordinary users remain manageable by callers
+// that have already passed the route-level "manage users" permission check.
+func (s *userService) requireSuperAdminForProtectedUser(user *models.User, callerID uint) error {
+	if user == nil || !user.HasRole("Super Admin") {
+		return nil
+	}
+
+	if callerID == 0 {
+		return errors.New("غير مصرح بتنفيذ العملية")
+	}
+
+	caller, err := s.repo.FindByID(uint64(callerID))
+	if err != nil {
+		return MapError(err)
+	}
+
+	if !caller.HasRole("Super Admin") {
+		return errors.New("لا يحق لك تعديل حساب Super Admin")
+	}
+
+	return nil
+}
+
+// requireSuperAdminForProtectedIDs applies the same protection to bulk
+// mutations. Missing/stale IDs retain the previous bulk semantics and are
+// ignored here; the repository remains authoritative for the actual mutation.
+func (s *userService) requireSuperAdminForProtectedIDs(ids []uint, callerID uint) error {
+	for _, id := range ids {
+		user, err := s.repo.FindByID(uint64(id))
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				continue
+			}
+			return MapError(err)
+		}
+
+		if err := s.requireSuperAdminForProtectedUser(user, callerID); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (s *userService) List(search, status, role, emailVerified string, limit, offset int) ([]models.User, int64, error) {
 	return s.repo.List(search, status, role, emailVerified, limit, offset)
 }
@@ -145,6 +193,10 @@ func (s *userService) Update(id uint64, req *UpdateUserRequest, callerID uint) (
 		return nil, MapError(err)
 	}
 
+	if err := s.requireSuperAdminForProtectedUser(user, callerID); err != nil {
+		return nil, err
+	}
+
 	if req.Name != "" {
 		user.Name = req.Name
 	}
@@ -164,14 +216,20 @@ func (s *userService) Update(id uint64, req *UpdateUserRequest, callerID uint) (
 		user.Status = req.Status
 	}
 	if req.Password != "" {
-		if err := user.HashPassword(req.Password); err == nil {
-			// Password hashed and set in user model
+		if err := user.HashPassword(req.Password); err != nil {
+			return nil, MapError(err)
 		}
+
+		// Password changes revoke all previously issued access and refresh tokens.
+		user.AuthVersion++
 	}
 
 	if err := s.repo.Update(user); err != nil {
 		return nil, errors.New("فشل تحديث المستخدم")
 	}
+
+	// Auth() caches the complete User object, including status and RBAC state.
+	invalidateUserServiceCache(user.ID)
 
 	if callerID > 0 {
 		LogActivity("قام بتحديث مستخدم: "+user.Email, "User", user.ID, callerID)
@@ -248,6 +306,10 @@ func (s *userService) Delete(id uint64, callerID uint) error {
 		return MapError(err)
 	}
 
+	if err := s.requireSuperAdminForProtectedUser(user, callerID); err != nil {
+		return err
+	}
+
 	if err := s.repo.Delete(user); err != nil {
 		return errors.New("فشل حذف المستخدم")
 	}
@@ -271,6 +333,10 @@ func (s *userService) BulkDelete(ids []uint, callerID uint) (int, error) {
 		return 0, nil
 	}
 
+	if err := s.requireSuperAdminForProtectedIDs(filteredIDs, callerID); err != nil {
+		return 0, err
+	}
+
 	if err := s.repo.BulkDelete(filteredIDs); err != nil {
 		return 0, errors.New("فشل حذف المستخدمين المحددين")
 	}
@@ -279,9 +345,17 @@ func (s *userService) BulkDelete(ids []uint, callerID uint) (int, error) {
 }
 
 func (s *userService) UpdateStatus(ids []uint, status string, callerID uint) error {
+	if err := s.requireSuperAdminForProtectedIDs(ids, callerID); err != nil {
+		return err
+	}
+
 	if err := s.repo.UpdateStatus(ids, status); err != nil {
 		return errors.New("فشل تحديث حالة المستخدمين")
 	}
+
+	// Auth() checks status from the cached User object.
+	InvalidateUserCaches(ids)
+
 	if status == "banned" && s.securitySvc != nil {
 		var blockedBy *uint
 		if callerID > 0 {

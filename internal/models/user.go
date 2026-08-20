@@ -13,6 +13,7 @@ type User struct {
 	Email                  string     `gorm:"type:varchar(255);unique;not null" json:"email"`
 	EmailVerifiedAt        *time.Time `json:"email_verified_at,omitempty"`
 	Password               string     `gorm:"type:varchar(255);not null" json:"-"`
+	AuthVersion            uint64     `gorm:"not null;default:0" json:"-"`
 	GoogleID               *string    `gorm:"type:varchar(255)" json:"google_id,omitempty"`
 	FacebookID             *string    `gorm:"type:varchar(255)" json:"facebook_id,omitempty"`
 	Phone                  *string    `gorm:"type:varchar(50)" json:"phone,omitempty"`

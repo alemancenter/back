@@ -86,6 +86,19 @@ func main() {
 		}
 	}
 
+	// Authentication/session state belongs to the Jordan primary user database.
+	// Do not put User in the per-country migrateTargets loop below.
+	primaryDB := database.DB()
+	if !primaryDB.Migrator().HasColumn(&models.User{}, "AuthVersion") {
+		if err := primaryDB.Migrator().AddColumn(&models.User{}, "AuthVersion"); err != nil {
+			logger.Fatal(
+				"failed to add users.auth_version",
+				zap.Error(err),
+			)
+		}
+		logger.Info("added durable users.auth_version column")
+	}
+
 	// Auto-migrate: add any missing columns (safe — never drops existing data)
 	migrateTargets := []interface{}{
 		&models.Article{},

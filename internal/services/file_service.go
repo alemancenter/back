@@ -12,11 +12,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/gabriel-vasile/mimetype"
 	"github.com/imanjo/fiber-api/internal/config"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/repositories"
-	"github.com/gabriel-vasile/mimetype"
 )
 
 type UploadResponse struct {
@@ -29,8 +29,9 @@ type UploadResponse struct {
 
 // FileService handles file operations like uploading, path mapping, and size calculations.
 type FileService struct {
-	cfg  config.StorageConfig
-	repo repositories.FileRepository
+	cfg     config.StorageConfig
+	repo    repositories.FileRepository
+	sitemap SitemapService
 }
 
 // UploadedFile represents a successfully uploaded file
@@ -181,10 +182,29 @@ const MaxImageSize = 10 * 1024 * 1024
 const MaxDocumentSize = 80 * 1024 * 1024
 
 // NewFileService creates a new FileService
-func NewFileService(repo repositories.FileRepository) *FileService {
-	return &FileService{
+func NewFileService(
+	repo repositories.FileRepository,
+	sitemap ...SitemapService,
+) *FileService {
+	service := &FileService{
 		cfg:  config.Get().Storage,
 		repo: repo,
+	}
+
+	if len(sitemap) > 0 {
+		service.sitemap = sitemap[0]
+	}
+
+	return service
+}
+
+func (s *FileService) scheduleSitemapRefresh(
+	countryID database.CountryID,
+) {
+	if s.sitemap != nil {
+		s.sitemap.ScheduleGenerate(
+			database.CountryCode(countryID),
+		)
 	}
 }
 
@@ -538,6 +558,8 @@ func (s *FileService) CreateRecord(countryID database.CountryID, uploaded *Uploa
 		return nil, MapError(err)
 	}
 
+	s.scheduleSitemapRefresh(countryID)
+
 	return file, nil
 }
 
@@ -572,6 +594,8 @@ func (s *FileService) UpdateRecord(countryID database.CountryID, id uint64, req 
 		return nil, MapError(err)
 	}
 
+	s.scheduleSitemapRefresh(countryID)
+
 	return file, nil
 }
 
@@ -584,5 +608,11 @@ func (s *FileService) DeleteRecord(countryID database.CountryID, id uint64) erro
 	// Delete physical file
 	s.Delete(file.FilePath)
 
-	return s.repo.Delete(countryID, file)
+	if err := s.repo.Delete(countryID, file); err != nil {
+		return err
+	}
+
+	s.scheduleSitemapRefresh(countryID)
+
+	return nil
 }

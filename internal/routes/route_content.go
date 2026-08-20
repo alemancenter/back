@@ -1,8 +1,8 @@
 package routes
 
 import (
-	"github.com/imanjo/fiber-api/internal/middleware"
 	"github.com/gofiber/fiber/v2"
+	"github.com/imanjo/fiber-api/internal/middleware"
 )
 
 // registerContentRoutes handles all routes related to core content:
@@ -69,9 +69,11 @@ func registerContentRoutes(api, public, dash fiber.Router, h *Handlers) {
 	// Secure file view
 	api.Get("/secure/view", authM, activityM, h.Files.SecureView)
 
-	// AI generation (async: POST returns job_id, GET polls result)
-	api.Post("/ai/generate", authM, activityM, h.AI.Generate)
-	api.Get("/ai/status/:id", authM, activityM, h.AI.Status)
+	// AI generation is an editorial capability. The production frontend uses
+	// /dashboard/ai/*; keep the legacy authenticated endpoints permission-gated
+	// so a normal account cannot consume AI generation resources.
+	api.Post("/ai/generate", authM, activityM, middleware.Can("manage articles"), h.AI.Generate)
+	api.Get("/ai/status/:id", authM, activityM, middleware.Can("manage articles"), h.AI.Status)
 
 	// =====================
 	// ADMIN DASHBOARD ROUTES

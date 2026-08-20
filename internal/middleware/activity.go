@@ -3,16 +3,17 @@ package middleware
 import (
 	"context"
 	"math/rand"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/services"
 	"github.com/imanjo/fiber-api/internal/utils"
 	"github.com/imanjo/fiber-api/pkg/logger"
-	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
 )
 
@@ -131,6 +132,76 @@ func UpdateLastActivity() fiber.Handler {
 	}
 }
 
+const maxTrackedPageLength = 2048
+
+// normalizeFrontendPage accepts only a local public path. X-Page is analytics metadata,
+// never a redirect target, but validating it prevents arbitrary/header-controlled values
+// from being persisted as the visitor's current page.
+func normalizeFrontendPage(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || len(raw) > maxTrackedPageLength {
+		return ""
+	}
+	if !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") {
+		return ""
+	}
+	for _, r := range raw {
+		if r < 0x20 || r == 0x7f {
+			return ""
+		}
+	}
+
+	// Analytics wants the page, not query strings/fragments. This also avoids storing
+	// search terms or other URL parameters in the realtime visitor table.
+	if i := strings.IndexAny(raw, "?#"); i >= 0 {
+		raw = raw[:i]
+	}
+	if raw == "" {
+		return "/"
+	}
+
+	// Astro BFF routes are implementation details, not pages visible to the visitor.
+	if raw == "/api" || strings.HasPrefix(raw, "/api/") {
+		return ""
+	}
+
+	return raw
+}
+
+// frontendPageFromReferer is a fallback for browser requests that hit an Astro /api/* BFF.
+// In that case X-Page is the BFF route itself, while Referer identifies the actual ImanJo page.
+func frontendPageFromReferer(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+
+	host := strings.ToLower(u.Hostname())
+	if host != "imanjo.com" && host != "www.imanjo.com" {
+		return ""
+	}
+
+	return normalizeFrontendPage(u.Path)
+}
+
+// resolveVisitorPage prefers the frontend route supplied by trusted server-side Astro calls.
+// Direct API clients/bots without frontend context retain the real API path, which keeps
+// bot/direct-API activity distinguishable in analytics.
+func resolveVisitorPage(c *fiber.Ctx) string {
+	if page := normalizeFrontendPage(c.Get("X-Page")); page != "" {
+		return page
+	}
+	if page := frontendPageFromReferer(c.Get("Referer")); page != "" {
+		return page
+	}
+	return c.Path()
+}
+
 // TrackVisitor captures visitor data and enqueues it for async batch insertion.
 // The hot path is a single channel send — no goroutine, no Redis round-trip, no JSON marshal.
 func TrackVisitor() fiber.Handler {
@@ -163,12 +234,23 @@ func TrackVisitor() fiber.Handler {
 			countryCode = "jo"
 		}
 
+		// Analytics must never persist arbitrary proxy-header content as an IP.
+		// GetClientIP returns a validated canonical address; local/invalid requests
+		// are not meaningful public visitors and are skipped.
+		clientIP := utils.GetClientIP(c)
+		if clientIP == "" || utils.IsLocalhost(clientIP) {
+			return nil
+		}
+
+		// Fiber reuses request-context buffers after the handler returns.
+		// VisitorEvent is consumed asynchronously by visitorCh, so every string
+		// derived from fiber.Ctx must own its backing memory before enqueue.
 		ev := services.VisitorEvent{
-			IPAddress:    utils.GetClientIP(c),
-			UserAgent:    c.Get("User-Agent"),
-			URL:          c.Path(),
-			Referer:      c.Get("Referer"),
-			CountryCode:  countryCode,
+			IPAddress:    strings.Clone(clientIP),
+			UserAgent:    strings.Clone(c.Get("User-Agent")),
+			URL:          strings.Clone(resolveVisitorPage(c)),
+			Referer:      strings.Clone(c.Get("Referer")),
+			CountryCode:  strings.Clone(countryCode),
 			StatusCode:   statusCode,
 			ResponseTime: float64(time.Since(start).Microseconds()) / 1000.0,
 			Timestamp:    time.Now(),

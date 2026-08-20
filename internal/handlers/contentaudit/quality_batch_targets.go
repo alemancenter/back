@@ -91,7 +91,7 @@ func shouldIncludeQualityTarget(item adsenseReadinessItem, req contentQualityBat
 	case "short_file_pages":
 		return item.FilesCount > 0 && item.WordCount < 180 && item.Level != "ready"
 	case "weak_first":
-		return item.Level == "weak" || (item.Level == "review" && item.Score < 70)
+		return item.Level == "weak" || item.Level == "review"
 	default:
 		return item.Level == req.Level
 	}

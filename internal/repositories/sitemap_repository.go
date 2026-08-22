@@ -76,8 +76,8 @@ func (r *sitemapRepository) GetActivePosts(dbCode string) ([]struct {
 }
 
 // GetLatestQualityDecisions returns at most one saved audit decision per content ID.
-// Rows are ordered newest-first using the same created_at/id precedence as the
-// public quality status, then collapsed in memory to avoid DB-specific window SQL.
+// Rows are ordered newest-first with an ID tie-breaker, then collapsed in memory
+// to avoid DB-specific window-function SQL in sitemap generation.
 func (r *sitemapRepository) GetLatestQualityDecisions(dbCode, contentType string) (map[uint]models.ContentAIDecision, error) {
 	var rows []models.ContentAIDecision
 	err := database.DB().

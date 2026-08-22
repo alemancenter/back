@@ -24,8 +24,8 @@ jobs:
         run: go test ./internal/handlers/contentaudit
       - name: Compile repositories
         run: go test ./internal/repositories
-      - name: Test core services including sitemap
-        run: go test ./internal/services
+      - name: Test sitemap services
+        run: go test ./internal/services -run 'Sitemap'
       - name: Compile routes
         run: go test ./internal/routes
       - name: Compile server

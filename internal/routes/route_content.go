@@ -25,13 +25,13 @@ func registerContentRoutes(api, public, dash fiber.Router, h *Handlers) {
 	public.Get("/articles/file/:id/download", downloadGateM, activityM, h.Articles.DownloadFile)
 	public.Get("/articles/file/:id/download-url", downloadGateM, activityM, h.Articles.GetDownloadToken)
 	public.Get("/articles/:id", h.Articles.Show)
-	public.Get("/articles/:id/ad-status", h.ContentAudit.PublicAdStatus)
+	public.Get("/articles/:id/ad-status", h.ContentAudit.PublicArticleQualityStatus)
 
 	// Posts
 	public.Get("/posts", h.Posts.List)
 	public.Get("/posts/download", h.Posts.DownloadFileSigned)
 	public.Get("/posts/file/:id/download-url", downloadGateM, activityM, h.Posts.GetDownloadToken)
-	public.Get("/posts/:id/ad-status", h.ContentAudit.PublicPostAdStatus)
+	public.Get("/posts/:id/ad-status", h.ContentAudit.PublicPostQualityStatus)
 	public.Get("/posts/:id", h.Posts.Show)
 	public.Post("/posts/:id/increment-view", h.Posts.IncrementView)
 

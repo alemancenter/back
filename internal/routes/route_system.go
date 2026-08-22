@@ -112,6 +112,12 @@ func registerSystemRoutes(api, _, dash fiber.Router, h *Handlers) {
 	dashCorruption.Get("/:type/:id", h.ContentAudit.ShowCorruption)
 	dashCorruption.Post("/:type/:id/analyze", h.ContentAudit.AnalyzeCorruption)
 
+	// Duplicate/near-duplicate/template detection is a review-only operation.
+	// It never deletes, redirects, or changes SEO automatically, so the scan is
+	// exposed only to Admin and Super Admin for human editorial decisions.
+	dashSimilarity := dashContentAudit.Group("/similarity", middleware.AdminOnly())
+	dashSimilarity.Get("", h.ContentAudit.ListSimilarity)
+
 	// Security
 	dashSecurity := dash.Group("/security", middleware.Can("manage security"))
 	dashSecurity.Get("/stats", h.Security.Stats)
@@ -157,7 +163,7 @@ func registerSystemRoutes(api, _, dash fiber.Router, h *Handlers) {
 	dashRedis.Post("/legacy-ip-location/expire", h.Redis.ExpireLegacyIPLocation)
 	dashRedis.Delete("/legacy-ip-location/clean", h.Redis.CleanLegacyIPLocation)
 	dashRedis.Get("/test", h.Redis.TestConnection)
-	dashRedis.Get("/info", h.Redis.GetInfo)
+	dashRedis.Get("/info", h.Redis.Info)
 	dashRedis.Post("/env", h.Redis.UpdateEnv)
 	dashRedis.Post("/:key/expire", h.Redis.ExpireKey)
 	dashRedis.Delete("/:key", h.Redis.DeleteKey)

@@ -1,0 +1,24 @@
+name: Verify 2F Sitemap Quality Gate
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test shared quality policy
+        run: go test ./internal/contentquality ./internal/services/contentaudit
+      - name: Test sitemap quality integration
+        run: go test ./internal/services -run 'Test(SitemapQualityIndexable|QualityDecisionForSitemap|ArticleWritesScheduleSitemapRefresh|PostWritesScheduleSitemapRefresh)$'
+      - name: Compile sitemap repository package
+        run: go test ./internal/repositories

@@ -118,6 +118,14 @@ func registerSystemRoutes(api, _, dash fiber.Router, h *Handlers) {
 	dashSimilarity := dashContentAudit.Group("/similarity", middleware.AdminOnly())
 	dashSimilarity.Get("", h.ContentAudit.ListSimilarity)
 
+	// Phase 3 inventory combines quality, corruption and similarity evidence into
+	// one human review queue. NOINDEX is a safe explicit override; MERGE_301 stays
+	// a plan until a redirect target is separately executed and verified.
+	dashInventory := dashContentAudit.Group("/inventory", middleware.AdminOnly())
+	dashInventory.Get("", h.ContentAudit.ListInventory)
+	dashInventory.Post("/:type/:id/classify", h.ContentAudit.ClassifyInventoryItem)
+	dashInventory.Get("/:type/:id/history", h.ContentAudit.InventoryHistory)
+
 	// Security
 	dashSecurity := dash.Group("/security", middleware.Can("manage security"))
 	dashSecurity.Get("/stats", h.Security.Stats)

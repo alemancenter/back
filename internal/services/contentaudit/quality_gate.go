@@ -30,10 +30,11 @@ func EvaluateQualityGate(decision *models.ContentAIDecision) ContentQualityGate 
 	return contentquality.Evaluate(decision)
 }
 
-// QualityGate evaluates the latest saved audit decision and then checks the
-// current source text for deterministic corruption artifacts. A current-source
-// corruption finding always wins over an older AI approval: the page becomes
-// critical, non-indexable, and ineligible for ads until the source is fixed.
+// QualityGate evaluates the latest saved audit decision, checks current source
+// corruption, then applies the latest safe human editorial override. A current
+// corruption finding or explicit NOINDEX classification wins over an older AI
+// approval. KEEP/IMPROVE/MERGE_301 remain workflow labels and do not silently
+// change public SEO behavior.
 func (s *Service) QualityGate(ctx context.Context, contentType, contentID, countryCode string) (ContentQualityGate, error) {
 	gate := UnauditedQualityGate()
 	decision, err := s.LatestAIDecision(ctx, contentType, contentID, countryCode)
@@ -46,11 +47,19 @@ func (s *Service) QualityGate(ctx context.Context, contentType, contentID, count
 	}
 
 	cc, _, numericID := normalizeContentReference(contentID, countryCode)
-	artifacts, err := currentSourceReplacementArtifacts(ctx, normalizeContentType(contentType), cc, numericID)
+	normalizedType := normalizeContentType(contentType)
+	artifacts, err := currentSourceReplacementArtifacts(ctx, normalizedType, cc, numericID)
 	if err != nil {
 		return ContentQualityGate{}, err
 	}
-	return contentquality.ApplyReplacementArtifactGuard(gate, artifacts), nil
+	gate = contentquality.ApplyReplacementArtifactGuard(gate, artifacts)
+
+	editorial, editorialErr := s.LatestEditorialDecision(ctx, normalizedType, numericID, cc)
+	editorialName, editorialErr := editorialDecisionOrEmpty(editorial, editorialErr)
+	if editorialErr != nil {
+		return ContentQualityGate{}, editorialErr
+	}
+	return contentquality.ApplyEditorialDecision(gate, editorialName), nil
 }
 
 // currentSourceReplacementArtifacts reads the exact fields that can surface in

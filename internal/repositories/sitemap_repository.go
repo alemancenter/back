@@ -59,8 +59,23 @@ func (r *sitemapRepository) GetActiveArticles(dbCode string) ([]struct {
 		ID        uint      `gorm:"column:id"`
 		UpdatedAt time.Time `gorm:"column:updated_at"`
 	}
-	err := db.Raw("SELECT id, updated_at FROM articles WHERE status = 1").Scan(&rows).Error
-	return rows, err
+	if err := db.Raw("SELECT id, updated_at FROM articles WHERE status = 1").Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	manualNoindex, err := editorialNoindexIDs(dbCode, "article")
+	if err != nil {
+		return nil, err
+	}
+	if len(manualNoindex) == 0 {
+		return rows, nil
+	}
+	filtered := rows[:0]
+	for _, row := range rows {
+		if _, blocked := manualNoindex[row.ID]; !blocked {
+			filtered = append(filtered, row)
+		}
+	}
+	return filtered, nil
 }
 
 func (r *sitemapRepository) GetActivePosts(dbCode string) ([]struct {
@@ -74,8 +89,23 @@ func (r *sitemapRepository) GetActivePosts(dbCode string) ([]struct {
 		Slug      string    `gorm:"column:slug"`
 		UpdatedAt time.Time `gorm:"column:updated_at"`
 	}
-	err := db.Raw("SELECT id, slug, updated_at FROM posts WHERE is_active = 1").Scan(&rows).Error
-	return rows, err
+	if err := db.Raw("SELECT id, slug, updated_at FROM posts WHERE is_active = 1").Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	manualNoindex, err := editorialNoindexIDs(dbCode, "post")
+	if err != nil {
+		return nil, err
+	}
+	if len(manualNoindex) == 0 {
+		return rows, nil
+	}
+	filtered := rows[:0]
+	for _, row := range rows {
+		if _, blocked := manualNoindex[row.ID]; !blocked {
+			filtered = append(filtered, row)
+		}
+	}
+	return filtered, nil
 }
 
 // GetLatestQualityDecisions returns at most one saved audit decision per content ID.
@@ -156,6 +186,33 @@ func (r *sitemapRepository) GetCorruptedContentIDs(dbCode, contentType string) (
 		}
 	}
 	return ids, nil
+}
+
+// editorialNoindexIDs returns content whose latest human decision is NOINDEX.
+// A later classification supersedes it without deleting history.
+func editorialNoindexIDs(dbCode, contentType string) (map[uint]struct{}, error) {
+	var rows []models.ContentEditorialDecision
+	if err := database.DB().
+		Where("country_code = ? AND content_type = ?", dbCode, contentType).
+		Order("created_at DESC, id DESC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	seen := make(map[uint]struct{}, len(rows))
+	noindex := make(map[uint]struct{})
+	for _, row := range rows {
+		if row.ContentID == 0 {
+			continue
+		}
+		if _, exists := seen[row.ContentID]; exists {
+			continue
+		}
+		seen[row.ContentID] = struct{}{}
+		if strings.EqualFold(strings.TrimSpace(row.Decision), models.EditorialDecisionNoindex) {
+			noindex[row.ContentID] = struct{}{}
+		}
+	}
+	return noindex, nil
 }
 
 func (r *sitemapRepository) GetIndexableDownloads(dbCode string) ([]struct {

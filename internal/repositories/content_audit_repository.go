@@ -22,6 +22,9 @@ type ContentAuditRepository interface {
 	SaveAIDecision(ctx context.Context, decision *models.ContentAIDecision) error
 	GetAIDecision(ctx context.Context, id uint64) (*models.ContentAIDecision, error)
 	LatestAIDecision(ctx context.Context, contentType, contentID, countryCode string) (*models.ContentAIDecision, error)
+	SaveEditorialDecision(ctx context.Context, decision *models.ContentEditorialDecision) error
+	LatestEditorialDecision(ctx context.Context, contentType string, contentID uint, countryCode string) (*models.ContentEditorialDecision, error)
+	ListEditorialHistory(ctx context.Context, contentType string, contentID uint, countryCode string, limit int) ([]models.ContentEditorialDecision, error)
 	SaveFixPreview(ctx context.Context, preview *models.ContentAIFixPreview) error
 	GetFixPreview(ctx context.Context, id uint64) (*models.ContentAIFixPreview, error)
 	LatestFixPreviewByDecision(ctx context.Context, decisionID uint64) (*models.ContentAIFixPreview, error)
@@ -156,6 +159,34 @@ func (r *contentAuditRepository) LatestAIDecision(ctx context.Context, contentTy
 		return nil, err
 	}
 	return &decision, nil
+}
+
+func (r *contentAuditRepository) SaveEditorialDecision(ctx context.Context, decision *models.ContentEditorialDecision) error {
+	return database.DB().WithContext(ctx).Create(decision).Error
+}
+
+func (r *contentAuditRepository) LatestEditorialDecision(ctx context.Context, contentType string, contentID uint, countryCode string) (*models.ContentEditorialDecision, error) {
+	var decision models.ContentEditorialDecision
+	if err := database.DB().WithContext(ctx).
+		Where("country_code = ? AND content_type = ? AND content_id = ?", countryCode, contentType, contentID).
+		Order("created_at DESC, id DESC").
+		First(&decision).Error; err != nil {
+		return nil, err
+	}
+	return &decision, nil
+}
+
+func (r *contentAuditRepository) ListEditorialHistory(ctx context.Context, contentType string, contentID uint, countryCode string, limit int) ([]models.ContentEditorialDecision, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	var decisions []models.ContentEditorialDecision
+	err := database.DB().WithContext(ctx).
+		Where("country_code = ? AND content_type = ? AND content_id = ?", countryCode, contentType, contentID).
+		Order("created_at DESC, id DESC").
+		Limit(limit).
+		Find(&decisions).Error
+	return decisions, err
 }
 
 func (r *contentAuditRepository) SaveFixPreview(ctx context.Context, preview *models.ContentAIFixPreview) error {

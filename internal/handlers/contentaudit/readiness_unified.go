@@ -134,7 +134,7 @@ func latestReadinessDecisions(ctx context.Context, contentType, countryCode stri
 	return latest, nil
 }
 
-func readinessGate(decision *models.ContentAIDecision, title, content, meta, keywords string) auditservice.ContentQualityGate {
+func readinessGate(decision *models.ContentAIDecision, title, content, meta, keywords string, editorial ...*models.ContentEditorialDecision) auditservice.ContentQualityGate {
 	gate := auditservice.EvaluateQualityGate(decision)
 	artifacts := contentquality.DetectReplacementArtifacts(
 		contentquality.TextField{Name: "title", Value: title},
@@ -142,7 +142,11 @@ func readinessGate(decision *models.ContentAIDecision, title, content, meta, key
 		contentquality.TextField{Name: "meta_description", Value: meta},
 		contentquality.TextField{Name: "keywords", Value: keywords},
 	)
-	return contentquality.ApplyReplacementArtifactGuard(gate, artifacts)
+	gate = contentquality.ApplyReplacementArtifactGuard(gate, artifacts)
+	if len(editorial) > 0 && editorial[0] != nil {
+		gate = contentquality.ApplyEditorialDecision(gate, editorial[0].Decision)
+	}
+	return gate
 }
 
 func buildUnifiedReadinessItem(title, content, meta, keywords string, filesCount int, published bool, contentType string, id uint, countryCode string, gate auditservice.ContentQualityGate) unifiedReadinessItem {
@@ -255,6 +259,10 @@ func (h *Handler) AdsenseReadinessUnified(c *fiber.Ctx) error {
 		if err != nil {
 			return utils.InternalError(c, "تعذر تحميل قرارات جودة المقالات")
 		}
+		editorial, err := latestReadinessEditorialDecisions(ctx, "article", countryCode)
+		if err != nil {
+			return utils.InternalError(c, "تعذر تحميل قرارات المراجعة التحريرية للمقالات")
+		}
 		var articles []models.Article
 		q := db.WithContext(ctx).
 			Select("id", "title", "content", "meta_description", "status", "created_at").
@@ -270,7 +278,7 @@ func (h *Handler) AdsenseReadinessUnified(c *fiber.Ctx) error {
 			if article.MetaDescription != nil {
 				meta = *article.MetaDescription
 			}
-			gate := readinessGate(decisions[article.ID], article.Title, article.Content, meta, "")
+			gate := readinessGate(decisions[article.ID], article.Title, article.Content, meta, "", editorial[article.ID])
 			item := buildUnifiedReadinessItem(article.Title, article.Content, meta, "", articleFileCounts[article.ID], article.Status == 1, "article", article.ID, countryCode, gate)
 			updateUnifiedReadinessSummary(&globalSummary, item)
 			if levelFilter == "" || item.Level == levelFilter {
@@ -283,6 +291,10 @@ func (h *Handler) AdsenseReadinessUnified(c *fiber.Ctx) error {
 		decisions, err := latestReadinessDecisions(ctx, "post", countryCode)
 		if err != nil {
 			return utils.InternalError(c, "تعذر تحميل قرارات جودة المنشورات")
+		}
+		editorial, err := latestReadinessEditorialDecisions(ctx, "post", countryCode)
+		if err != nil {
+			return utils.InternalError(c, "تعذر تحميل قرارات المراجعة التحريرية للمنشورات")
 		}
 		var posts []models.Post
 		q := db.WithContext(ctx).
@@ -303,7 +315,7 @@ func (h *Handler) AdsenseReadinessUnified(c *fiber.Ctx) error {
 			if post.Keywords != nil {
 				keywords = *post.Keywords
 			}
-			gate := readinessGate(decisions[post.ID], post.Title, post.Content, meta, keywords)
+			gate := readinessGate(decisions[post.ID], post.Title, post.Content, meta, keywords, editorial[post.ID])
 			item := buildUnifiedReadinessItem(post.Title, post.Content, meta, keywords, postFileCounts[post.ID], post.IsActive, "post", post.ID, countryCode, gate)
 			updateUnifiedReadinessSummary(&globalSummary, item)
 			if levelFilter == "" || item.Level == levelFilter {

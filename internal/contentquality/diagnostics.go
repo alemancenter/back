@@ -6,10 +6,11 @@ const (
 	// The values below are editorial diagnostics only. They help reviewers find
 	// thin or incomplete pages, but they MUST NOT decide indexing or ad eligibility.
 	// Enforcement belongs exclusively to Gate in gate.go.
-	DiagnosticTitleMinChars = 20
-	DiagnosticReviewMinWords = 120
-	DiagnosticStrongMinWords = 300
-	DiagnosticMetaMinChars = 80
+	DiagnosticTitleMinChars      = 20
+	DiagnosticReviewMinWords     = 120
+	DiagnosticShortFileMaxWords  = 180
+	DiagnosticStrongMinWords     = 300
+	DiagnosticMetaMinChars       = 80
 )
 
 // Diagnostics contains reviewer-facing signals only. It deliberately has no

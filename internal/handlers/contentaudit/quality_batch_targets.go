@@ -4,16 +4,21 @@ import (
 	"context"
 	"sort"
 
+	"github.com/imanjo/fiber-api/internal/contentquality"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 )
 
-func (h *Handler) selectQualityBatchTargets(ctx context.Context, req contentQualityBatchRequest) ([]adsenseReadinessItem, error) {
+func (h *Handler) selectQualityBatchTargets(ctx context.Context, req contentQualityBatchRequest) ([]unifiedReadinessItem, error) {
 	db := database.GetManager().GetByCode(req.CountryCode)
-	articleFileCounts, postFileCounts := buildAdsenseFileCountMaps(ctx, db)
-	rows := make([]adsenseReadinessRow, 0, req.Limit)
+	articleFileCounts, postFileCounts := readinessFileCountMaps(ctx, db)
+	rows := make([]unifiedReadinessRow, 0, req.Limit)
 
 	if req.ContentType == "all" || req.ContentType == "article" {
+		decisions, err := latestReadinessDecisions(ctx, "article", req.CountryCode)
+		if err != nil {
+			return nil, err
+		}
 		var articles []models.Article
 		q := db.WithContext(ctx).
 			Select("id", "title", "content", "meta_description", "status", "created_at").
@@ -29,17 +34,22 @@ func (h *Handler) selectQualityBatchTargets(ctx context.Context, req contentQual
 			if a.MetaDescription != nil {
 				meta = *a.MetaDescription
 			}
-			item := evaluateAdsenseItem(a.Title, a.Content, meta, articleFileCounts[a.ID], a.Status == 1, "article", a.ID, req.CountryCode)
+			gate := readinessGate(decisions[a.ID], a.Title, a.Content, meta, "")
+			item := buildUnifiedReadinessItem(a.Title, a.Content, meta, "", articleFileCounts[a.ID], a.Status == 1, "article", a.ID, req.CountryCode, gate)
 			if shouldIncludeQualityTarget(item, req) {
-				rows = append(rows, adsenseReadinessRow{Item: item, CreatedAt: a.CreatedAt})
+				rows = append(rows, unifiedReadinessRow{Item: item, CreatedAt: a.CreatedAt})
 			}
 		}
 	}
 
 	if req.ContentType == "all" || req.ContentType == "post" {
+		decisions, err := latestReadinessDecisions(ctx, "post", req.CountryCode)
+		if err != nil {
+			return nil, err
+		}
 		var posts []models.Post
 		q := db.WithContext(ctx).
-			Select("id", "title", "content", "meta_description", "is_active", "created_at").
+			Select("id", "title", "content", "meta_description", "keywords", "is_active", "created_at").
 			Order("created_at DESC")
 		if req.Query != "" {
 			q = q.Where("title LIKE ?", "%"+req.Query+"%")
@@ -52,9 +62,14 @@ func (h *Handler) selectQualityBatchTargets(ctx context.Context, req contentQual
 			if p.MetaDescription != nil {
 				meta = *p.MetaDescription
 			}
-			item := evaluateAdsenseItem(p.Title, p.Content, meta, postFileCounts[p.ID], p.IsActive, "post", p.ID, req.CountryCode)
+			keywords := ""
+			if p.Keywords != nil {
+				keywords = *p.Keywords
+			}
+			gate := readinessGate(decisions[p.ID], p.Title, p.Content, meta, keywords)
+			item := buildUnifiedReadinessItem(p.Title, p.Content, meta, keywords, postFileCounts[p.ID], p.IsActive, "post", p.ID, req.CountryCode, gate)
 			if shouldIncludeQualityTarget(item, req) {
-				rows = append(rows, adsenseReadinessRow{Item: item, CreatedAt: p.CreatedAt})
+				rows = append(rows, unifiedReadinessRow{Item: item, CreatedAt: p.CreatedAt})
 			}
 		}
 	}
@@ -73,61 +88,63 @@ func (h *Handler) selectQualityBatchTargets(ctx context.Context, req contentQual
 	if len(rows) > req.Limit {
 		rows = rows[:req.Limit]
 	}
-	targets := make([]adsenseReadinessItem, 0, len(rows))
+	targets := make([]unifiedReadinessItem, 0, len(rows))
 	for _, row := range rows {
 		targets = append(targets, row.Item)
 	}
 	return targets, nil
 }
 
-func shouldIncludeQualityTarget(item adsenseReadinessItem, req contentQualityBatchRequest) bool {
+// Batch presets choose editorial work; they do not make SEO/ad decisions.
+// should_index/should_show_ads already come from the canonical Content Quality Gate.
+func shouldIncludeQualityTarget(item unifiedReadinessItem, req contentQualityBatchRequest) bool {
 	if req.Source != "adsense_readiness" || req.Preset == "custom_filter" {
 		return item.Level == req.Level
 	}
 
 	switch req.Preset {
 	case "indexed_weak":
-		return item.Level == "weak" && item.ShouldIndex
+		// Historically "weak" came from a separate score. Now target pages that
+		// remain indexable but are not ad eligible and still need editorial work.
+		return item.ShouldIndex && !item.ShouldShowAds && (!item.Audited || len(item.DiagnosticSignals) > 0)
 	case "short_file_pages":
-		return item.FilesCount > 0 && item.WordCount < 180 && item.Level != "ready"
+		return item.FilesCount > 0 && item.WordCount < contentquality.DiagnosticShortFileMaxWords && !item.ShouldShowAds
 	case "weak_first":
-		return item.Level == "weak" || item.Level == "review"
+		return !item.ShouldShowAds
 	default:
 		return item.Level == req.Level
 	}
 }
 
-func qualityTargetPriority(item adsenseReadinessItem, req contentQualityBatchRequest) int {
-	priority := 100 - item.Score
-	if item.ShouldIndex {
+func qualityTargetPriority(item unifiedReadinessItem, req contentQualityBatchRequest) int {
+	priority := 0
+	if !item.ShouldIndex {
+		priority += 100
+	}
+	if !item.ShouldShowAds {
+		priority += 50
+	}
+	if !item.Audited {
 		priority += 35
 	}
-	if item.ShouldShowAds {
-		priority += 20
-	}
+	priority += len(item.DiagnosticSignals) * 10
 	if item.FilesCount > 0 {
-		priority += 15
-	}
-	if item.WordCount < 120 {
-		priority += 25
-	} else if item.WordCount < 220 {
-		priority += 12
-	}
-	if item.Level == "weak" {
-		priority += 25
+		priority += 10
 	}
 
 	switch req.Preset {
 	case "indexed_weak":
-		if item.ShouldIndex {
-			priority += 50
+		if item.ShouldIndex && !item.ShouldShowAds {
+			priority += 60
 		}
 	case "short_file_pages":
-		if item.FilesCount > 0 && item.WordCount < 180 {
+		if item.FilesCount > 0 && item.WordCount < contentquality.DiagnosticShortFileMaxWords {
 			priority += 70
 		}
 	case "weak_first":
-		priority += 10
+		if item.Level == "weak" {
+			priority += 50
+		}
 	}
 	return priority
 }

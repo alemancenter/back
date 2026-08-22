@@ -89,7 +89,7 @@ func registerSystemRoutes(api, _, dash fiber.Router, h *Handlers) {
 	dashContentAudit.Get("/runs/:id", h.ContentAudit.ShowRun)
 	dashContentAudit.Get("/runs/:id/findings", h.ContentAudit.ListFindings)
 	dashContentAudit.Get("/runs/:id/export", h.ContentAudit.ExportCSV)
-	dashContentAudit.Get("/adsense-readiness", h.ContentAudit.AdsenseReadiness)
+	dashContentAudit.Get("/adsense-readiness", h.ContentAudit.AdsenseReadinessUnified)
 	dashContentAudit.Post("/ai/batch-jobs", h.ContentAudit.StartQualityBatch)
 	dashContentAudit.Get("/ai/batch-jobs", h.ContentAudit.ListQualityBatches)
 	dashContentAudit.Get("/ai/batch-jobs/:id", h.ContentAudit.ShowQualityBatch)

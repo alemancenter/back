@@ -1,10 +1,12 @@
 package repositories
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/imanjo/fiber-api/internal/contentquality"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 )
@@ -21,6 +23,7 @@ type SitemapRepository interface {
 		UpdatedAt time.Time `gorm:"column:updated_at"`
 	}, error)
 	GetLatestQualityDecisions(dbCode, contentType string) (map[uint]models.ContentAIDecision, error)
+	GetCorruptedContentIDs(dbCode, contentType string) (map[uint]struct{}, error)
 	GetIndexableDownloads(dbCode string) ([]struct {
 		ID        uint      `gorm:"column:id"`
 		UpdatedAt time.Time `gorm:"column:updated_at"`
@@ -107,6 +110,52 @@ func (r *sitemapRepository) GetLatestQualityDecisions(dbCode, contentType string
 		latest[id] = row
 	}
 	return latest, nil
+}
+
+// GetCorruptedContentIDs returns published content whose current source still
+// contains an unresolved replacement artifact. The SQL only prefilters rows
+// containing '$'; the canonical detector makes the final decision so sitemap,
+// public quality status and the dashboard cannot drift apart.
+func (r *sitemapRepository) GetCorruptedContentIDs(dbCode, contentType string) (map[uint]struct{}, error) {
+	db := database.GetManager().GetByCode(dbCode)
+	type candidate struct {
+		ID              uint   `gorm:"column:id"`
+		Title           string `gorm:"column:title"`
+		Content         string `gorm:"column:content"`
+		MetaDescription string `gorm:"column:meta_description"`
+		Keywords        string `gorm:"column:keywords"`
+	}
+	var rows []candidate
+	var err error
+	switch strings.ToLower(strings.TrimSpace(contentType)) {
+	case "article":
+		err = db.Raw(`SELECT id, title, content, COALESCE(meta_description, '') AS meta_description, '' AS keywords
+			FROM articles
+			WHERE status = 1 AND (title LIKE '%$%' OR content LIKE '%$%' OR COALESCE(meta_description, '') LIKE '%$%')`).Scan(&rows).Error
+	case "post":
+		err = db.Raw(`SELECT id, title, content, COALESCE(meta_description, '') AS meta_description, COALESCE(keywords, '') AS keywords
+			FROM posts
+			WHERE is_active = 1 AND (title LIKE '%$%' OR content LIKE '%$%' OR COALESCE(meta_description, '') LIKE '%$%' OR COALESCE(keywords, '') LIKE '%$%')`).Scan(&rows).Error
+	default:
+		return nil, fmt.Errorf("unsupported sitemap content type: %s", contentType)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make(map[uint]struct{})
+	for _, row := range rows {
+		artifacts := contentquality.DetectReplacementArtifacts(
+			contentquality.TextField{Name: "title", Value: row.Title},
+			contentquality.TextField{Name: "content", Value: row.Content},
+			contentquality.TextField{Name: "meta_description", Value: row.MetaDescription},
+			contentquality.TextField{Name: "keywords", Value: row.Keywords},
+		)
+		if len(artifacts) > 0 {
+			ids[row.ID] = struct{}{}
+		}
+	}
+	return ids, nil
 }
 
 func (r *sitemapRepository) GetIndexableDownloads(dbCode string) ([]struct {

@@ -24,13 +24,13 @@ type SimilarityDocument struct {
 }
 
 type SimilarityOptions struct {
-	MinWords               int
-	ShingleSize            int
-	NearThreshold           float64
-	TemplateThreshold       float64
-	TemplateContainment     float64
-	MinRareJaccard          float64
-	MinSharedRareShingles   int
+	MinWords                 int
+	ShingleSize              int
+	NearThreshold            float64
+	TemplateThreshold        float64
+	TemplateContainment      float64
+	MinRareJaccard           float64
+	MinSharedRareShingles    int
 	MaxCommonShingleFraction float64
 }
 
@@ -66,13 +66,13 @@ var similarityTagRe = regexp.MustCompile(`<[^>]+>`)
 
 func DefaultSimilarityOptions() SimilarityOptions {
 	return SimilarityOptions{
-		MinWords:                30,
-		ShingleSize:             5,
-		NearThreshold:           0.78,
-		TemplateThreshold:       0.50,
-		TemplateContainment:     0.72,
-		MinRareJaccard:          0.30,
-		MinSharedRareShingles:   6,
+		MinWords:                 30,
+		ShingleSize:              5,
+		NearThreshold:            0.78,
+		TemplateThreshold:        0.50,
+		TemplateContainment:      0.72,
+		MinRareJaccard:           0.30,
+		MinSharedRareShingles:    6,
 		MaxCommonShingleFraction: 0.08,
 	}
 }
@@ -185,6 +185,7 @@ func DetectSimilarity(documents []SimilarityDocument, options SimilarityOptions)
 				prepared[i].RareShingles[shingle] = struct{}{}
 			}
 		}
+	}
 
 	pairs := make([]SimilarityPair, 0)
 	exactPairs := make(map[indexPair]struct{})
@@ -201,9 +202,14 @@ func DetectSimilarity(documents []SimilarityDocument, options SimilarityOptions)
 				pairIndex := orderedIndexPair(indexes[x], indexes[y])
 				exactPairs[pairIndex] = struct{}{}
 				pairs = append(pairs, SimilarityPair{
-					LeftKey: prepared[pairIndex.A].Key, RightKey: prepared[pairIndex.B].Key,
-					Kind: SimilarityKindExact, Similarity: 1, Containment: 1, RareSimilarity: 1,
-					SharedShingles: len(prepared[pairIndex.A].Shingles), Fingerprint: fingerprint,
+					LeftKey:        prepared[pairIndex.A].Key,
+					RightKey:       prepared[pairIndex.B].Key,
+					Kind:           SimilarityKindExact,
+					Similarity:     1,
+					Containment:    1,
+					RareSimilarity: 1,
+					SharedShingles: len(prepared[pairIndex.A].Shingles),
+					Fingerprint:    fingerprint,
 				})
 			}
 		}
@@ -261,8 +267,12 @@ func DetectSimilarity(documents []SimilarityDocument, options SimilarityOptions)
 			continue
 		}
 		pairs = append(pairs, SimilarityPair{
-			LeftKey: left.Key, RightKey: right.Key, Kind: kind,
-			Similarity: similarity, Containment: containment, RareSimilarity: rareSimilarity,
+			LeftKey:        left.Key,
+			RightKey:       right.Key,
+			Kind:           kind,
+			Similarity:     similarity,
+			Containment:    containment,
+			RareSimilarity: rareSimilarity,
 			SharedShingles: intersection,
 		})
 	}
@@ -303,14 +313,30 @@ func orderedIndexPair(a, b int) indexPair {
 
 func normalizeSimilarityOptions(options SimilarityOptions) SimilarityOptions {
 	defaults := DefaultSimilarityOptions()
-	if options.MinWords <= 0 { options.MinWords = defaults.MinWords }
-	if options.ShingleSize <= 1 { options.ShingleSize = defaults.ShingleSize }
-	if options.NearThreshold <= 0 || options.NearThreshold > 1 { options.NearThreshold = defaults.NearThreshold }
-	if options.TemplateThreshold <= 0 || options.TemplateThreshold > 1 { options.TemplateThreshold = defaults.TemplateThreshold }
-	if options.TemplateContainment <= 0 || options.TemplateContainment > 1 { options.TemplateContainment = defaults.TemplateContainment }
-	if options.MinRareJaccard <= 0 || options.MinRareJaccard > 1 { options.MinRareJaccard = defaults.MinRareJaccard }
-	if options.MinSharedRareShingles <= 0 { options.MinSharedRareShingles = defaults.MinSharedRareShingles }
-	if options.MaxCommonShingleFraction <= 0 || options.MaxCommonShingleFraction >= 1 { options.MaxCommonShingleFraction = defaults.MaxCommonShingleFraction }
+	if options.MinWords <= 0 {
+		options.MinWords = defaults.MinWords
+	}
+	if options.ShingleSize <= 1 {
+		options.ShingleSize = defaults.ShingleSize
+	}
+	if options.NearThreshold <= 0 || options.NearThreshold > 1 {
+		options.NearThreshold = defaults.NearThreshold
+	}
+	if options.TemplateThreshold <= 0 || options.TemplateThreshold > 1 {
+		options.TemplateThreshold = defaults.TemplateThreshold
+	}
+	if options.TemplateContainment <= 0 || options.TemplateContainment > 1 {
+		options.TemplateContainment = defaults.TemplateContainment
+	}
+	if options.MinRareJaccard <= 0 || options.MinRareJaccard > 1 {
+		options.MinRareJaccard = defaults.MinRareJaccard
+	}
+	if options.MinSharedRareShingles <= 0 {
+		options.MinSharedRareShingles = defaults.MinSharedRareShingles
+	}
+	if options.MaxCommonShingleFraction <= 0 || options.MaxCommonShingleFraction >= 1 {
+		options.MaxCommonShingleFraction = defaults.MaxCommonShingleFraction
+	}
 	return options
 }
 
@@ -322,7 +348,9 @@ func makeShingleSet(words []string, size int) map[uint64]struct{} {
 	for i := 0; i <= len(words)-size; i++ {
 		h := fnv.New64a()
 		for j := 0; j < size; j++ {
-			if j > 0 { _, _ = h.Write([]byte{0}) }
+			if j > 0 {
+				_, _ = h.Write([]byte{0})
+			}
 			_, _ = h.Write([]byte(words[i+j]))
 		}
 		set[h.Sum64()] = struct{}{}
@@ -331,16 +359,22 @@ func makeShingleSet(words []string, size int) map[uint64]struct{} {
 }
 
 func setIntersectionSize(left, right map[uint64]struct{}) int {
-	if len(left) > len(right) { left, right = right, left }
+	if len(left) > len(right) {
+		left, right = right, left
+	}
 	count := 0
 	for value := range left {
-		if _, ok := right[value]; ok { count++ }
+		if _, ok := right[value]; ok {
+			count++
+		}
 	}
 	return count
 }
 
 func safeRatio(numerator, denominator int) float64 {
-	if denominator <= 0 { return 0 }
+	if denominator <= 0 {
+		return 0
+	}
 	return float64(numerator) / float64(denominator)
 }
 
@@ -362,27 +396,44 @@ func similarityKindPriority(kind string) int {
 }
 
 func clusterSimilarityPairs(pairs []SimilarityPair) []SimilarityCluster {
-	if len(pairs) == 0 { return nil }
+	if len(pairs) == 0 {
+		return nil
+	}
 	parent := make(map[string]string)
 	var find func(string) string
 	find = func(key string) string {
 		p, ok := parent[key]
-		if !ok { parent[key] = key; return key }
-		if p != key { parent[key] = find(p) }
+		if !ok {
+			parent[key] = key
+			return key
+		}
+		if p != key {
+			parent[key] = find(p)
+		}
 		return parent[key]
 	}
 	union := func(a, b string) {
 		ra, rb := find(a), find(b)
-		if ra == rb { return }
-		if ra < rb { parent[rb] = ra } else { parent[ra] = rb }
+		if ra == rb {
+			return
+		}
+		if ra < rb {
+			parent[rb] = ra
+		} else {
+			parent[ra] = rb
+		}
 	}
-	for _, pair := range pairs { union(pair.LeftKey, pair.RightKey) }
+	for _, pair := range pairs {
+		union(pair.LeftKey, pair.RightKey)
+	}
 
 	membersByRoot := make(map[string]map[string]struct{})
 	pairsByRoot := make(map[string][]SimilarityPair)
 	for _, pair := range pairs {
 		root := find(pair.LeftKey)
-		if membersByRoot[root] == nil { membersByRoot[root] = make(map[string]struct{}) }
+		if membersByRoot[root] == nil {
+			membersByRoot[root] = make(map[string]struct{})
+		}
 		membersByRoot[root][pair.LeftKey] = struct{}{}
 		membersByRoot[root][pair.RightKey] = struct{}{}
 		pairsByRoot[root] = append(pairsByRoot[root], pair)
@@ -391,28 +442,42 @@ func clusterSimilarityPairs(pairs []SimilarityPair) []SimilarityCluster {
 	clusters := make([]SimilarityCluster, 0, len(membersByRoot))
 	for root, memberSet := range membersByRoot {
 		members := make([]string, 0, len(memberSet))
-		for member := range memberSet { members = append(members, member) }
+		for member := range memberSet {
+			members = append(members, member)
+		}
 		sort.Strings(members)
 		clusterPairs := pairsByRoot[root]
 		kind := SimilarityKindTemplate
 		maxSimilarity := 0.0
 		minSimilarity := 1.0
 		for _, pair := range clusterPairs {
-			if similarityKindPriority(pair.Kind) > similarityKindPriority(kind) { kind = pair.Kind }
-			if pair.Similarity > maxSimilarity { maxSimilarity = pair.Similarity }
-			if pair.Similarity < minSimilarity { minSimilarity = pair.Similarity }
+			if similarityKindPriority(pair.Kind) > similarityKindPriority(kind) {
+				kind = pair.Kind
+			}
+			if pair.Similarity > maxSimilarity {
+				maxSimilarity = pair.Similarity
+			}
+			if pair.Similarity < minSimilarity {
+				minSimilarity = pair.Similarity
+			}
 		}
 		idHash := sha256.Sum256([]byte(strings.Join(members, "|")))
 		clusters = append(clusters, SimilarityCluster{
-			ID: hex.EncodeToString(idHash[:])[:16], Kind: kind, Members: members, Pairs: clusterPairs,
-			MaxSimilarity: maxSimilarity, MinSimilarity: minSimilarity,
+			ID:            hex.EncodeToString(idHash[:])[:16],
+			Kind:          kind,
+			Members:       members,
+			Pairs:         clusterPairs,
+			MaxSimilarity: maxSimilarity,
+			MinSimilarity: minSimilarity,
 		})
 	}
 	sort.Slice(clusters, func(i, j int) bool {
 		if similarityKindPriority(clusters[i].Kind) != similarityKindPriority(clusters[j].Kind) {
 			return similarityKindPriority(clusters[i].Kind) > similarityKindPriority(clusters[j].Kind)
 		}
-		if clusters[i].MaxSimilarity != clusters[j].MaxSimilarity { return clusters[i].MaxSimilarity > clusters[j].MaxSimilarity }
+		if clusters[i].MaxSimilarity != clusters[j].MaxSimilarity {
+			return clusters[i].MaxSimilarity > clusters[j].MaxSimilarity
+		}
 		return clusters[i].ID < clusters[j].ID
 	})
 	return clusters

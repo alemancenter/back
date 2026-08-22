@@ -180,9 +180,17 @@ func (s *sitemapService) GenerateAll(dbCode string) []error {
 			errs[0] = err
 			return
 		}
+		corrupted, err := s.repo.GetCorruptedContentIDs(dbCode, "article")
+		if err != nil {
+			errs[0] = err
+			return
+		}
 		set := urlSet{Xmlns: "http://www.sitemaps.org/schemas/sitemap/0.9"}
 		for _, r := range rows {
 			if !sitemapQualityIndexable(qualityDecisionForSitemap(decisions, r.ID)) {
+				continue
+			}
+			if _, blocked := corrupted[r.ID]; blocked {
 				continue
 			}
 			set.URLs = append(set.URLs, urlEntry{
@@ -209,9 +217,17 @@ func (s *sitemapService) GenerateAll(dbCode string) []error {
 			errs[1] = err
 			return
 		}
+		corrupted, err := s.repo.GetCorruptedContentIDs(dbCode, "post")
+		if err != nil {
+			errs[1] = err
+			return
+		}
 		set := urlSet{Xmlns: "http://www.sitemaps.org/schemas/sitemap/0.9"}
 		for _, r := range rows {
 			if !sitemapQualityIndexable(qualityDecisionForSitemap(decisions, r.ID)) {
+				continue
+			}
+			if _, blocked := corrupted[r.ID]; blocked {
 				continue
 			}
 			set.URLs = append(set.URLs, urlEntry{

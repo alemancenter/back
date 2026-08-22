@@ -163,7 +163,7 @@ func registerSystemRoutes(api, _, dash fiber.Router, h *Handlers) {
 	dashRedis.Post("/legacy-ip-location/expire", h.Redis.ExpireLegacyIPLocation)
 	dashRedis.Delete("/legacy-ip-location/clean", h.Redis.CleanLegacyIPLocation)
 	dashRedis.Get("/test", h.Redis.TestConnection)
-	dashRedis.Get("/info", h.Redis.Info)
+	dashRedis.Get("/info", h.Redis.GetInfo)
 	dashRedis.Post("/env", h.Redis.UpdateEnv)
 	dashRedis.Post("/:key/expire", h.Redis.ExpireKey)
 	dashRedis.Delete("/:key", h.Redis.DeleteKey)

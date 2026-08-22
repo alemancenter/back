@@ -1,0 +1,24 @@
+name: Verify Similarity Detector
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test content quality similarity engine
+        run: go test ./internal/contentquality
+      - name: Compile content audit handler
+        run: go test ./internal/handlers/contentaudit
+      - name: Compile routes
+        run: go test ./internal/routes

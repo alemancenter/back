@@ -28,16 +28,29 @@ func EvaluateQualityGate(decision *models.ContentAIDecision) ContentQualityGate 
 	return contentquality.Evaluate(decision)
 }
 
-// QualityGate loads the latest saved audit decision and evaluates it. A missing
-// decision is a normal unaudited state; infrastructure/database errors remain
-// errors so callers can fail closed rather than silently permitting ads.
+// QualityGate evaluates the latest saved audit decision and then checks the
+// current source text for deterministic corruption artifacts. A current-source
+// corruption finding always wins over an older AI approval: the page becomes
+// critical, non-indexable, and ineligible for ads until the source is fixed.
 func (s *Service) QualityGate(ctx context.Context, contentType, contentID, countryCode string) (ContentQualityGate, error) {
+	gate := UnauditedQualityGate()
 	decision, err := s.LatestAIDecision(ctx, contentType, contentID, countryCode)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return UnauditedQualityGate(), nil
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return ContentQualityGate{}, err
 		}
+	} else {
+		gate = EvaluateQualityGate(decision)
+	}
+
+	cc, _, numericID := normalizeContentReference(contentID, countryCode)
+	content, err := s.loadContentByRef(ctx, normalizeContentType(contentType), cc, numericID)
+	if err != nil {
 		return ContentQualityGate{}, err
 	}
-	return EvaluateQualityGate(decision), nil
+	artifacts := contentquality.DetectReplacementArtifacts(
+		contentquality.TextField{Name: "title", Value: content.Title},
+		contentquality.TextField{Name: "content", Value: content.Content},
+	)
+	return contentquality.ApplyReplacementArtifactGuard(gate, artifacts), nil
 }

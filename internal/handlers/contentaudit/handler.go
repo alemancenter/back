@@ -269,7 +269,7 @@ func (h *Handler) RejectFix(c *fiber.Ctx) error {
 }
 
 // PublicAdStatus returns ad eligibility for a content item.
-// Intended for public article pages — returns only adsense_risk and eligible fields.
+// Intended for public article pages — returns only restricted eligibility fields.
 // No full decision data is exposed.
 func (h *Handler) PublicAdStatus(c *fiber.Ctx) error {
 	return h.publicAdStatus(c, "article")
@@ -291,8 +291,21 @@ func (h *Handler) publicAdStatus(c *fiber.Ctx, contentType string) error {
 
 	decision, err := h.svc.LatestAIDecision(ctx, contentType, strconv.FormatUint(id, 10), countryCode)
 	if err != nil {
-		// No decision found → default to eligible (ads shown until audit flags it)
-		return utils.Success(c, "success", fiber.Map{"eligible": true, "adsense_risk": "none"})
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return utils.Success(c, "success", fiber.Map{
+				"eligible":     false,
+				"adsense_risk": "unknown",
+				"audited":      false,
+			})
+		}
+
+		logger.Error("failed to load public ad eligibility",
+			zap.String("content_type", contentType),
+			zap.Uint64("content_id", id),
+			zap.String("country_code", countryCode),
+			zap.Error(err),
+		)
+		return utils.InternalError(c, "failed to load ad eligibility")
 	}
 
 	eligible := decision.AdSenseRisk != "high" &&
@@ -302,6 +315,7 @@ func (h *Handler) publicAdStatus(c *fiber.Ctx, contentType string) error {
 	return utils.Success(c, "success", fiber.Map{
 		"eligible":     eligible,
 		"adsense_risk": decision.AdSenseRisk,
+		"audited":      true,
 	})
 }
 

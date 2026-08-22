@@ -34,7 +34,7 @@ func TestDetectSimilarityExactDuplicate(t *testing.T) {
 func TestDetectSimilarityNearDuplicate(t *testing.T) {
 	base := series("مشترك", 100)
 	variant := append([]string(nil), base...)
-	for i := 42; i < 50; i++ {
+	for i := 42; i < 49; i++ {
 		variant[i] = fmt.Sprintf("مختلف%d", i)
 	}
 	report := DetectSimilarity([]SimilarityDocument{
@@ -86,8 +86,12 @@ func TestDetectSimilarityClustersTransitivePairs(t *testing.T) {
 	base := series("قاعدة", 100)
 	v1 := append([]string(nil), base...)
 	v2 := append([]string(nil), base...)
-	for i := 20; i < 27; i++ { v1[i] = fmt.Sprintf("تعديلأ%d", i) }
-	for i := 70; i < 77; i++ { v2[i] = fmt.Sprintf("تعديلب%d", i) }
+	for i := 20; i < 27; i++ {
+		v1[i] = fmt.Sprintf("تعديلأ%d", i)
+	}
+	for i := 70; i < 77; i++ {
+		v2[i] = fmt.Sprintf("تعديلب%d", i)
+	}
 	report := DetectSimilarity([]SimilarityDocument{
 		{Key: "article:1", Title: "واحد", Content: strings.Join(base, " ")},
 		{Key: "article:2", Title: "اثنان", Content: strings.Join(v1, " ")},

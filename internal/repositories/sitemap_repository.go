@@ -24,6 +24,7 @@ type SitemapRepository interface {
 	}, error)
 	GetLatestQualityDecisions(dbCode, contentType string) (map[uint]models.ContentAIDecision, error)
 	GetCorruptedContentIDs(dbCode, contentType string) (map[uint]struct{}, error)
+	GetEditorialNoindexIDs(dbCode, contentType string) (map[uint]struct{}, error)
 	GetIndexableDownloads(dbCode string) ([]struct {
 		ID        uint      `gorm:"column:id"`
 		UpdatedAt time.Time `gorm:"column:updated_at"`
@@ -156,6 +157,35 @@ func (r *sitemapRepository) GetCorruptedContentIDs(dbCode, contentType string) (
 		}
 	}
 	return ids, nil
+}
+
+// GetEditorialNoindexIDs returns content whose latest human editorial decision
+// is NOINDEX. Because decisions are append-only, a later KEEP/IMPROVE/unclassified
+// decision cleanly removes an older NOINDEX from enforcement without deleting
+// the audit history.
+func (r *sitemapRepository) GetEditorialNoindexIDs(dbCode, contentType string) (map[uint]struct{}, error) {
+	var rows []models.ContentEditorialDecision
+	if err := database.DB().
+		Where("country_code = ? AND content_type = ?", dbCode, contentType).
+		Order("created_at DESC, id DESC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	seen := make(map[uint]struct{}, len(rows))
+	noindex := make(map[uint]struct{})
+	for _, row := range rows {
+		if row.ContentID == 0 {
+			continue
+		}
+		if _, exists := seen[row.ContentID]; exists {
+			continue
+		}
+		seen[row.ContentID] = struct{}{}
+		if strings.EqualFold(strings.TrimSpace(row.Decision), models.EditorialDecisionNoindex) {
+			noindex[row.ContentID] = struct{}{}
+		}
+	}
+	return noindex, nil
 }
 
 func (r *sitemapRepository) GetIndexableDownloads(dbCode string) ([]struct {

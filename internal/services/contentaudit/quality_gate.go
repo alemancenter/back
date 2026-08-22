@@ -69,9 +69,15 @@ func currentSourceReplacementArtifacts(ctx context.Context, contentType, country
 	var err error
 	switch strings.ToLower(strings.TrimSpace(contentType)) {
 	case "article":
-		err = db.Raw(`SELECT title, content, COALESCE(meta_description, '') AS meta_description, '' AS keywords FROM articles WHERE id = ? LIMIT 1`, id).Scan(&row).Error
+		err = db.Table("articles").
+			Select("title, content, COALESCE(meta_description, '') AS meta_description, '' AS keywords").
+			Where("id = ?", id).
+			Take(&row).Error
 	case "post":
-		err = db.Raw(`SELECT title, content, COALESCE(meta_description, '') AS meta_description, COALESCE(keywords, '') AS keywords FROM posts WHERE id = ? LIMIT 1`, id).Scan(&row).Error
+		err = db.Table("posts").
+			Select("title, content, COALESCE(meta_description, '') AS meta_description, COALESCE(keywords, '') AS keywords").
+			Where("id = ?", id).
+			Take(&row).Error
 	default:
 		return nil, ErrUnsupportedContentType
 	}

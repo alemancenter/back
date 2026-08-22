@@ -3,6 +3,7 @@ package contentaudit
 import (
 	"context"
 	"sort"
+	"strconv"
 
 	"github.com/imanjo/fiber-api/internal/contentquality"
 	"github.com/imanjo/fiber-api/internal/database"
@@ -24,7 +25,11 @@ func (h *Handler) selectQualityBatchTargets(ctx context.Context, req contentQual
 			Select("id", "title", "content", "meta_description", "status", "created_at").
 			Order("created_at DESC")
 		if req.Query != "" {
-			q = q.Where("title LIKE ?", "%"+req.Query+"%")
+			if id, err := strconv.ParseUint(req.Query, 10, 64); err == nil && id > 0 {
+				q = q.Where("id = ?", id)
+			} else {
+				q = q.Where("title LIKE ?", "%"+req.Query+"%")
+			}
 		}
 		if err := q.Find(&articles).Error; err != nil {
 			return nil, err
@@ -52,7 +57,11 @@ func (h *Handler) selectQualityBatchTargets(ctx context.Context, req contentQual
 			Select("id", "title", "content", "meta_description", "keywords", "is_active", "created_at").
 			Order("created_at DESC")
 		if req.Query != "" {
-			q = q.Where("title LIKE ?", "%"+req.Query+"%")
+			if id, err := strconv.ParseUint(req.Query, 10, 64); err == nil && id > 0 {
+				q = q.Where("id = ?", id)
+			} else {
+				q = q.Where("title LIKE ?", "%"+req.Query+"%")
+			}
 		}
 		if err := q.Find(&posts).Error; err != nil {
 			return nil, err
@@ -98,6 +107,13 @@ func (h *Handler) selectQualityBatchTargets(ctx context.Context, req contentQual
 // Batch presets choose editorial work; they do not make SEO/ad decisions.
 // should_index/should_show_ads already come from the canonical Content Quality Gate.
 func shouldIncludeQualityTarget(item unifiedReadinessItem, req contentQualityBatchRequest) bool {
+	// The dashboard's custom filter has a hidden legacy level=weak field. When an
+	// operator supplies an explicit query, the query itself is the intended scope,
+	// so do not silently discard an exact title/ID match because its readiness
+	// level is review/ready. Without a query, preserve the existing level behavior.
+	if req.Preset == "custom_filter" && req.Query != "" {
+		return true
+	}
 	if req.Source != "adsense_readiness" || req.Preset == "custom_filter" {
 		return item.Level == req.Level
 	}

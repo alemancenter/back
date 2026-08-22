@@ -222,13 +222,13 @@ func (h *Handler) processQualityBatchItem(jobID string, itemIndex int) {
 	previewID := uint(0)
 	message := "تم إنشاء تحليل الجودة والسياسات"
 	if mode == "fix_preview" || mode == "full_review" {
-		preview, previewErr := h.svc.CreateFixPreview(ctx, uint64(decision.ID))
+		preview, previewErr := h.svc.CreateGroundedFixPreview(ctx, uint64(decision.ID))
 		if previewErr != nil {
-			finishQualityBatchItem(jobID, itemIndex, models.ContentAIJobItemStatusFailed, fmt.Sprintf("تم التحليل لكن فشل إنشاء معاينة التحسين: %v", previewErr), &decisionID, nil, decision.Score)
+			finishQualityBatchItem(jobID, itemIndex, models.ContentAIJobItemStatusFailed, fmt.Sprintf("تم التحليل لكن فشل إنشاء معاينة التحسين الموثق: %v", previewErr), &decisionID, nil, decision.Score)
 			return
 		}
 		previewID = preview.ID
-		message = "تم إنشاء تحليل ومعاينة تحسين بانتظار المراجعة البشرية"
+		message = "تم إنشاء تحليل ومعاينة تحسين موثقة بالأدلة بانتظار المراجعة البشرية"
 	}
 	finishQualityBatchItem(jobID, itemIndex, models.ContentAIJobItemStatusCompleted, message, &decisionID, optionalUint(previewID), decision.Score)
 }

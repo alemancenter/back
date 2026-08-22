@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/imanjo/fiber-api/internal/config"
+	"github.com/imanjo/fiber-api/internal/contentquality"
+	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/repositories"
 	"github.com/imanjo/fiber-api/pkg/logger"
 	"go.uber.org/zap"
@@ -120,6 +122,18 @@ func (s *sitemapService) fileInfo(path string) (exists bool, lastMod string, siz
 	return true, info.ModTime().UTC().Format(time.RFC3339), info.Size(), entries
 }
 
+func sitemapQualityIndexable(decision *models.ContentAIDecision) bool {
+	return contentquality.Evaluate(decision).Indexable
+}
+
+func qualityDecisionForSitemap(decisions map[uint]models.ContentAIDecision, id uint) *models.ContentAIDecision {
+	decision, ok := decisions[id]
+	if !ok {
+		return nil
+	}
+	return &decision
+}
+
 func (s *sitemapService) GetStatus(dbCode string) map[string]SitemapInfo {
 	types := []string{"articles", "post", "static", "index"}
 	baseURL := s.siteURL()
@@ -161,8 +175,16 @@ func (s *sitemapService) GenerateAll(dbCode string) []error {
 			errs[0] = err
 			return
 		}
+		decisions, err := s.repo.GetLatestQualityDecisions(dbCode, "article")
+		if err != nil {
+			errs[0] = err
+			return
+		}
 		set := urlSet{Xmlns: "http://www.sitemaps.org/schemas/sitemap/0.9"}
 		for _, r := range rows {
+			if !sitemapQualityIndexable(qualityDecisionForSitemap(decisions, r.ID)) {
+				continue
+			}
 			set.URLs = append(set.URLs, urlEntry{
 				Loc:        fmt.Sprintf("%s/%s/lesson/articles/%d", base, cc, r.ID),
 				LastMod:    r.UpdatedAt.UTC().Format(time.RFC3339),
@@ -182,8 +204,16 @@ func (s *sitemapService) GenerateAll(dbCode string) []error {
 			errs[1] = err
 			return
 		}
+		decisions, err := s.repo.GetLatestQualityDecisions(dbCode, "post")
+		if err != nil {
+			errs[1] = err
+			return
+		}
 		set := urlSet{Xmlns: "http://www.sitemaps.org/schemas/sitemap/0.9"}
 		for _, r := range rows {
+			if !sitemapQualityIndexable(qualityDecisionForSitemap(decisions, r.ID)) {
+				continue
+			}
 			set.URLs = append(set.URLs, urlEntry{
 				Loc:        fmt.Sprintf("%s/%s/posts/%d", base, cc, r.ID),
 				LastMod:    r.UpdatedAt.UTC().Format(time.RFC3339),

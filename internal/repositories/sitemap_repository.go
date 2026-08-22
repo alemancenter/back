@@ -1,6 +1,8 @@
 package repositories
 
 import (
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/imanjo/fiber-api/internal/database"
@@ -18,6 +20,7 @@ type SitemapRepository interface {
 		Slug      string    `gorm:"column:slug"`
 		UpdatedAt time.Time `gorm:"column:updated_at"`
 	}, error)
+	GetLatestQualityDecisions(dbCode, contentType string) (map[uint]models.ContentAIDecision, error)
 	GetIndexableDownloads(dbCode string) ([]struct {
 		ID        uint      `gorm:"column:id"`
 		UpdatedAt time.Time `gorm:"column:updated_at"`
@@ -70,6 +73,40 @@ func (r *sitemapRepository) GetActivePosts(dbCode string) ([]struct {
 	}
 	err := db.Raw("SELECT id, slug, updated_at FROM posts WHERE is_active = 1").Scan(&rows).Error
 	return rows, err
+}
+
+// GetLatestQualityDecisions returns at most one saved audit decision per content ID.
+// Rows are ordered newest-first with an ID tie-breaker, then collapsed in memory
+// to avoid DB-specific window-function SQL in sitemap generation.
+func (r *sitemapRepository) GetLatestQualityDecisions(dbCode, contentType string) (map[uint]models.ContentAIDecision, error) {
+	var rows []models.ContentAIDecision
+	err := database.DB().
+		Select("id, content_type, content_id, country_code, decision, adsense_risk, score, created_at").
+		Where("content_type = ? AND country_code = ?", contentType, dbCode).
+		Order("created_at DESC, id DESC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	latest := make(map[uint]models.ContentAIDecision, len(rows))
+	for _, row := range rows {
+		rawID := strings.TrimSpace(row.ContentID)
+		if strings.Contains(rawID, ":") {
+			parts := strings.Split(rawID, ":")
+			rawID = parts[len(parts)-1]
+		}
+		parsed, parseErr := strconv.ParseUint(rawID, 10, 64)
+		if parseErr != nil || parsed == 0 {
+			continue
+		}
+		id := uint(parsed)
+		if _, exists := latest[id]; exists {
+			continue
+		}
+		latest[id] = row
+	}
+	return latest, nil
 }
 
 func (r *sitemapRepository) GetIndexableDownloads(dbCode string) ([]struct {

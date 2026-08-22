@@ -18,15 +18,6 @@ func loadInventorySources(ctx context.Context, country, contentType string) ([]i
 	items := make([]inventorySource, 0, 512)
 
 	if contentType == "all" || contentType == "article" {
-		type row struct {
-			ID              uint
-			Title           string
-			Content         string
-			MetaDescription string `gorm:"column:meta_description"`
-			Published       bool
-			Visits          int
-			CreatedAt       string `gorm:"-"`
-		}
 		var articles []models.Article
 		if err := db.WithContext(ctx).
 			Select("id", "title", "content", "meta_description", "status", "visit_count", "created_at", "updated_at").

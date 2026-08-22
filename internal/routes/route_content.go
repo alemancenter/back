@@ -67,7 +67,7 @@ func registerContentRoutes(api, public, dash fiber.Router, h *Handlers) {
 	api.Post("/upload/file", authM, activityM, h.Files.UploadDocument)
 
 	// Secure file view
-	api.Get("/secure/view", authM, h.Files.SecureView)
+	api.Get("/secure/view", authM, activityM, h.Files.SecureView)
 
 	// AI generation is an editorial capability. The production frontend uses
 	// /dashboard/ai/*; keep the legacy authenticated endpoints permission-gated

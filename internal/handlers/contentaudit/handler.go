@@ -197,14 +197,17 @@ func (h *Handler) CreateFixPreview(c *fiber.Ctx) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 360*time.Second)
 	defer cancel()
 	ctx = auditservice.WithAIModelStrategy(ctx, req.ModelStrategy)
-	preview, err := h.svc.CreateFixPreview(ctx, req.DecisionID)
+	preview, err := h.svc.CreateGroundedFixPreview(ctx, req.DecisionID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return utils.NotFound(c)
 		}
-		return utils.InternalError(c, "failed to create AI fix preview: "+err.Error())
+		if errors.Is(err, auditservice.ErrGroundedSourceInsufficient) || errors.Is(err, auditservice.ErrGroundedValidationFailed) || errors.Is(err, auditservice.ErrGroundedAIUnavailable) {
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(utils.APIResponse{Success: false, Message: err.Error()})
+		}
+		return utils.InternalError(c, "failed to create grounded AI fix preview: "+err.Error())
 	}
-	return utils.Created(c, "AI fix preview created", preview)
+	return utils.Created(c, "grounded AI fix preview created", preview)
 }
 
 func (h *Handler) ShowFixPreview(c *fiber.Ctx) error {
@@ -231,17 +234,17 @@ func (h *Handler) ApplyFix(c *fiber.Ctx) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	preview, err := h.svc.ApplyFix(ctx, req.FixPreviewID, currentUserID(c), req.Note)
+	preview, err := h.svc.ApplyGroundedFix(ctx, req.FixPreviewID, currentUserID(c), req.Note)
 	if err != nil {
-		if errors.Is(err, auditservice.ErrFixAlreadyClosed) || errors.Is(err, auditservice.ErrUnsupportedContentType) {
+		if errors.Is(err, auditservice.ErrFixAlreadyClosed) || errors.Is(err, auditservice.ErrUnsupportedContentType) || errors.Is(err, auditservice.ErrUngroundedFixPreview) || errors.Is(err, auditservice.ErrGroundedValidationFailed) {
 			return utils.BadRequest(c, err.Error())
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return utils.NotFound(c)
 		}
-		return utils.InternalError(c, "failed to apply AI fix")
+		return utils.InternalError(c, "failed to apply grounded AI fix")
 	}
-	return utils.Success(c, "AI fix applied", preview)
+	return utils.Success(c, "grounded AI fix applied", preview)
 }
 
 func (h *Handler) RejectFix(c *fiber.Ctx) error {

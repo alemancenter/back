@@ -1,0 +1,28 @@
+name: Verify Quality Metrics Cleanup
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test central quality and diagnostics
+        run: go test ./internal/contentquality
+      - name: Test content audit services and handlers
+        run: go test ./internal/services/contentaudit ./internal/handlers/contentaudit
+      - name: Compile repositories
+        run: go test ./internal/repositories
+      - name: Test sitemap integration
+        run: go test ./internal/services -run 'Test(SitemapQualityIndexable|QualityDecisionForSitemap|ArticleWritesScheduleSitemapRefresh|PostWritesScheduleSitemapRefresh)$'
+      - name: Compile route wiring
+        run: go test ./internal/routes

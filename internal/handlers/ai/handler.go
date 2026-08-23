@@ -1,12 +1,14 @@
 package ai
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
 	"strings"
 
 	"github.com/imanjo/fiber-api/internal/services"
+	"github.com/imanjo/fiber-api/internal/services/contentaudit"
 	"github.com/imanjo/fiber-api/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -14,12 +16,14 @@ import (
 
 // Handler contains AI route handlers.
 type Handler struct {
-	svc services.AIService
+	svc         services.AIService
+	groundedSvc *contentaudit.Service
 }
 
-// New creates a new AI Handler.
-func New(svc services.AIService) *Handler {
-	return &Handler{svc: svc}
+// New creates a new AI Handler. groundedSvc powers the file-grounded generation path (used
+// when GenerateRequest.FileIDs is non-empty); svc remains the fallback title-only generator.
+func New(svc services.AIService, groundedSvc *contentaudit.Service) *Handler {
+	return &Handler{svc: svc, groundedSvc: groundedSvc}
 }
 
 type GenerateRequest struct {
@@ -27,6 +31,7 @@ type GenerateRequest struct {
 	ContentType       string `json:"content_type"` // "article" (default) or "post"
 	CountryCode       string `json:"country_code,omitempty"`
 	Country           string `json:"country,omitempty"`
+	FileIDs           []uint `json:"file_ids,omitempty"`
 	GradeLevel        string `json:"grade_level,omitempty"`
 	GradeName         string `json:"grade_name,omitempty"`
 	SubjectID         string `json:"subject_id,omitempty"`
@@ -71,6 +76,7 @@ func (h *Handler) Generate(c *fiber.Ctx) error {
 	jobID := uuid.New().String()
 	store := services.GetAIJobStore()
 	store.Create(jobID)
+	fileIDs := req.FileIDs
 
 	go func() {
 		defer func() {
@@ -80,11 +86,32 @@ func (h *Handler) Generate(c *fiber.Ctx) error {
 			}
 		}()
 
-		article, err := h.svc.GenerateSEOArticleWithContext(title, contentType, generationContext)
-		if err != nil {
-			log.Printf("AI generation failed | job=%s | title=%q | error=%v", jobID, title, err)
-			store.Fail(jobID, clientAIErrorMessage(err))
-			return
+		var article interface{}
+		var err error
+		if len(fileIDs) > 0 && h.groundedSvc != nil {
+			article, err = h.groundedSvc.GenerateGroundedDraft(context.Background(), contentaudit.GroundedGenerateRequest{
+				Title:             title,
+				ContentType:       contentType,
+				CountryCode:       generationContext.CountryCode,
+				FileIDs:           fileIDs,
+				GradeName:         generationContext.GradeName,
+				SubjectName:       generationContext.SubjectName,
+				SemesterName:      generationContext.SemesterName,
+				CategoryName:      generationContext.CategoryName,
+				CurriculumContext: generationContext.CurriculumContext,
+			})
+			if err != nil {
+				log.Printf("grounded AI generation failed | job=%s | title=%q | error=%v", jobID, title, err)
+				store.Fail(jobID, err.Error())
+				return
+			}
+		} else {
+			article, err = h.svc.GenerateSEOArticleWithContext(title, contentType, generationContext)
+			if err != nil {
+				log.Printf("AI generation failed | job=%s | title=%q | error=%v", jobID, title, err)
+				store.Fail(jobID, clientAIErrorMessage(err))
+				return
+			}
 		}
 		articleJSON, err := json.Marshal(article)
 		if err != nil {

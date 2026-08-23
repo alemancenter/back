@@ -191,7 +191,7 @@ func NewDependencies() *Handlers {
 		Health:              health.New(healthSvc),
 		Home:                home.New(homeSvc),
 		Keywords:            keywords.New(keywordSvc),
-		AI:                  ai.New(aiSvc),
+		AI:                  ai.New(aiSvc, contentAuditSvc),
 		ContentAudit:        contentauditHandler.New(contentAuditSvc),
 		EmailVerify:         emailverification.New(emailVerifySvc),
 		EmailBounce:         emailbounce.New(bounceReader),

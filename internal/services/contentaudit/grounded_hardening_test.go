@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/imanjo/fiber-api/internal/fileextract"
 )
 
 func TestRepairGroundedJSONControlCharsRawNewline(t *testing.T) {
@@ -196,7 +198,7 @@ func TestExtractDOCXTextReadsPast64KiBRawXML(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	extracted, err := extractDOCXText(path)
+	extracted, err := fileextract.ExtractDOCXText(path)
 	if err != nil {
 		t.Fatalf("extract DOCX: %v", err)
 	}

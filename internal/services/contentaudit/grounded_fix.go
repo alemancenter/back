@@ -1,16 +1,10 @@
 package contentaudit
 
 import (
-	"archive/zip"
-	"bytes"
 	"context"
 	"encoding/json"
-	"encoding/xml"
 	"errors"
 	"fmt"
-	"io"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -18,7 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/imanjo/fiber-api/internal/config"
 	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/fileextract"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/utils"
 	"gorm.io/gorm"
@@ -35,8 +31,6 @@ const (
 	groundingSummaryPrefix = "[GROUNDING_V2]"
 	groundingMinScore      = 90
 	groundingPromptVersion = "grounded-content-repair-v2"
-	groundingReadLimit     = int64(64 * 1024)
-	groundingDOCXXMLLimit  = int64(16 * 1024 * 1024)
 	groundingEvidenceLimit = 12000
 	// Attachments are the richest, most substantive source available (a real worksheet/PDF,
 	// not just the page's own possibly-thin existing body text), so they get a higher ceiling
@@ -474,7 +468,7 @@ func buildGroundedSourcePack(content *groundedLoadedContent) groundedSourcePack 
 	for _, file := range files {
 		meta := attachmentMetadata(file)
 		pack.Evidence = append(pack.Evidence, groundedEvidence{ID: fmt.Sprintf("attachment:%d:meta", file.ID), Kind: "attachment_metadata", Label: "بيانات المرفق " + firstNonEmptyLocal(file.FileName, filepath.Base(file.FilePath)), Text: meta, Verified: true})
-		if extracted, ok := readAttachmentEvidence(file); ok {
+		if extracted, ok := fileextract.ReadAttachmentEvidence(file, config.Get().Storage.Path); ok {
 			pack.Evidence = append(pack.Evidence, groundedEvidence{ID: fmt.Sprintf("attachment:%d:text", file.ID), Kind: "attachment_text", Label: "نص مستخرج من المرفق " + firstNonEmptyLocal(file.FileName, filepath.Base(file.FilePath)), Text: truncateAttachmentEvidence(extracted), Verified: true})
 		}
 	}
@@ -502,196 +496,6 @@ func attachmentMetadata(file models.File) string {
 		parts = append(parts, "يوجد مرفق مرتبط بهذه الصفحة")
 	}
 	return strings.Join(parts, " | ")
-}
-
-func readAttachmentEvidence(file models.File) (string, bool) {
-	path, ok := resolveAttachmentPath(file.FilePath)
-	if !ok {
-		return "", false
-	}
-	ext := strings.ToLower(filepath.Ext(path))
-	switch ext {
-	case ".txt", ".md", ".csv", ".json", ".html", ".htm", ".xml":
-		f, err := os.Open(path)
-		if err != nil {
-			return "", false
-		}
-		defer f.Close()
-		data, err := io.ReadAll(io.LimitReader(f, groundingReadLimit))
-		if err != nil {
-			return "", false
-		}
-		text := string(data)
-		if ext == ".html" || ext == ".htm" || ext == ".xml" {
-			text = normalizePlainText(text)
-		}
-		return strings.TrimSpace(text), strings.TrimSpace(text) != ""
-	case ".docx":
-		text, err := extractDOCXText(path)
-		return text, err == nil && strings.TrimSpace(text) != ""
-	case ".pdf":
-		text, err := extractPDFText(path)
-		return text, err == nil && strings.TrimSpace(text) != ""
-	default:
-		return "", false
-	}
-}
-
-func resolveAttachmentPath(raw string) (string, bool) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" || strings.Contains(raw, "://") {
-		return "", false
-	}
-	clean := filepath.Clean(raw)
-	candidates := []string{}
-	if filepath.IsAbs(clean) {
-		candidates = append(candidates, clean)
-	}
-	trimmed := strings.TrimLeft(clean, "/\\")
-	for _, root := range []string{
-		strings.TrimSpace(os.Getenv("IMANJO_STORAGE_ROOT")),
-		strings.TrimSpace(os.Getenv("STORAGE_ROOT")),
-		"/var/www/vhosts/imanjo.com/api.imanjo.com/storage",
-		"/var/www/vhosts/imanjo.com/httpdocs/storage",
-		"/var/www/vhosts/imanjo.com/httpdocs/public/storage",
-	} {
-		if root == "" {
-			continue
-		}
-		candidates = append(candidates, filepath.Join(root, strings.TrimPrefix(trimmed, "storage/")))
-	}
-	for _, candidate := range candidates {
-		info, err := os.Stat(candidate)
-		if err == nil && !info.IsDir() {
-			return candidate, true
-		}
-	}
-	return "", false
-}
-
-func extractDOCXText(path string) (string, error) {
-	zr, err := zip.OpenReader(path)
-	if err != nil {
-		return "", err
-	}
-	defer zr.Close()
-
-	for _, f := range zr.File {
-		if f.Name != "word/document.xml" {
-			continue
-		}
-		if f.UncompressedSize64 > uint64(groundingDOCXXMLLimit) {
-			return "", fmt.Errorf("docx document.xml exceeds safety limit: %d bytes", f.UncompressedSize64)
-		}
-		r, err := f.Open()
-		if err != nil {
-			return "", err
-		}
-
-		decoder := xml.NewDecoder(io.LimitReader(r, groundingDOCXXMLLimit))
-		var out strings.Builder
-		inText := false
-		runeCount := 0
-
-		appendText := func(value string) {
-			for _, ch := range value {
-				if runeCount >= groundingAttachmentTextLimit {
-					return
-				}
-				out.WriteRune(ch)
-				runeCount++
-			}
-		}
-		appendSeparator := func(ch rune) {
-			if runeCount >= groundingAttachmentTextLimit || out.Len() == 0 {
-				return
-			}
-			out.WriteRune(ch)
-			runeCount++
-		}
-
-		for {
-			token, tokenErr := decoder.Token()
-			if tokenErr == io.EOF {
-				break
-			}
-			if tokenErr != nil {
-				r.Close()
-				return "", tokenErr
-			}
-
-			switch node := token.(type) {
-			case xml.StartElement:
-				switch node.Name.Local {
-				case "t":
-					inText = true
-				case "tab":
-					appendSeparator(' ')
-				case "br":
-					appendSeparator('\n')
-				}
-			case xml.CharData:
-				if inText {
-					appendText(string(node))
-				}
-			case xml.EndElement:
-				if node.Name.Local == "t" {
-					inText = false
-				}
-				if node.Name.Local == "p" {
-					appendSeparator('\n')
-				}
-			}
-			if runeCount >= groundingAttachmentTextLimit {
-				break
-			}
-		}
-		r.Close()
-
-		text := strings.TrimSpace(out.String())
-		if text == "" {
-			return "", errors.New("docx document.xml contains no readable text")
-		}
-		return text, nil
-	}
-	return "", errors.New("docx document.xml not found")
-}
-
-func extractPDFText(path string) (string, error) {
-	binary, err := exec.LookPath("pdftotext")
-	if err != nil {
-		return "", err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, binary, "-layout", path, "-")
-	var out bytes.Buffer
-	cmd.Stdout = &limitedWriter{W: &out, N: groundingReadLimit}
-	if err := cmd.Run(); err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(out.String()), nil
-}
-
-type limitedWriter struct {
-	W io.Writer
-	N int64
-}
-
-func (w *limitedWriter) Write(p []byte) (int, error) {
-	if w.N <= 0 {
-		return len(p), nil
-	}
-	toWrite := p
-	if int64(len(toWrite)) > w.N {
-		toWrite = toWrite[:w.N]
-	}
-	n, err := w.W.Write(toWrite)
-	w.N -= int64(n)
-	if err != nil {
-		return n, err
-	}
-	return len(p), nil
 }
 
 func truncateGroundingEvidence(value string) string {

@@ -62,9 +62,13 @@ func (s *Service) GenerateGroundedDraftWithProvenance(ctx context.Context, req G
 			return nil, err
 		}
 		facts = sanitizeGroundedFacts(facts, pack)
-		if facts.InsufficientSource || len(facts.Facts) == 0 {
+		// A readable file alone is not enough to label the result grounded_file: the facts
+		// actually used by the writer must include at least one fact citing attachment text.
+		// Otherwise a model could ignore the file and ground only on title/curriculum metadata,
+		// which would make the provenance label misleading.
+		if facts.InsufficientSource || len(facts.Facts) == 0 || !hasFileGroundedFacts(facts) {
 			usingFallback = true
-			fallbackReason = "تم استخراج نص من الملف، لكن لم تكن الأدلة المستخرجة كافية لبناء مسودة موثقة بالكامل."
+			fallbackReason = "تم استخراج نص من الملف، لكن لم تكن الأدلة المستخرجة منه كافية لبناء مسودة موثقة بالكامل."
 		} else {
 			audience = facts.Audience
 			writerCtx := WithAIModelStrategy(ctx, "balanced")
@@ -114,6 +118,16 @@ func (s *Service) GenerateGroundedDraftWithProvenance(ctx context.Context, req G
 		qualityIssues = append([]string{fmt.Sprintf("لم تصل المسودة لحد الجودة الداخلي %d/100 بعد %d محاولات؛ الدرجة الفعلية %d/100.", seoQualityMinScore, seoGenerationMaxAttempts, bestValidation.total())}, qualityIssues...)
 	}
 	return buildGenerationResult(bestDraft, bestValidation, &grounding, GenerationSourceModeGroundedFile, true, "", qualityIssues), nil
+}
+
+func hasFileGroundedFacts(facts groundedFactExtraction) bool {
+	for _, fact := range facts.Facts {
+		for _, evidenceID := range fact.EvidenceIDs {
+			if strings.HasPrefix(strings.TrimSpace(evidenceID), "file:") && strings.HasSuffix(strings.TrimSpace(evidenceID), ":text") {
+				return true
+			}
+	}	}
+	return false
 }
 
 // runQualityLoopWithGrounding only considers a draft eligible for the "best" slot after an

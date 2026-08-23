@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -115,8 +116,15 @@ func (s *Service) GenerateGroundedDraft(ctx context.Context, req GroundedGenerat
 		draft.ContentHTML = normalizeFixedHTML(draft.ContentHTML)
 		draft.MetaDescription = strings.TrimSpace(draft.MetaDescription)
 		draft.Keywords = compactStrings(draft.Keywords)
+		draft.CoverAltText = strings.TrimSpace(draft.CoverAltText)
 		if draft.MetaDescription == "" {
 			draft.MetaDescription = deriveMetaDescriptionFallback(draft.ContentHTML)
+		}
+		if len(draft.Keywords) == 0 {
+			draft.Keywords = deriveKeywordsFallback(draft.Title, facts)
+		}
+		if draft.CoverAltText == "" {
+			draft.CoverAltText = draft.Title
 		}
 
 		validation := scoreSEOQuality(draft)
@@ -147,6 +155,7 @@ func (s *Service) GenerateGroundedDraft(ctx context.Context, req GroundedGenerat
 		Keywords:        bestDraft.Keywords,
 		Content:         plainText,
 		ContentHTML:     bestDraft.ContentHTML,
+		CoverAltText:    bestDraft.CoverAltText,
 		SEOScore:        bestValidation.total(),
 		SEOIssues:       issues,
 		WordCount:       len(strings.Fields(plainText)),
@@ -182,14 +191,35 @@ func buildNewContentSourcePack(ctx context.Context, req GroundedGenerateRequest)
 
 	db := database.GetManager().GetByCode(cc).WithContext(ctx)
 	storageRoot := config.Get().Storage.Path
+	extractedAny := false
+	notFoundCount, unreadableCount := 0, 0
 	for _, id := range req.FileIDs {
 		var file models.File
 		if err := db.First(&file, id).Error; err != nil {
+			notFoundCount++
 			continue
 		}
 		if extracted, ok := fileextract.ReadAttachmentEvidence(file, storageRoot); ok {
+			extractedAny = true
 			label := "نص مستخرج من الملف " + firstNonEmptyLocal(file.FileName, "#"+strconv.FormatUint(uint64(file.ID), 10))
 			pack.Evidence = append(pack.Evidence, groundedEvidence{ID: fmt.Sprintf("file:%d:text", file.ID), Kind: "attachment_text", Label: label, Text: truncateAttachmentEvidence(extracted), Verified: true})
+		} else {
+			unreadableCount++
+		}
+	}
+
+	// Without this, a file that fails extraction (most commonly: a scanned/image-only PDF
+	// with no real text layer — pdftotext then returns nothing) silently degrades to a pack
+	// with only the title as "evidence". The writer then has nothing real to work from and
+	// pads out a hollow article that just restates the title in different words — exactly the
+	// thin content this whole feature exists to prevent — while still costing 3 full retry
+	// rounds before failing the SEO bar anyway. Fail fast instead, with a specific reason.
+	if len(req.FileIDs) > 0 && !extractedAny {
+		switch {
+		case unreadableCount > 0:
+			return pack, fmt.Errorf("%w: تعذّر استخراج أي نص من الملف المرفق. تأكد أنه مستند نصي حقيقي (DOCX أو PDF بنص قابل للتحديد) وليس صورة ممسوحة ضوئيًا أو PDF بلا طبقة نصية", ErrGroundedSourceInsufficient)
+		case notFoundCount > 0:
+			return pack, fmt.Errorf("%w: الملف المرفق لم يعد موجودًا، يرجى رفعه من جديد", ErrGroundedSourceInsufficient)
 		}
 	}
 	return pack, nil
@@ -204,8 +234,8 @@ func runNewContentWriter(ctx context.Context, pack groundedSourcePack, facts gro
 		"country_code": pack.CountryCode,
 		"curriculum":   pack.Curriculum,
 	})
-	system := `أنت محرر تعليمي عربي محترف ومراجع SEO في آن واحد. اكتب مقالة جديدة كاملة اعتمادًا حصريًا على الحقائق المستخرجة من الملف المرفق. لا تضف أي معلومة غير موجودة في facts. اكتب صفحة شاملة ومهيكلة بعناوين h2 فرعية حقيقية، فقرات مفصّلة تشرح لا تسرد فقط، بجودة احترافية تستحق نشرها وأرشفتها في محركات البحث. أضف meta_description (120-160 حرفًا بالضبط تقريبًا، يحوي الكلمة المفتاحية الرئيسية، أسلوب معلوماتي دقيق بلا مبالغة تسويقية) وkeywords (5 إلى 8 كلمات/عبارات مفتاحية حقيقية مشتقة من العنوان والحقائق والسياق الدراسي فقط، تظهر كل واحدة منها فعليًا داخل content_html). اجعل الفقرة الأولى من content_html تحتوي الكلمة المفتاحية الرئيسية. HTML نظيف فقط داخل content_html بعناوين h2 وفقرات p. بعد كتابة المسودة، راجعها بنفسك كمراجع SEO مستقل وقيّمها بصدق من 0 إلى 30 بناءً على الاحترافية والوضوح والقيمة التعليمية الفعلية (لا تكافئ الطول وحده، لا تعطِ 30 إلا إن كانت ممتازة فعلًا) في quality_score، مع ملاحظات مختصرة في quality_notes إن وُجد نقص. أعد JSON فقط.`
-	user := fmt.Sprintf(`السياق:\n%s\n\nالحقائق المسموح استخدامها فقط:\n%s\n\nأرجع JSON بالمفاتيح: title, content_html, meta_description, keywords, used_fact_indexes, quality_score, quality_notes.`, string(contextJSON), string(factsJSON))
+	system := `أنت محرر تعليمي عربي محترف ومراجع SEO في آن واحد. اكتب مقالة جديدة كاملة اعتمادًا حصريًا على الحقائق المستخرجة من الملف المرفق. لا تضف أي معلومة غير موجودة في facts. اكتب صفحة شاملة ومهيكلة بعناوين h2 فرعية حقيقية، فقرات مفصّلة تشرح لا تسرد فقط، بجودة احترافية تستحق نشرها وأرشفتها في محركات البحث. أضف meta_description (120-160 حرفًا بالضبط تقريبًا، يحوي الكلمة المفتاحية الرئيسية، أسلوب معلوماتي دقيق بلا مبالغة تسويقية)، keywords (5 إلى 8 كلمات/عبارات مفتاحية حقيقية مشتقة من العنوان والحقائق والسياق الدراسي فقط، تظهر كل واحدة منها فعليًا داخل content_html — هذا الحقل إلزامي ولا يجوز أن يكون فارغًا أبدًا)، وcover_alt_text (جملة قصيرة تصف موضوع المحتوى، تُستخدم كنص بديل لصورة الغلاف). اجعل الفقرة الأولى من content_html تحتوي الكلمة المفتاحية الرئيسية. HTML نظيف فقط داخل content_html بعناوين h2 وفقرات p. بعد كتابة المسودة، راجعها بنفسك كمراجع SEO مستقل وقيّمها بصدق من 0 إلى 30 بناءً على الاحترافية والوضوح والقيمة التعليمية الفعلية (لا تكافئ الطول وحده، لا تعطِ 30 إلا إن كانت ممتازة فعلًا) في quality_score، مع ملاحظات مختصرة في quality_notes إن وُجد نقص. أعد JSON فقط.`
+	user := fmt.Sprintf(`السياق:\n%s\n\nالحقائق المسموح استخدامها فقط:\n%s\n\nأرجع JSON بالمفاتيح: title, content_html, meta_description, keywords, cover_alt_text, used_fact_indexes, quality_score, quality_notes.`, string(contextJSON), string(factsJSON))
 	if strings.TrimSpace(feedback) != "" {
 		user += "\n\nملاحظات من محاولة سابقة يجب معالجتها في هذه المحاولة:\n" + feedback
 	}
@@ -302,6 +332,32 @@ func deterministicSEOScore(draft groundedDraft) (int, []string) {
 	}
 
 	return score, issues
+}
+
+// deriveKeywordsFallback builds keywords straight from the title and the extracted facts'
+// own audience/purpose fields when the writer's JSON omitted them — grounded by construction
+// (both are already-validated facts-extraction output, not invented), guaranteeing the
+// keywords field is never left empty for a genuinely successful generation.
+var titleWordSplitter = regexp.MustCompile(`[\s,،.:؛!؟\-_/]+`)
+
+func deriveKeywordsFallback(title string, facts groundedFactExtraction) []string {
+	keywords := make([]string, 0, 6)
+	seen := map[string]bool{}
+	add := func(word string) {
+		word = strings.TrimSpace(word)
+		if len([]rune(word)) < 3 || seen[word] || len(keywords) >= 6 {
+			return
+		}
+		seen[word] = true
+		keywords = append(keywords, word)
+	}
+	for _, word := range titleWordSplitter.Split(title, -1) {
+		add(word)
+	}
+	for _, audience := range facts.Audience {
+		add(audience)
+	}
+	return keywords
 }
 
 func seoRetryFeedback(v seoQualityValidation) string {

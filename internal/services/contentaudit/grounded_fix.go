@@ -83,6 +83,9 @@ type groundedDraft struct {
 	// there and are simply ignored.
 	QualityScore int      `json:"quality_score,omitempty"`
 	QualityNotes []string `json:"quality_notes,omitempty"`
+	// CoverAltText is likewise only requested for new-content generation (posts have a
+	// featured-image alt text field the admin otherwise has to write by hand).
+	CoverAltText string `json:"cover_alt_text,omitempty"`
 }
 
 type groundedValidation struct {

@@ -44,6 +44,11 @@ jobs:
 
       - name: Production build
         working-directory: frontend
+        env:
+          PUBLIC_API_URL: https://api.imanjo.com
+          INTERNAL_API_URL: https://api.imanjo.com
+          FRONTEND_API_KEY: ci-placeholder-not-a-production-secret
+          PUBLIC_SITE_URL: https://imanjo.com
         run: npm run build
 
       - name: Validate patch

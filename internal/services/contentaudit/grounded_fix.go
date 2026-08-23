@@ -5,11 +5,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
-	"html"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,6 +35,7 @@ const (
 	groundingMinScore      = 90
 	groundingPromptVersion = "grounded-content-repair-v2"
 	groundingReadLimit     = int64(64 * 1024)
+	groundingDOCXXMLLimit  = int64(16 * 1024 * 1024)
 	groundingEvidenceLimit = 12000
 )
 
@@ -129,7 +129,11 @@ func (s *Service) CreateGroundedFixPreview(ctx context.Context, decisionID uint6
 	}
 	facts = sanitizeGroundedFacts(facts, pack)
 	if facts.InsufficientSource || len(facts.Facts) == 0 {
-		return nil, fmt.Errorf("%w: لا توجد أدلة كافية لإنشاء نص موثوق؛ أضف وصفًا أو مرفقًا قابلًا للقراءة ثم أعد المحاولة", ErrGroundedSourceInsufficient)
+		detail := groundedSourceNotesSummary(facts.SourceNotes)
+		if detail != "" {
+			return nil, fmt.Errorf("%w: %s", ErrGroundedSourceInsufficient, detail)
+		}
+		return nil, fmt.Errorf("%w: لا توجد حقائق موثقة كافية في مصادر الصفحة أو المرفقات", ErrGroundedSourceInsufficient)
 	}
 
 	draft, writerModel, err := runGroundedWriter(ctx, pack, facts)
@@ -333,7 +337,9 @@ func buildGroundedSourcePack(content *groundedLoadedContent) groundedSourcePack 
 		pack.Evidence = append(pack.Evidence, groundedEvidence{ID: "content:title", Kind: "title", Label: "عنوان الصفحة", Text: pack.Title, Verified: true})
 	}
 	if body := truncateGroundingEvidence(normalizePlainText(content.Content)); body != "" {
-		pack.Evidence = append(pack.Evidence, groundedEvidence{ID: "content:body", Kind: "body", Label: "النص الحالي", Text: body, Verified: true})
+		// Existing body text may contain legacy/generated claims. Keep it available
+		// for editorial context, but never allow it to support grounded facts by itself.
+		pack.Evidence = append(pack.Evidence, groundedEvidence{ID: "content:body", Kind: "body_context", Label: "النص الحالي (سياق فقط)", Text: body, Verified: false})
 	}
 	if pack.Curriculum != "" {
 		pack.Evidence = append(pack.Evidence, groundedEvidence{ID: "content:curriculum", Kind: "curriculum", Label: "السياق الدراسي من قاعدة البيانات", Text: pack.Curriculum, Verified: true})
@@ -445,22 +451,84 @@ func extractDOCXText(path string) (string, error) {
 		return "", err
 	}
 	defer zr.Close()
+
 	for _, f := range zr.File {
 		if f.Name != "word/document.xml" {
 			continue
+		}
+		if f.UncompressedSize64 > uint64(groundingDOCXXMLLimit) {
+			return "", fmt.Errorf("docx document.xml exceeds safety limit: %d bytes", f.UncompressedSize64)
 		}
 		r, err := f.Open()
 		if err != nil {
 			return "", err
 		}
-		data, err := io.ReadAll(io.LimitReader(r, groundingReadLimit))
-		r.Close()
-		if err != nil {
-			return "", err
+
+		decoder := xml.NewDecoder(io.LimitReader(r, groundingDOCXXMLLimit))
+		var out strings.Builder
+		inText := false
+		runeCount := 0
+
+		appendText := func(value string) {
+			for _, ch := range value {
+				if runeCount >= groundingEvidenceLimit {
+					return
+				}
+				out.WriteRune(ch)
+				runeCount++
+			}
 		}
-		text := strings.ReplaceAll(string(data), "</w:p>", "\n")
-		text = normalizePlainText(text)
-		return strings.TrimSpace(html.UnescapeString(text)), nil
+		appendSeparator := func(ch rune) {
+			if runeCount >= groundingEvidenceLimit || out.Len() == 0 {
+				return
+			}
+			out.WriteRune(ch)
+			runeCount++
+		}
+
+		for {
+			token, tokenErr := decoder.Token()
+			if tokenErr == io.EOF {
+				break
+			}
+			if tokenErr != nil {
+				r.Close()
+				return "", tokenErr
+			}
+
+			switch node := token.(type) {
+			case xml.StartElement:
+				switch node.Name.Local {
+				case "t":
+					inText = true
+				case "tab":
+					appendSeparator(' ')
+				case "br":
+					appendSeparator('\n')
+				}
+			case xml.CharData:
+				if inText {
+					appendText(string(node))
+				}
+			case xml.EndElement:
+				if node.Name.Local == "t" {
+					inText = false
+				}
+				if node.Name.Local == "p" {
+					appendSeparator('\n')
+				}
+			}
+			if runeCount >= groundingEvidenceLimit {
+				break
+			}
+		}
+		r.Close()
+
+		text := strings.TrimSpace(out.String())
+		if text == "" {
+			return "", errors.New("docx document.xml contains no readable text")
+		}
+		return text, nil
 	}
 	return "", errors.New("docx document.xml not found")
 }
@@ -577,11 +645,28 @@ func compactStrings(values []string) []string {
 	return out
 }
 
+func groundedSourceNotesSummary(notes []string) string {
+	notes = compactStrings(notes)
+	if len(notes) == 0 {
+		return ""
+	}
+	if len(notes) > 2 {
+		notes = notes[:2]
+	}
+	for i := range notes {
+		r := []rune(notes[i])
+		if len(r) > 240 {
+			notes[i] = string(r[:240]) + "…"
+		}
+	}
+	return strings.Join(notes, " | ")
+}
+
 func runGroundedFactExtraction(ctx context.Context, pack groundedSourcePack) (groundedFactExtraction, string, error) {
 	var out groundedFactExtraction
 	packJSON, _ := json.Marshal(pack)
-	system := `أنت مدقق مصادر لمحتوى تعليمي. لا تكتب المقال. استخرج فقط حقائق صريحة يمكن إثباتها من الأدلة المقدمة. كل حقيقة يجب أن تشير إلى evidence_ids صحيحة. ممنوع الاستنتاج من عنوان الصفحة وحده أن المرفق يحتوي أهدافًا أو أنشطة أو أسئلة أو حلولًا ما لم يذكر الدليل ذلك. إذا لم تكف الأدلة لإنشاء صفحة مفيدة ودقيقة، اجعل insufficient_source=true. أعد JSON فقط.`
-	user := fmt.Sprintf(`نسخة البرومبت: %s\nحزمة المصدر:\n%s\n\nأرجع JSON بالمفاتيح: purpose, audience, facts, insufficient_source, source_notes. facts عنصره: claim, evidence_ids, confidence.`, groundingPromptVersion, string(packJSON))
+	system := `أنت مدقق مصادر لمحتوى تعليمي. لا تكتب المقال. استخرج فقط حقائق صريحة يمكن إثباتها من الأدلة التي verified=true. لا تستخدم أي دليل verified=false لدعم حقيقة. كل حقيقة يجب أن تشير إلى evidence_ids صحيحة وموثقة. ممنوع الاستنتاج من عنوان الصفحة وحده أن المرفق يحتوي أهدافًا أو أنشطة أو أسئلة أو حلولًا ما لم يذكر دليل موثق ذلك. إذا لم تكف الأدلة لإنشاء صفحة مفيدة ودقيقة، اجعل insufficient_source=true. أعد JSON فقط، بلا Markdown وبلا شرح خارج JSON.`
+	user := fmt.Sprintf(`نسخة البرومبت: %s\nحزمة المصدر:\n%s\n\nأرجع JSON بالمفاتيح فقط: purpose, audience, facts, insufficient_source, source_notes. facts عنصره: claim, evidence_ids, confidence. قيود الإخراج: حد أقصى 10 حقائق؛ كل claim مختصر (نحو 180 حرفًا أو أقل)؛ audience بحد أقصى 4 عناصر؛ source_notes بحد أقصى عنصرين مختصرين.`, groundingPromptVersion, string(packJSON))
 	model, err := groundedAIJSON(ctx, "fact_extractor", system, user, &out)
 	return out, model, err
 }
@@ -596,7 +681,7 @@ func runGroundedWriter(ctx context.Context, pack groundedSourcePack, facts groun
 		"curriculum":   pack.Curriculum,
 	})
 	system := `أنت محرر تعليمي عربي. اكتب مسودة مفيدة ودقيقة اعتمادًا حصريًا على الحقائق المستخرجة. لا تضف أي معلومة غير موجودة في facts. لا تطارد عدد كلمات ولا تضف حشو SEO. إذا كانت الأدلة محدودة فاكتب صفحة قصيرة صادقة بدل اختراع تفاصيل. لا تقل إن الملف يحتوي أهدافًا أو أنشطة أو أسئلة أو حلولًا إلا إذا كانت حقيقة صريحة. اجعل الملف جزءًا من المحتوى لا مجرد غلاف له: اشرح ما هو المورد، لمن يفيد، وما الذي يمكن إثباته عنه، ثم وجّه القارئ للاستفادة من المرفق. HTML نظيف فقط داخل content_html بعناوين h2 وفقرات p عند الحاجة. أعد JSON فقط.`
-	user := fmt.Sprintf(`السياق:\n%s\n\nالحقائق المسموح استخدامها فقط:\n%s\n\nأرجع JSON بالمفاتيح: title, content_html, used_fact_indexes. used_fact_indexes هي فهارس الحقائق المستخدمة (تبدأ من 0).`, string(contextJSON), string(factsJSON))
+	user := fmt.Sprintf(`السياق:\n%s\n\nالحقائق المسموح استخدامها فقط:\n%s\n\nأرجع JSON بالمفاتيح: title, content_html, used_fact_indexes. used_fact_indexes هي فهارس الحقائق المستخدمة (تبدأ من 0). اجعل المسودة مركزة ولا تكرر الحقائق.`, string(contextJSON), string(factsJSON))
 	model, err := groundedAIJSON(ctx, "grounded_writer", system, user, &out)
 	return out, model, err
 }
@@ -604,103 +689,19 @@ func runGroundedWriter(ctx context.Context, pack groundedSourcePack, facts groun
 func runGroundedValidator(ctx context.Context, pack groundedSourcePack, facts groundedFactExtraction, draft groundedDraft) (groundedValidation, string, error) {
 	var out groundedValidation
 	payload, _ := json.Marshal(map[string]interface{}{"source_pack": pack, "facts": facts, "draft": draft})
-	system := `أنت مدقق ادعاءات صارم. قارن كل ادعاء واقعي في المسودة مع حزمة الأدلة والحقائق. اعتبر أي معلومة غير مثبتة unsupported حتى لو بدت منطقية تربويًا. لا تكافئ طول النص. grounding_score يقيس نسبة الادعاءات المدعومة ودقتها من 0 إلى 100. إذا وجد ادعاء مهم غير مدعوم فاذكره حرفيًا أو باختصار في unsupported_claims. أعد JSON فقط.`
-	user := fmt.Sprintf(`راجع هذه البيانات:\n%s\n\nأرجع JSON بالمفاتيح: grounding_score, supported_claims, unsupported_claims, notes.`, string(payload))
+	system := `أنت مدقق ادعاءات صارم. قارن كل ادعاء واقعي في المسودة مع الحقائق وحزمة الأدلة. الأدلة التي verified=false سياق فقط ولا يجوز اعتبارها مصدر إثبات. اعتبر أي معلومة غير مثبتة unsupported حتى لو بدت منطقية تربويًا. لا تكافئ طول النص. grounding_score يقيس نسبة الادعاءات المدعومة ودقتها من 0 إلى 100. إذا وجد ادعاء مهم غير مدعوم فاذكره باختصار في unsupported_claims. أعد JSON فقط.`
+	user := fmt.Sprintf(`راجع هذه البيانات:\n%s\n\nأرجع JSON بالمفاتيح: grounding_score, supported_claims, unsupported_claims, notes. اجعل notes مختصرة.`, string(payload))
 	model, err := groundedAIJSON(ctx, "claim_validator", system, user, &out)
 	return out, model, err
 }
 
 func groundedAIJSON(ctx context.Context, stage, systemPrompt, userPrompt string, out interface{}) (string, error) {
-	apiKey := firstNonEmptyLocal(os.Getenv("TOGETHER_AI_API_KEY"), os.Getenv("TOGETHER_AI_KEY"), os.Getenv("TOGETHER_API_KEY"))
-	if apiKey == "" {
-		return "", ErrGroundedAIUnavailable
-	}
-	baseURL := strings.TrimRight(firstNonEmptyLocal(os.Getenv("TOGETHER_AI_BASE_URL"), "https://api.together.ai/v1"), "/")
-	models := groundedModelCandidates()
-	if len(models) == 0 {
-		return "", ErrGroundedAIUnavailable
-	}
-
-	var lastErr error
-	for _, model := range models {
-		payload := map[string]interface{}{
-			"model": model,
-			"messages": []map[string]string{
-				{"role": "system", "content": systemPrompt},
-				{"role": "user", "content": userPrompt},
-			},
-			"temperature": 0.12,
-			"top_p":       0.85,
-			"max_tokens":  2600,
-			"response_format": map[string]interface{}{"type": "json_object"},
-		}
-		body, err := json.Marshal(payload)
-		if err != nil {
-			return "", err
-		}
-		requestCtx, cancel := context.WithTimeout(ctx, 65*time.Second)
-		req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, baseURL+"/chat/completions", bytes.NewReader(body))
-		if err != nil {
-			cancel()
-			return "", err
-		}
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-		req.Header.Set("Content-Type", "application/json")
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			cancel()
-			lastErr = err
-			continue
-		}
-		responseBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
-		resp.Body.Close()
-		cancel()
-		if readErr != nil {
-			lastErr = readErr
-			continue
-		}
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			lastErr = fmt.Errorf("grounded AI %s failed with HTTP %d", stage, resp.StatusCode)
-			continue
-		}
-		var completion struct {
-			Choices []struct {
-				Message struct {
-					Content string `json:"content"`
-				} `json:"message"`
-			} `json:"choices"`
-		}
-		if err := json.Unmarshal(responseBody, &completion); err != nil || len(completion.Choices) == 0 {
-			if err == nil {
-				err = errors.New("grounded AI response has no choices")
-			}
-			lastErr = err
-			continue
-		}
-		raw := cleanGroundedJSON(completion.Choices[0].Message.Content)
-		if err := json.Unmarshal([]byte(raw), out); err != nil {
-			lastErr = fmt.Errorf("grounded AI %s returned invalid JSON: %w", stage, err)
-			continue
-		}
-		return model, nil
-	}
-	if lastErr == nil {
-		lastErr = ErrGroundedAIUnavailable
-	}
-	return "", fmt.Errorf("%w: %v", ErrGroundedAIUnavailable, lastErr)
+	return groundedAIJSONV3(ctx, stage, systemPrompt, userPrompt, out)
 }
 
+// Kept for package compatibility; new requests should use the context-aware order.
 func groundedModelCandidates() []string {
-	values := []string{}
-	for _, raw := range []string{os.Getenv("AI_MODELS_FIX_FINAL"), os.Getenv("AI_MODELS_FIX_QUALITY"), os.Getenv("TOGETHER_AI_MODEL"), "deepseek-ai/DeepSeek-V4-Pro"} {
-		for _, part := range strings.Split(raw, ",") {
-			part = strings.TrimSpace(part)
-			if part != "" {
-				values = append(values, part)
-			}
-		}
-	}
-	return compactStrings(values)
+	return groundedModelCandidatesForContext(context.Background())
 }
 
 func cleanGroundedJSON(raw string) string {
@@ -721,15 +722,18 @@ func buildGroundingSummary(validation groundedValidation, evidenceCount int, mod
 	status := "grounded"
 	labels := []string{}
 	for _, evidence := range pack.Evidence {
+		if !evidence.Verified {
+			continue
+		}
 		labels = append(labels, evidence.Label)
 	}
 	if len(labels) > 5 {
 		labels = labels[:5]
 	}
-	return fmt.Sprintf("%s status=%s score=%d evidence=%d unsupported=%d model=%s prompt=%s\nتم إنشاء المسودة من أدلة المصدر فقط، ثم فحص الادعاءات بشكل مستقل. الغرض المستخلص: %s. مصادر بارزة: %s. لا يوجد حد كلمات إجباري؛ الأولوية للدقة والفائدة.", groundingSummaryPrefix, status, validation.GroundingScore, evidenceCount, len(validation.UnsupportedClaims), safeGroundingToken(model), groundingPromptVersion, strings.TrimSpace(facts.Purpose), strings.Join(labels, "، "))
+	return fmt.Sprintf("%s status=%s score=%d evidence=%d unsupported=%d model=%s prompt=%s\nتم إنشاء المسودة من أدلة المصدر الموثقة فقط، ثم فحص الادعاءات بشكل مستقل. الغرض المستخلص: %s. مصادر بارزة: %s. لا يوجد حد كلمات إجباري؛ الأولوية للدقة والفائدة.", groundingSummaryPrefix, status, validation.GroundingScore, evidenceCount, len(validation.UnsupportedClaims), safeGroundingToken(model), groundingPromptVersion, strings.TrimSpace(facts.Purpose), strings.Join(labels, "، "))
 }
 
-var groundingSummaryPattern = regexp.MustCompile(`^\[GROUNDING_V2\]\s+status=([^\s]+)\s+score=(\d+)\s+evidence=(\d+)\s+unsupported=(\d+)\s+model=([^\s]+)`) 
+var groundingSummaryPattern = regexp.MustCompile(`^\[GROUNDING_V2\]\s+status=([^\s]+)\s+score=(\d+)\s+evidence=(\d+)\s+unsupported=(\d+)\s+model=([^\s]+)`)
 
 func parseGroundingSummary(summary string) (groundingSummaryMeta, bool) {
 	matches := groundingSummaryPattern.FindStringSubmatch(strings.TrimSpace(summary))

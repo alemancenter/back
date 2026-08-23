@@ -16,6 +16,26 @@ func testGeneratedDraft() groundedDraft {
 	}
 }
 
+func TestHasFileGroundedFactsRequiresAttachmentTextEvidence(t *testing.T) {
+	nonFile := groundedFactExtraction{Facts: []groundedFact{{
+		Claim:       "عنوان وسياق فقط",
+		EvidenceIDs: []string{"content:title", "content:curriculum"},
+		Confidence:  98,
+	}}}
+	if hasFileGroundedFacts(nonFile) {
+		t.Fatal("title/curriculum-only facts must not be labeled grounded_file")
+	}
+
+	withFile := groundedFactExtraction{Facts: []groundedFact{{
+		Claim:       "حقيقة مثبتة من الملف",
+		EvidenceIDs: []string{"file:2761:text"},
+		Confidence:  98,
+	}}}
+	if !hasFileGroundedFacts(withFile) {
+		t.Fatal("file text evidence should qualify the fact set for grounded_file mode")
+	}
+}
+
 func TestRunQualityLoopWithGroundingRetriesUnsupportedDraft(t *testing.T) {
 	writes := 0
 	validations := 0

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/imanjo/fiber-api/internal/services"
 	"github.com/imanjo/fiber-api/internal/services/contentaudit"
@@ -13,6 +14,11 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
+
+// groundedGenerationTimeout bounds the whole grounded-from-file pipeline (fact extraction +
+// up to 3 writer/validator rounds — several sequential AI calls, unlike the single-call
+// fallback generator's AIOverallTimeout). Keep in sync with the frontend poll windows.
+const groundedGenerationTimeout = 5 * time.Minute
 
 // Handler contains AI route handlers.
 type Handler struct {
@@ -89,7 +95,14 @@ func (h *Handler) Generate(c *fiber.Ctx) error {
 		var article interface{}
 		var err error
 		if len(fileIDs) > 0 && h.groundedSvc != nil {
-			article, err = h.groundedSvc.GenerateGroundedDraft(context.Background(), contentaudit.GroundedGenerateRequest{
+			// The grounded pipeline makes several sequential AI calls (fact extraction, then
+			// up to seoGenerationMaxAttempts rounds of writer+SEO-validator) — genuinely slower
+			// than the single-call fallback generator, which is why it needs its own, more
+			// generous deadline instead of running unbounded. Matched by the frontend's poll
+			// window in ArticleForm.astro/PostForm.astro — extend both together if this changes.
+			ctx, cancel := context.WithTimeout(context.Background(), groundedGenerationTimeout)
+			defer cancel()
+			article, err = h.groundedSvc.GenerateGroundedDraft(ctx, contentaudit.GroundedGenerateRequest{
 				Title:             title,
 				ContentType:       contentType,
 				CountryCode:       generationContext.CountryCode,

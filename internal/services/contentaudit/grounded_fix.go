@@ -24,10 +24,10 @@ import (
 )
 
 var (
-	ErrGroundedSourceInsufficient = errors.New("grounded repair source evidence is insufficient")
-	ErrGroundedValidationFailed   = errors.New("grounded repair validation failed")
-	ErrUngroundedFixPreview       = errors.New("fix preview was not produced by grounded repair v2")
-	ErrGroundedAIUnavailable      = errors.New("grounded repair AI provider unavailable")
+	ErrGroundedSourceInsufficient = errors.New("لا توجد أدلة مصدرية كافية لإنشاء إصلاح موثّق لهذا المحتوى")
+	ErrGroundedValidationFailed   = errors.New("فشل التحقق من توثيق مسودة الإصلاح المقترحة")
+	ErrUngroundedFixPreview       = errors.New("هذه المعاينة أُنشئت بنظام إصلاح قديم لا يمكن التحقق من توثيقه، ويمكن رفضها لكن لا يمكن اعتمادها")
+	ErrGroundedAIUnavailable      = errors.New("تعذّر الوصول إلى مزوّد الذكاء الاصطناعي لإنشاء إصلاح موثّق")
 )
 
 const (
@@ -203,7 +203,7 @@ func (s *Service) ApplyGroundedFix(ctx context.Context, previewID uint64, userID
 		return nil, fmt.Errorf("%w: score=%d unsupported=%d", ErrGroundedValidationFailed, meta.Score, meta.Unsupported)
 	}
 	if strings.TrimSpace(normalizePlainText(preview.FixedContent)) == "" {
-		return nil, fmt.Errorf("%w: empty grounded draft", ErrGroundedValidationFailed)
+		return nil, fmt.Errorf("%w: المسودة الموثقة فارغة", ErrGroundedValidationFailed)
 	}
 
 	_, _, id := normalizeContentReference(preview.ContentID, preview.CountryCode)

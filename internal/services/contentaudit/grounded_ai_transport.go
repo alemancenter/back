@@ -62,21 +62,34 @@ func groundedModelCandidatesForContext(ctx context.Context) []string {
 	}
 	base := append([]string{generic}, fallbacks...)
 
-	var route []string
+	quality := groundedModelRoute("AI_MODELS_FIX_QUALITY", "Qwen/Qwen3-235B-A22B-Instruct-2507-tput,openai/gpt-oss-120b,zai-org/GLM-5.1")
+	final := groundedModelRoute("AI_MODELS_FIX_FINAL", "Qwen/Qwen3-235B-A22B-Instruct-2507-tput,zai-org/GLM-5.1,openai/gpt-oss-120b")
+	balanced := groundedModelRoute("AI_MODELS_FIX_BALANCED", "meta-llama/Llama-3.3-70B-Instruct-Turbo,pearl-ai/gemma-4-31b-it,google/gemma-4-31B-it")
+	economy := groundedModelRoute("AI_MODELS_FIX_ECONOMY", "google/gemma-3n-E4B-it,openai/gpt-oss-20b")
+
+	ordered := []string{}
 	switch strategy {
 	case "final_review":
-		route = groundedModelRoute("AI_MODELS_FIX_FINAL", "Qwen/Qwen3-235B-A22B-Instruct-2507-tput,zai-org/GLM-5.1,openai/gpt-oss-120b")
+		ordered = append(ordered, final...)
+		ordered = append(ordered, quality...)
 	case "economy":
-		route = groundedModelRoute("AI_MODELS_FIX_ECONOMY", "google/gemma-3n-E4B-it,openai/gpt-oss-20b")
+		ordered = append(ordered, economy...)
+		ordered = append(ordered, balanced...)
+		ordered = append(ordered, quality...)
+		ordered = append(ordered, final...)
 	case "balanced":
-		route = groundedModelRoute("AI_MODELS_FIX_BALANCED", "meta-llama/Llama-3.3-70B-Instruct-Turbo,pearl-ai/gemma-4-31b-it,google/gemma-4-31B-it")
+		ordered = append(ordered, balanced...)
+		ordered = append(ordered, quality...)
+		ordered = append(ordered, final...)
 	case "quality", "":
-		route = groundedModelRoute("AI_MODELS_FIX_QUALITY", "Qwen/Qwen3-235B-A22B-Instruct-2507-tput,openai/gpt-oss-120b,zai-org/GLM-5.1")
+		ordered = append(ordered, quality...)
+		ordered = append(ordered, final...)
 	default:
-		route = groundedModelRoute("AI_MODELS_FIX_QUALITY", "Qwen/Qwen3-235B-A22B-Instruct-2507-tput,openai/gpt-oss-120b,zai-org/GLM-5.1")
+		ordered = append(ordered, quality...)
+		ordered = append(ordered, final...)
 	}
-
-	return compactStrings(append(route, base...))
+	ordered = append(ordered, base...)
+	return compactStrings(ordered)
 }
 
 func groundedRetryInstruction(stage string) string {

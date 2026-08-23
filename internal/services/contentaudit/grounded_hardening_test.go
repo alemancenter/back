@@ -25,13 +25,12 @@ func TestRepairGroundedJSONControlCharsRawNewline(t *testing.T) {
 
 func TestRepairGroundedJSONControlCharsPreservesValidEscapes(t *testing.T) {
 	raw := `{"source_notes":"line one\nline two","facts":[],"audience":[],"insufficient_source":true}`
-	// The Go raw literal above intentionally contains the exact JSON bytes.
 	raw = strings.ReplaceAll(raw, `\"`, `"`)
-	if repaired := repairGroundedJSONControlChars(raw); repaired != raw {
-		t.Fatalf("valid escaped JSON changed:\nwant: %q\ngot:  %q", raw, repaired)
-	}
 	if !json.Valid([]byte(raw)) {
 		t.Fatal("fixture should be valid JSON")
+	}
+	if repaired := repairGroundedJSONControlChars(raw); repaired != raw {
+		t.Fatalf("valid escaped JSON changed:\nwant: %q\ngot:  %q", raw, repaired)
 	}
 }
 
@@ -66,15 +65,17 @@ func TestGroundedAIJSONRetriesTruncatedResponse(t *testing.T) {
 		call := atomic.AddInt32(&calls, 1)
 		w.Header().Set("Content-Type", "application/json")
 		content := `{"purpose":"خطة درس","audience":["المعلم"],"facts":[{"claim":"حقيقة موثقة","evidence_ids":["attachment:1:text"],"confidence":98}],"insufficient_source":false,"source_notes":[]}`
+		content = strings.ReplaceAll(content, `\"`, `"`)
 		finish := "stop"
 		if call == 1 {
 			content = `{"purpose":"truncated"`
+			content = strings.ReplaceAll(content, `\"`, `"`)
 			finish = "length"
 		}
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"choices": []map[string]interface{}{{
 				"finish_reason": finish,
-				"message": map[string]string{"content": content},
+				"message":       map[string]string{"content": content},
 			}},
 		})
 	}))
@@ -106,10 +107,12 @@ func TestGroundedAIJSONRetriesTruncatedResponse(t *testing.T) {
 func TestGroundedAIJSONMalformedForeverReturnsInvalidOutput(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		content := `{"purpose":"broken"`
+		content = strings.ReplaceAll(content, `\"`, `"`)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"choices": []map[string]interface{}{{
 				"finish_reason": "stop",
-				"message": map[string]string{"content": `{"purpose":"broken"`},
+				"message":       map[string]string{"content": content},
 			}},
 		})
 	}))

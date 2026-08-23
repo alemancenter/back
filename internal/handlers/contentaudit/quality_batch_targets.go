@@ -40,7 +40,7 @@ func (h *Handler) selectQualityBatchTargets(ctx context.Context, req contentQual
 				meta = *a.MetaDescription
 			}
 			gate := readinessGate(decisions[a.ID], a.Title, a.Content, meta, "")
-			item := buildUnifiedReadinessItem(a.Title, a.Content, meta, "", articleFileCounts[a.ID], a.Status == 1, "article", a.ID, req.CountryCode, gate)
+			item := buildUnifiedReadinessItem(a.Title, a.Content, meta, "", articleFileCounts[a.ID], a.Status == 1, "article", a.ID, req.CountryCode, gate, nil)
 			if shouldIncludeQualityTarget(item, req) {
 				rows = append(rows, unifiedReadinessRow{Item: item, CreatedAt: a.CreatedAt})
 			}
@@ -76,7 +76,7 @@ func (h *Handler) selectQualityBatchTargets(ctx context.Context, req contentQual
 				keywords = *p.Keywords
 			}
 			gate := readinessGate(decisions[p.ID], p.Title, p.Content, meta, keywords)
-			item := buildUnifiedReadinessItem(p.Title, p.Content, meta, keywords, postFileCounts[p.ID], p.IsActive, "post", p.ID, req.CountryCode, gate)
+			item := buildUnifiedReadinessItem(p.Title, p.Content, meta, keywords, postFileCounts[p.ID], p.IsActive, "post", p.ID, req.CountryCode, gate, nil)
 			if shouldIncludeQualityTarget(item, req) {
 				rows = append(rows, unifiedReadinessRow{Item: item, CreatedAt: p.CreatedAt})
 			}

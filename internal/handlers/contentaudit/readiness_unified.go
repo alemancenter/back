@@ -134,6 +134,24 @@ func latestReadinessDecisions(ctx context.Context, contentType, countryCode stri
 	return latest, nil
 }
 
+// latestPolicyReadinessBaselines loads the deterministic (no-AI) scan baseline for every item
+// of contentType in one query — same "load once, look up by ID in memory" shape as
+// latestReadinessDecisions above. Read-only enrichment source: never consulted by
+// contentquality.Gate/Evaluate, so it can never affect real Indexable/AdsEligible.
+func latestPolicyReadinessBaselines(ctx context.Context, contentType, countryCode string) (map[uint]*models.ContentPolicyReadiness, error) {
+	var rows []models.ContentPolicyReadiness
+	if err := database.DB().WithContext(ctx).
+		Where("content_type = ? AND country_code = ?", contentType, countryCode).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	baselines := make(map[uint]*models.ContentPolicyReadiness, len(rows))
+	for i := range rows {
+		baselines[rows[i].ContentID] = &rows[i]
+	}
+	return baselines, nil
+}
+
 func readinessGate(decision *models.ContentAIDecision, title, content, meta, keywords string, editorial ...*models.ContentEditorialDecision) auditservice.ContentQualityGate {
 	gate := auditservice.EvaluateQualityGate(decision)
 	artifacts := contentquality.DetectReplacementArtifacts(
@@ -149,11 +167,15 @@ func readinessGate(decision *models.ContentAIDecision, title, content, meta, key
 	return gate
 }
 
-func buildUnifiedReadinessItem(title, content, meta, keywords string, filesCount int, published bool, contentType string, id uint, countryCode string, gate auditservice.ContentQualityGate) unifiedReadinessItem {
+func buildUnifiedReadinessItem(title, content, meta, keywords string, filesCount int, published bool, contentType string, id uint, countryCode string, gate auditservice.ContentQualityGate, baseline *models.ContentPolicyReadiness) unifiedReadinessItem {
 	diagnostics := contentquality.EvaluateDiagnostics(title, readinessPlainText(content), meta, filesCount, published)
 	shouldIndex := published && gate.Indexable
 	shouldShowAds := published && gate.AdsEligible
 
+	// Level/ShouldIndex/ShouldShowAds stay governed by gate alone, exactly as before — the
+	// deterministic baseline below only ever replaces the displayed score/reasons for content
+	// with no ContentAIDecision yet, so it can never grant AdsEligible or change real
+	// indexing/ad behavior (contentquality.Gate/Evaluate are never touched by it).
 	level := "review"
 	if shouldShowAds {
 		level = "ready"
@@ -161,9 +183,16 @@ func buildUnifiedReadinessItem(title, content, meta, keywords string, filesCount
 		level = "weak"
 	}
 
-	issues := make([]string, 0, len(gate.Reasons)+len(diagnostics.Signals))
-	seen := make(map[string]struct{}, len(gate.Reasons)+len(diagnostics.Signals))
-	for _, value := range append(append([]string{}, gate.Reasons...), diagnostics.Signals...) {
+	score := gate.Score
+	reasons := gate.Reasons
+	if !gate.Audited && baseline != nil {
+		score = baseline.Score
+		reasons = append([]string{"درجة أولية من الفحص الحتمي (بلا ذكاء اصطناعي) — لم تُراجَع بعد لتأهيل الإعلانات."}, strings.Split(baseline.Issues, "\n")...)
+	}
+
+	issues := make([]string, 0, len(reasons)+len(diagnostics.Signals))
+	seen := make(map[string]struct{}, len(reasons)+len(diagnostics.Signals))
+	for _, value := range append(append([]string{}, reasons...), diagnostics.Signals...) {
 		value = strings.TrimSpace(value)
 		if value == "" {
 			continue
@@ -185,7 +214,7 @@ func buildUnifiedReadinessItem(title, content, meta, keywords string, filesCount
 		Type:              contentType,
 		Title:             title,
 		Status:            map[bool]string{true: "published", false: "unpublished"}[published],
-		Score:             gate.Score,
+		Score:             score,
 		Level:             level,
 		WordCount:         diagnostics.WordCount,
 		CharCount:         diagnostics.CharCount,
@@ -195,7 +224,7 @@ func buildUnifiedReadinessItem(title, content, meta, keywords string, filesCount
 		Audited:           gate.Audited,
 		Decision:          gate.Decision,
 		AdSenseRisk:       gate.Risk,
-		GateReasons:       append([]string(nil), gate.Reasons...),
+		GateReasons:       append([]string(nil), reasons...),
 		DiagnosticSignals: append([]string(nil), diagnostics.Signals...),
 		Issues:            issues,
 		URL:               "/" + countryCode + "/" + urlType + "/" + strconv.FormatUint(uint64(id), 10),
@@ -263,6 +292,10 @@ func (h *Handler) AdsenseReadinessUnified(c *fiber.Ctx) error {
 		if err != nil {
 			return utils.InternalError(c, "تعذر تحميل قرارات المراجعة التحريرية للمقالات")
 		}
+		policyBaselines, err := latestPolicyReadinessBaselines(ctx, "article", countryCode)
+		if err != nil {
+			return utils.InternalError(c, "تعذر تحميل خط أساس الفحص الحتمي للمقالات")
+		}
 		var articles []models.Article
 		q := db.WithContext(ctx).
 			Select("id", "title", "content", "meta_description", "status", "created_at").
@@ -279,7 +312,7 @@ func (h *Handler) AdsenseReadinessUnified(c *fiber.Ctx) error {
 				meta = *article.MetaDescription
 			}
 			gate := readinessGate(decisions[article.ID], article.Title, article.Content, meta, "", editorial[article.ID])
-			item := buildUnifiedReadinessItem(article.Title, article.Content, meta, "", articleFileCounts[article.ID], article.Status == 1, "article", article.ID, countryCode, gate)
+			item := buildUnifiedReadinessItem(article.Title, article.Content, meta, "", articleFileCounts[article.ID], article.Status == 1, "article", article.ID, countryCode, gate, policyBaselines[article.ID])
 			updateUnifiedReadinessSummary(&globalSummary, item)
 			if levelFilter == "" || item.Level == levelFilter {
 				rows = append(rows, unifiedReadinessRow{Item: item, CreatedAt: article.CreatedAt})
@@ -295,6 +328,10 @@ func (h *Handler) AdsenseReadinessUnified(c *fiber.Ctx) error {
 		editorial, err := latestReadinessEditorialDecisions(ctx, "post", countryCode)
 		if err != nil {
 			return utils.InternalError(c, "تعذر تحميل قرارات المراجعة التحريرية للمنشورات")
+		}
+		policyBaselines, err := latestPolicyReadinessBaselines(ctx, "post", countryCode)
+		if err != nil {
+			return utils.InternalError(c, "تعذر تحميل خط أساس الفحص الحتمي للمنشورات")
 		}
 		var posts []models.Post
 		q := db.WithContext(ctx).
@@ -316,7 +353,7 @@ func (h *Handler) AdsenseReadinessUnified(c *fiber.Ctx) error {
 				keywords = *post.Keywords
 			}
 			gate := readinessGate(decisions[post.ID], post.Title, post.Content, meta, keywords, editorial[post.ID])
-			item := buildUnifiedReadinessItem(post.Title, post.Content, meta, keywords, postFileCounts[post.ID], post.IsActive, "post", post.ID, countryCode, gate)
+			item := buildUnifiedReadinessItem(post.Title, post.Content, meta, keywords, postFileCounts[post.ID], post.IsActive, "post", post.ID, countryCode, gate, policyBaselines[post.ID])
 			updateUnifiedReadinessSummary(&globalSummary, item)
 			if levelFilter == "" || item.Level == levelFilter {
 				rows = append(rows, unifiedReadinessRow{Item: item, CreatedAt: post.CreatedAt})

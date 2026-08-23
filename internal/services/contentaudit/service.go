@@ -76,7 +76,7 @@ func (s *Service) execute(runID uint) {
 	defer releaseProcessLock()
 
 	ctx := context.Background()
-	findings, scanErr := Scan(ctx, s.opts)
+	findings, scanErr := Scan(ctx, s.opts, runID)
 
 	run, err := s.repo.GetRun(ctx, uint64(runID))
 	if err != nil {

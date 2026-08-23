@@ -11,11 +11,14 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/imanjo/fiber-api/internal/config"
+	"github.com/imanjo/fiber-api/internal/contentquality"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -67,6 +70,7 @@ type scanner struct {
 	articleMinWords  int
 	postMinWords     int
 	commentMinWords  int
+	runID            uint
 }
 
 var contentRules = []ruleSet{
@@ -175,7 +179,11 @@ func (o Options) withDefaults() Options {
 }
 
 // Scan runs the full content policy audit across all configured country databases.
-func Scan(ctx context.Context, opts Options) ([]Finding, error) {
+// runID tags the deterministic policy-readiness baseline rows this scan writes (see
+// computePolicyBaseline) with the PolicyAuditRun that produced them. Pass 0 for standalone
+// callers with no run record (e.g. cmd/tools/content-audit) — RunID is informational only,
+// not an enforced foreign key.
+func Scan(ctx context.Context, opts Options, runID uint) ([]Finding, error) {
 	opts = opts.withDefaults()
 	s := &scanner{
 		cfg:              opts.Config,
@@ -183,6 +191,7 @@ func Scan(ctx context.Context, opts Options) ([]Finding, error) {
 		articleMinWords:  opts.ArticleMinWords,
 		postMinWords:     opts.PostMinWords,
 		commentMinWords:  opts.CommentMinWords,
+		runID:            runID,
 	}
 	if err := s.run(ctx); err != nil {
 		return nil, err
@@ -249,11 +258,17 @@ func (s *scanner) scanDatabase(ctx context.Context, db *gorm.DB, countryCode str
 func (s *scanner) scanArticles(ctx context.Context, db *gorm.DB, countryCode string) error {
 	var articles []models.Article
 	return db.WithContext(ctx).FindInBatches(&articles, defaultBatchSize, func(tx *gorm.DB, batch int) error {
+		baselines := make([]models.ContentPolicyReadiness, 0, len(articles))
 		for _, article := range articles {
-			fields := []string{article.Title, article.Content, derefString(article.MetaDescription)}
+			meta := derefString(article.MetaDescription)
+			fields := []string{article.Title, article.Content, meta}
 			itemURL := joinURL(s.cfg.Frontend.URL, countryCode, "lesson", "articles", fmt.Sprint(article.ID))
 			s.auditText("article", countryCode, article.ID, article.Title, fields, itemURL)
 			s.auditShortContent("article", countryCode, article.ID, article.Title, itemURL, article.Content, s.articleMinWords)
+			baselines = append(baselines, s.buildPolicyBaseline("article", countryCode, article.ID, article.Title, article.Content, meta, fields, s.articleMinWords))
+		}
+		if err := upsertPolicyBaselines(ctx, baselines); err != nil {
+			return err
 		}
 		return ctx.Err()
 	}).Error
@@ -262,20 +277,26 @@ func (s *scanner) scanArticles(ctx context.Context, db *gorm.DB, countryCode str
 func (s *scanner) scanPosts(ctx context.Context, db *gorm.DB, fallbackCountryCode string) error {
 	var posts []models.Post
 	return db.WithContext(ctx).FindInBatches(&posts, defaultBatchSize, func(tx *gorm.DB, batch int) error {
+		baselines := make([]models.ContentPolicyReadiness, 0, len(posts))
 		for _, post := range posts {
 			countryCode := firstNonEmpty(post.Country, fallbackCountryCode)
+			meta := derefString(post.MetaDescription)
 			fields := []string{
 				post.Title,
 				post.Slug,
 				post.Content,
 				derefString(post.Alt),
 				derefString(post.Keywords),
-				derefString(post.MetaDescription),
+				meta,
 				derefString(post.Image),
 			}
 			itemURL := joinURL(s.cfg.Frontend.URL, countryCode, "posts", fmt.Sprint(post.ID))
 			s.auditText("post", countryCode, post.ID, post.Title, fields, itemURL)
 			s.auditShortContent("post", countryCode, post.ID, post.Title, itemURL, post.Content, s.postMinWords)
+			baselines = append(baselines, s.buildPolicyBaseline("post", countryCode, post.ID, post.Title, post.Content, meta, fields, s.postMinWords))
+		}
+		if err := upsertPolicyBaselines(ctx, baselines); err != nil {
+			return err
 		}
 		return ctx.Err()
 	}).Error
@@ -409,6 +430,86 @@ func (s *scanner) auditShortContent(contentType, countryCode string, id uint, ti
 		itemURL,
 		"Expand the content, merge it with a stronger page, or keep ads disabled on this URL.",
 	)
+}
+
+// buildPolicyBaseline computes the deterministic (no-AI) readiness baseline for one item: it
+// never produces a PolicyAuditFinding (violations only) and never touches
+// contentquality.Gate/Evaluate (real Indexable/AdsEligible stay AI-decision-only, unchanged) —
+// callers collect these per FindInBatches batch and upsert together via
+// upsertPolicyBaselines, so scanning thousands of items doesn't mean thousands of individual
+// round trips to the shared audit DB.
+func (s *scanner) buildPolicyBaseline(contentType, countryCode string, id uint, title, content, meta string, fields []string, minWords int) models.ContentPolicyReadiness {
+	score := 100
+	issues := make([]string, 0, 4)
+	signal := models.PolicyReadinessSignalClean
+
+	combined := strings.Join(fields, "\n")
+	normalized := normalizeText(combined)
+	for _, rule := range contentRules {
+		if matches := matchingTerms(normalized, rule.terms); len(matches) > 0 {
+			score -= 85
+			signal = models.PolicyReadinessSignalViolation
+			issues = append(issues, fmt.Sprintf("مخالفة سياسة محتملة (%s): يحتوي على مصطلحات محظورة.", rule.risk))
+		}
+	}
+	if unsafeMarkupPattern.MatchString(combined) {
+		score -= 80
+		signal = models.PolicyReadinessSignalViolation
+		issues = append(issues, "يحتوي على HTML أو سكربت غير آمن.")
+	}
+
+	words := wordCount(content)
+	if words < minWords {
+		score -= 30
+		issues = append(issues, fmt.Sprintf("المحتوى قصير جدًا (%d كلمة)؛ الحد الأدنى الموصى به %d كلمة.", words, minWords))
+	}
+	if len([]rune(strings.TrimSpace(title))) < contentquality.DiagnosticTitleMinChars {
+		score -= 5
+		issues = append(issues, "العنوان قصير جدًا.")
+	}
+	if len([]rune(strings.TrimSpace(meta))) < contentquality.DiagnosticMetaMinChars {
+		score -= 10
+		issues = append(issues, "الوصف التعريفي قصير أو مفقود.")
+	}
+
+	if score < 0 {
+		score = 0
+	}
+	if score > 100 {
+		score = 100
+	}
+	if signal == models.PolicyReadinessSignalClean && score < 70 {
+		signal = models.PolicyReadinessSignalNeedsImprovement
+	}
+	if len(issues) == 0 {
+		issues = append(issues, "لا توجد ملاحظات من الفحص الحتمي.")
+	}
+
+	return models.ContentPolicyReadiness{
+		ContentType: contentType,
+		ContentID:   id,
+		CountryCode: countryCode,
+		RunID:       s.runID,
+		Score:       score,
+		Signal:      signal,
+		Issues:      strings.Join(issues, "\n"),
+		ScannedAt:   time.Now(),
+	}
+}
+
+// upsertPolicyBaselines writes one batch of buildPolicyBaseline results to the shared audit DB
+// (database.DB() — same "central, not per-country-sharded" convention every other
+// content-audit metadata table in this package already follows: PolicyAuditRun,
+// PolicyAuditFinding, ContentAIDecision, etc. are all written there regardless of which
+// country's content they describe, filtered back out by the CountryCode column on read).
+func upsertPolicyBaselines(ctx context.Context, records []models.ContentPolicyReadiness) error {
+	if len(records) == 0 {
+		return nil
+	}
+	return database.DB().WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "content_type"}, {Name: "content_id"}, {Name: "country_code"}},
+		DoUpdates: clause.AssignmentColumns([]string{"run_id", "score", "signal", "issues", "scanned_at", "updated_at"}),
+	}).CreateInBatches(&records, defaultBatchSize).Error
 }
 
 func (s *scanner) auditMacroFile(countryCode string, file models.File, itemURL string) {

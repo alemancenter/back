@@ -22,7 +22,7 @@ func main() {
 	log := logger.Init(logger.Config{Level: "warn", Debug: false})
 	defer log.Sync()
 
-	findings, err := contentaudit.Scan(context.Background(), contentaudit.Options{Config: cfg})
+	findings, err := contentaudit.Scan(context.Background(), contentaudit.Options{Config: cfg}, 0)
 	if err != nil {
 		exitf("content audit failed: %v", err)
 	}

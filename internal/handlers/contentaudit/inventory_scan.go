@@ -149,7 +149,7 @@ func buildInventoryItems(ctx context.Context, country, contentType string) ([]in
 			contentquality.TextField{Name: "meta_description", Value: source.MetaDescription},
 			contentquality.TextField{Name: "keywords", Value: source.Keywords},
 		)
-		readiness := buildUnifiedReadinessItem(source.Title, source.Content, source.MetaDescription, source.Keywords, source.FilesCount, source.Published, source.Type, source.ID, country, gate)
+		readiness := buildUnifiedReadinessItem(source.Title, source.Content, source.MetaDescription, source.Keywords, source.FilesCount, source.Published, source.Type, source.ID, country, gate, nil)
 		key := fmt.Sprintf("%s:%d", source.Type, source.ID)
 		item := inventoryItem{
 			ID: source.ID, Type: source.Type, Title: source.Title, Published: source.Published,

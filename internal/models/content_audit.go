@@ -44,6 +44,35 @@ type PolicyAuditFinding struct {
 func (PolicyAuditFinding) TableName() string { return "policy_audit_findings" }
 
 const (
+	PolicyReadinessSignalClean            = "clean"
+	PolicyReadinessSignalNeedsImprovement = "needs_improvement"
+	PolicyReadinessSignalViolation        = "policy_violation"
+)
+
+// ContentPolicyReadiness is the deterministic (no-AI) readiness baseline computed by the
+// legacy policy scan (Scan in engine.go) for every article/post, not just violations —
+// unlike PolicyAuditFinding above, which only records rule matches. One row per content
+// item, upserted (latest scan wins) on unique(content_type, content_id, country_code).
+// Deliberately never read by contentquality.Evaluate/Gate — it must never affect real
+// AdsEligible/Indexable decisions, only enrich the dashboard readiness report for content
+// that has no ContentAIDecision yet. See back/internal/handlers/contentaudit/readiness_unified.go.
+type ContentPolicyReadiness struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	ContentType string    `gorm:"type:varchar(30);not null;uniqueIndex:idx_policy_readiness_item" json:"content_type"`
+	ContentID   uint      `gorm:"not null;uniqueIndex:idx_policy_readiness_item" json:"content_id"`
+	CountryCode string    `gorm:"type:varchar(10);not null;uniqueIndex:idx_policy_readiness_item" json:"country_code"`
+	RunID       uint      `gorm:"index" json:"run_id"`
+	Score       int       `gorm:"not null;default:0" json:"score"`
+	Signal      string    `gorm:"type:varchar(30);not null;index" json:"signal"`
+	Issues      string    `gorm:"type:text" json:"issues"`
+	ScannedAt   time.Time `gorm:"not null;index" json:"scanned_at"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (ContentPolicyReadiness) TableName() string { return "content_policy_readiness" }
+
+const (
 	ContentAIJobStatusQueued     = "queued"
 	ContentAIJobStatusRunning    = "running"
 	ContentAIJobStatusCancelling = "cancelling"

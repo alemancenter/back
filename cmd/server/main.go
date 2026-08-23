@@ -111,6 +111,7 @@ func main() {
 		&models.Permission{},
 		&models.PolicyAuditRun{},
 		&models.PolicyAuditFinding{},
+		&models.ContentPolicyReadiness{},
 		&models.ContentAIDecision{},
 		&models.ContentAIIssue{},
 		&models.ContentAISuggestion{},

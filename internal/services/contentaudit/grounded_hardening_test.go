@@ -211,8 +211,8 @@ func TestExtractDOCXTextReadsPast64KiBRawXML(t *testing.T) {
 	if len([]rune(extracted)) < 10000 {
 		t.Fatalf("expected substantial extracted evidence, got %d runes", len([]rune(extracted)))
 	}
-	if len([]rune(extracted)) > groundingEvidenceLimit {
-		t.Fatalf("extractor exceeded evidence limit: %d", len([]rune(extracted)))
+	if len([]rune(extracted)) > groundingAttachmentTextLimit {
+		t.Fatalf("extractor exceeded attachment evidence limit: %d", len([]rune(extracted)))
 	}
 }
 

@@ -2,6 +2,7 @@ package contentaudit
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -58,6 +59,73 @@ func TestGroundedFactExtractionStillAcceptsCanonicalArrays(t *testing.T) {
 	}
 }
 
+func TestGroundedFactExtractionAcceptsIntegerValuedDecimalConfidence(t *testing.T) {
+	raw := []byte(`{
+		"purpose":"وصف التحضير",
+		"audience":["المعلم"],
+		"facts":[{
+			"claim":"حقيقة موثقة",
+			"evidence_ids":["attachment:2761:text"],
+			"confidence":1.0
+		}],
+		"insufficient_source":false,
+		"source_notes":[]
+	}`)
+
+	var got groundedFactExtraction
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("integer-valued decimal confidence should decode: %v", err)
+	}
+	if len(got.Facts) != 1 || got.Facts[0].Confidence != 1 {
+		t.Fatalf("unexpected decimal confidence normalization: %#v", got.Facts)
+	}
+}
+
+func TestGroundedFactExtractionAcceptsDecimalStringConfidence(t *testing.T) {
+	raw := []byte(`{
+		"purpose":"وصف التحضير",
+		"audience":["المعلم"],
+		"facts":[{
+			"claim":"حقيقة موثقة",
+			"evidence_ids":["attachment:2761:text"],
+			"confidence":"98.0"
+		}],
+		"insufficient_source":false,
+		"source_notes":[]
+	}`)
+
+	var got groundedFactExtraction
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("decimal string confidence should decode: %v", err)
+	}
+	if got.Facts[0].Confidence != 98 {
+		t.Fatalf("expected confidence 98, got %d", got.Facts[0].Confidence)
+	}
+}
+
+func TestGroundedFactExtractionRejectsFractionalConfidence(t *testing.T) {
+	raw := []byte(`{
+		"purpose":"وصف التحضير",
+		"audience":["المعلم"],
+		"facts":[{
+			"claim":"حقيقة موثقة",
+			"evidence_ids":["attachment:2761:text"],
+			"confidence":98.5
+		}],
+		"insufficient_source":false,
+		"source_notes":[]
+	}`)
+
+	var got groundedFactExtraction
+	err := json.Unmarshal(raw, &got)
+	if err == nil {
+		t.Fatal("fractional confidence must remain invalid")
+	}
+	if !strings.Contains(err.Error(), "confidence") || !strings.Contains(err.Error(), "fractional") {
+		t.Fatalf("unexpected fractional confidence error: %v", err)
+	}
+}
+
 func TestGroundedWriterAcceptsSingleFactIndex(t *testing.T) {
 	var got groundedDraft
 	if err := json.Unmarshal([]byte(`{"title":"عنوان","content_html":"<p>نص</p>","used_fact_indexes":"0"}`), &got); err != nil {
@@ -65,6 +133,22 @@ func TestGroundedWriterAcceptsSingleFactIndex(t *testing.T) {
 	}
 	if len(got.UsedFactIndexes) != 1 || got.UsedFactIndexes[0] != 0 {
 		t.Fatalf("unexpected indexes: %#v", got.UsedFactIndexes)
+	}
+}
+
+func TestGroundedWriterAcceptsMixedIntegerValuedFactIndexes(t *testing.T) {
+	var got groundedDraft
+	if err := json.Unmarshal([]byte(`{"title":"عنوان","content_html":"<p>نص</p>","used_fact_indexes":[0.0,"1.0",2]}`), &got); err != nil {
+		t.Fatalf("integer-valued mixed writer indexes should decode: %v", err)
+	}
+	want := []int{0, 1, 2}
+	if len(got.UsedFactIndexes) != len(want) {
+		t.Fatalf("unexpected indexes: %#v", got.UsedFactIndexes)
+	}
+	for i := range want {
+		if got.UsedFactIndexes[i] != want[i] {
+			t.Fatalf("unexpected indexes: %#v", got.UsedFactIndexes)
+		}
 	}
 }
 
@@ -83,5 +167,20 @@ func TestGroundedValidatorAcceptsScalarNotes(t *testing.T) {
 	}
 	if len(got.UnsupportedClaims) != 0 {
 		t.Fatalf("unexpected unsupported claims: %#v", got.UnsupportedClaims)
+	}
+}
+
+func TestGroundedValidatorAcceptsIntegerValuedDecimalCounts(t *testing.T) {
+	var got groundedValidation
+	if err := json.Unmarshal([]byte(`{
+		"grounding_score":96.0,
+		"supported_claims":"7.0",
+		"unsupported_claims":[],
+		"notes":[]
+	}`), &got); err != nil {
+		t.Fatalf("integer-valued decimal validator fields should decode: %v", err)
+	}
+	if got.GroundingScore != 96 || got.SupportedClaims != 7 {
+		t.Fatalf("unexpected validator numeric normalization: %+v", got)
 	}
 }

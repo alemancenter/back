@@ -3,7 +3,6 @@ package contentaudit
 import (
 	"archive/zip"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -26,13 +25,19 @@ func TestRepairGroundedJSONControlCharsRawNewline(t *testing.T) {
 
 func TestRepairGroundedJSONControlCharsPreservesValidEscapes(t *testing.T) {
 	raw := `{"source_notes":"line one\nline two","facts":[],"audience":[],"insufficient_source":true}`
+	// The Go raw literal above intentionally contains the exact JSON bytes.
+	raw = strings.ReplaceAll(raw, `\"`, `"`)
 	if repaired := repairGroundedJSONControlChars(raw); repaired != raw {
 		t.Fatalf("valid escaped JSON changed:\nwant: %q\ngot:  %q", raw, repaired)
+	}
+	if !json.Valid([]byte(raw)) {
+		t.Fatal("fixture should be valid JSON")
 	}
 }
 
 func TestRepairGroundedJSONControlCharsDoesNotHideStructuralErrors(t *testing.T) {
 	raw := `{"purpose":"x" "facts":[]}`
+	raw = strings.ReplaceAll(raw, `\"`, `"`)
 	if json.Valid([]byte(repairGroundedJSONControlChars(raw))) {
 		t.Fatal("structural JSON error must not be silently repaired")
 	}
@@ -60,11 +65,18 @@ func TestGroundedAIJSONRetriesTruncatedResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		call := atomic.AddInt32(&calls, 1)
 		w.Header().Set("Content-Type", "application/json")
+		content := `{"purpose":"خطة درس","audience":["المعلم"],"facts":[{"claim":"حقيقة موثقة","evidence_ids":["attachment:1:text"],"confidence":98}],"insufficient_source":false,"source_notes":[]}`
+		finish := "stop"
 		if call == 1 {
-			fmt.Fprint(w, `{"choices":[{"finish_reason":"length","message":{"content":"{\"purpose\":\"truncated\""}}]}`)
-			return
+			content = `{"purpose":"truncated"`
+			finish = "length"
 		}
-		fmt.Fprint(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"purpose\":\"خطة درس\",\"audience\":[\"المعلم\"],\"facts\":[{\"claim\":\"حقيقة موثقة\",\"evidence_ids\":[\"attachment:1:text\"],\"confidence\":98}],\"insufficient_source\":false,\"source_notes\":[]}"}}]}`)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"choices": []map[string]interface{}{{
+				"finish_reason": finish,
+				"message": map[string]string{"content": content},
+			}},
+		})
 	}))
 	defer server.Close()
 
@@ -94,7 +106,12 @@ func TestGroundedAIJSONRetriesTruncatedResponse(t *testing.T) {
 func TestGroundedAIJSONMalformedForeverReturnsInvalidOutput(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"purpose\":\"broken\""}}]}`)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"choices": []map[string]interface{}{{
+				"finish_reason": "stop",
+				"message": map[string]string{"content": `{"purpose":"broken"`},
+			}},
+		})
 	}))
 	defer server.Close()
 
@@ -164,8 +181,9 @@ func TestExtractDOCXTextReadsPast64KiBRawXML(t *testing.T) {
 	}
 	prefix := strings.Repeat("x", 80*1024)
 	text := strings.Repeat("خطة درس التربية الإسلامية والنتاجات التعليمية ودور المعلم ودور المتعلم. ", 400)
-	xml := `<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><!--` + prefix + `--><w:p><w:r><w:t>` + text + `</w:t></w:r></w:p></w:body></w:document>`
-	if _, err := part.Write([]byte(xml)); err != nil {
+	xmlText := `<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><!--` + prefix + `--><w:p><w:r><w:t>` + text + `</w:t></w:r></w:p></w:body></w:document>`
+	xmlText = strings.ReplaceAll(xmlText, `\"`, `"`)
+	if _, err := part.Write([]byte(xmlText)); err != nil {
 		t.Fatal(err)
 	}
 	if err := zw.Close(); err != nil {

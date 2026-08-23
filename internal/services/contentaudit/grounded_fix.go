@@ -180,6 +180,18 @@ func (s *Service) CreateGroundedFixPreview(ctx context.Context, decisionID uint6
 		return nil, fmt.Errorf("%w: grounding_score=%d unsupported_claims=%d", ErrGroundedValidationFailed, validation.GroundingScore, len(validation.UnsupportedClaims))
 	}
 
+	// Smaller/cheaper writer models sometimes drop meta_description/keywords from their JSON
+	// entirely despite the prompt, especially on long responses — this isn't an error the
+	// validator can catch (an empty field trivially has no unsupported claims), so backfill
+	// deterministically from material that's already been validated above, rather than
+	// leaving these fields silently blank. No extra AI call, no new invented content.
+	if draft.MetaDescription == "" {
+		draft.MetaDescription = deriveMetaDescriptionFallback(draft.ContentHTML)
+	}
+	if len(draft.Keywords) == 0 && content.Keywords != nil {
+		draft.Keywords = utils.SplitKeywords(*content.Keywords)
+	}
+
 	summary := buildGroundingSummary(validation, len(pack.Evidence), modelName, facts, pack)
 	preview := &models.ContentAIFixPreview{
 		DecisionID:              decision.ID,
@@ -387,6 +399,23 @@ func applyArticleKeywords(tx *gorm.DB, articleID uint, keywordsStr string) error
 		}
 	}
 	return tx.Model(&models.Article{ID: articleID}).Association("KeywordsRel").Replace(keywords)
+}
+
+// deriveMetaDescriptionFallback builds a meta description straight from content_html when
+// the writer's own JSON omitted one. Grounded by construction — it's a literal excerpt of
+// text the grounding validator already reviewed and approved, not new/invented material.
+func deriveMetaDescriptionFallback(contentHTML string) string {
+	const targetLength = 155
+	plain := strings.Join(strings.Fields(normalizePlainText(contentHTML)), " ")
+	runes := []rune(plain)
+	if len(runes) <= targetLength {
+		return plain
+	}
+	cut := string(runes[:targetLength])
+	if lastSpace := strings.LastIndex(cut, " "); lastSpace > 0 {
+		cut = cut[:lastSpace]
+	}
+	return strings.TrimSpace(cut) + "…"
 }
 
 // nonEmptyStringPtr returns nil for a blank value instead of a pointer to an empty string,
@@ -784,7 +813,7 @@ func runGroundedWriter(ctx context.Context, pack groundedSourcePack, facts groun
 		"curriculum":   pack.Curriculum,
 	})
 	system := `أنت محرر تعليمي عربي. اكتب مسودة مفيدة ودقيقة اعتمادًا حصريًا على الحقائق المستخرجة. لا تضف أي معلومة غير موجودة في facts. لا تطارد عدد كلمات ولا تضف حشو SEO. إذا كانت الأدلة محدودة فاكتب صفحة قصيرة صادقة بدل اختراع تفاصيل. أما إذا كانت الحقائق كافية وغنية، فاكتب صفحة شاملة ومهيكلة تغطي كل حقيقة متاحة بعمق حقيقي: عناوين h2 فرعية لكل محور، فقرات مفصّلة تشرح لا تسرد فقط — الهدف صفحة تستحق فهرستها في محركات البحث، لا فقرة مختصرة، لكن دون تجاوز حدود ما تثبته الحقائق. لا تقل إن الملف يحتوي أهدافًا أو أنشطة أو أسئلة أو حلولًا إلا إذا كانت حقيقة صريحة. اجعل الملف جزءًا من المحتوى لا مجرد غلاف له: اشرح ما هو المورد، لمن يفيد، وما الذي يمكن إثباته عنه، ثم وجّه القارئ للاستفادة من المرفق. HTML نظيف فقط داخل content_html بعناوين h2 وفقرات p عند الحاجة. أضف أيضًا meta_description (نحو 120-160 حرفًا، أسلوب معلوماتي دقيق مبني على الحقائق فقط، بلا عبارات تسويقية غير مؤكدة) وkeywords (3 إلى 8 كلمات/عبارات مفتاحية مشتقة من العنوان والحقائق والسياق الدراسي فقط، لا مواضيع غير مذكورة في الأدلة). أعد JSON فقط.`
-	user := fmt.Sprintf(`السياق:\n%s\n\nالحقائق المسموح استخدامها فقط:\n%s\n\nأرجع JSON بالمفاتيح: title, content_html, meta_description, keywords, used_fact_indexes. used_fact_indexes هي فهارس الحقائق المستخدمة (تبدأ من 0). اجعل المسودة مركزة ولا تكرر الحقائق، لكن استخدم كل حقيقة متاحة ذات صلة بدل الاقتصار على جزء منها.`, string(contextJSON), string(factsJSON))
+	user := fmt.Sprintf(`السياق:\n%s\n\nالحقائق المسموح استخدامها فقط:\n%s\n\nأرجع JSON بالمفاتيح: title, content_html, meta_description, keywords, used_fact_indexes. used_fact_indexes هي فهارس الحقائق المستخدمة (تبدأ من 0). اجعل المسودة مركزة ولا تكرر الحقائق، لكن استخدم كل حقيقة متاحة ذات صلة بدل الاقتصار على جزء منها. تذكير أخير: meta_description وkeywords حقلان إلزاميان تمامًا مثل content_html — لا تُرجع أيًا منهما فارغًا أبدًا.`, string(contextJSON), string(factsJSON))
 	model, err := groundedAIJSON(ctx, "grounded_writer", system, user, &out)
 	return out, model, err
 }

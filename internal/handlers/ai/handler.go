@@ -26,8 +26,9 @@ type Handler struct {
 	groundedSvc *contentaudit.Service
 }
 
-// New creates a new AI Handler. groundedSvc powers the file-grounded generation path (used
-// when GenerateRequest.FileIDs is non-empty); svc remains the fallback title-only generator.
+// New creates a new AI Handler. groundedSvc powers the file-aware generation path; svc remains
+// the legacy no-file generator. The file-aware path may deliberately use general knowledge
+// when a scanned/image-only PDF has no extractable text, but now discloses that provenance.
 func New(svc services.AIService, groundedSvc *contentaudit.Service) *Handler {
 	return &Handler{svc: svc, groundedSvc: groundedSvc}
 }
@@ -95,14 +96,12 @@ func (h *Handler) Generate(c *fiber.Ctx) error {
 		var article interface{}
 		var err error
 		if len(fileIDs) > 0 && h.groundedSvc != nil {
-			// The grounded pipeline makes several sequential AI calls (fact extraction, then
-			// up to seoGenerationMaxAttempts rounds of writer+SEO-validator) — genuinely slower
-			// than the single-call fallback generator, which is why it needs its own, more
-			// generous deadline instead of running unbounded. Matched by the frontend's poll
-			// window in ArticleForm.astro/PostForm.astro — extend both together if this changes.
+			// The file-aware pipeline makes several sequential AI calls. Readable files go
+			// through fact extraction + independent claim validation; unreadable/image-only
+			// files retain the intentional general-knowledge fallback with explicit provenance.
 			ctx, cancel := context.WithTimeout(context.Background(), groundedGenerationTimeout)
 			defer cancel()
-			article, err = h.groundedSvc.GenerateGroundedDraft(ctx, contentaudit.GroundedGenerateRequest{
+			article, err = h.groundedSvc.GenerateGroundedDraftWithProvenance(ctx, contentaudit.GroundedGenerateRequest{
 				Title:             title,
 				ContentType:       contentType,
 				CountryCode:       generationContext.CountryCode,
@@ -164,14 +163,22 @@ func (h *Handler) Status(c *fiber.Ctx) error {
 	}
 
 	if job.Status == services.JobDone {
-		var article services.SEOArticle
+		// Preserve the complete generated JSON instead of decoding into SEOArticle and
+		// accidentally discarding newer provenance fields such as source_mode/grounding_score.
+		var article map[string]interface{}
 		if err := json.Unmarshal([]byte(job.Content), &article); err == nil {
 			resp["article"] = article
-			if article.ContentHTML != "" {
-				resp["content"] = article.ContentHTML
-				resp["content_html"] = article.ContentHTML
-			} else {
-				resp["content"] = article.Content
+			if html, _ := article["content_html"].(string); html != "" {
+				resp["content"] = html
+				resp["content_html"] = html
+			} else if content, _ := article["content"].(string); content != "" {
+				resp["content"] = content
+			}
+			if sourceMode, _ := article["source_mode"].(string); sourceMode != "" {
+				resp["source_mode"] = sourceMode
+			}
+			if warning, _ := article["source_warning"].(string); warning != "" {
+				resp["source_warning"] = warning
 			}
 		} else {
 			resp["content"] = job.Content

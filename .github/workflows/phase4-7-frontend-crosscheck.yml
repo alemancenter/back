@@ -1,0 +1,75 @@
+name: Phase 4.7 Frontend Cross-Check
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout frontend feature branch
+        uses: actions/checkout@v4
+        with:
+          repository: alemancenter/Astroimanjo
+          ref: fix/phase4-7-generation-ui
+          path: frontend
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Apply asserted Phase 4.7 UI patch
+        shell: bash
+        working-directory: frontend
+        run: |
+          awk 'BEGIN{emit=0} /python3 <<'"'"'PY'"'"'/{emit=1;next} /^[[:space:]]*PY[[:space:]]*$/{if(emit){exit}} emit{sub(/^          /,""); print}' .github/workflows/phase4-7-edit-test.yml > /tmp/phase47.py
+          test -s /tmp/phase47.py
+          python3 /tmp/phase47.py
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Astro type check
+        working-directory: frontend
+        run: npx astro check
+
+      - name: Production build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Validate patch
+        working-directory: frontend
+        shell: bash
+        run: |
+          git diff --check
+          grep -q 'ai-generation-source-status' src/components/dashboard/ArticleForm.astro
+          grep -q 'post-ai-source-status' src/components/dashboard/PostForm.astro
+          grep -q 'draft_quality_score' src/components/dashboard/ArticleForm.astro
+          grep -q 'draft_quality_score' src/components/dashboard/PostForm.astro
+          grep -q 'general_knowledge_fallback' src/components/dashboard/ArticleForm.astro
+          grep -q 'general_knowledge_fallback' src/components/dashboard/PostForm.astro
+
+      - name: Package verified source
+        shell: bash
+        run: |
+          mkdir -p verified/src/components/dashboard
+          cp frontend/src/components/dashboard/ArticleForm.astro verified/src/components/dashboard/ArticleForm.astro
+          cp frontend/src/components/dashboard/PostForm.astro verified/src/components/dashboard/PostForm.astro
+          (cd frontend && git diff -- src/components/dashboard/ArticleForm.astro src/components/dashboard/PostForm.astro) > verified/phase4-7-frontend.patch
+
+      - name: Upload verified source
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase4-7-frontend-verified
+          path: verified
+          if-no-files-found: error
+          retention-days: 3

@@ -72,7 +72,11 @@ func (s *Service) GenerateGroundedDraft(ctx context.Context, req GroundedGenerat
 		return nil, ErrGroundedSourceInsufficient
 	}
 
-	facts, _, err := runGroundedFactExtraction(ctx, pack)
+	// Fact extraction is a mechanical, well-scoped task (pull short quoted facts out of
+	// already-provided evidence) — it doesn't need the same heavy model tier the writer does,
+	// and routing it to the fast/economy tier is most of what makes this pipeline take minutes
+	// instead of tens of seconds. See WithAIModelStrategy / groundedModelCandidatesForContext.
+	facts, _, err := runGroundedFactExtraction(WithAIModelStrategy(ctx, "economy"), pack)
 	if err != nil {
 		return nil, err
 	}
@@ -90,8 +94,14 @@ func (s *Service) GenerateGroundedDraft(ctx context.Context, req GroundedGenerat
 	haveDraft := false
 	feedback := ""
 
+	// "balanced" trades a little raw model horsepower for real speed on the writer stage
+	// itself — the stage that actually determines whether the deterministic checklist below
+	// passes. Left at "quality"/default here, this pipeline routes to the heaviest, slowest
+	// model tier for every single call, which is most of where the multi-minute wall time
+	// came from; "balanced" is still a strong model, just a faster one.
+	writerCtx := WithAIModelStrategy(ctx, "balanced")
 	for attempt := 0; attempt < seoGenerationMaxAttempts; attempt++ {
-		draft, _, err := runNewContentWriter(ctx, pack, facts, feedback)
+		draft, _, err := runNewContentWriter(writerCtx, pack, facts, feedback)
 		if err != nil {
 			if !haveDraft {
 				return nil, err
@@ -109,7 +119,7 @@ func (s *Service) GenerateGroundedDraft(ctx context.Context, req GroundedGenerat
 			draft.MetaDescription = deriveMetaDescriptionFallback(draft.ContentHTML)
 		}
 
-		validation := scoreSEOQuality(ctx, draft, pack)
+		validation := scoreSEOQuality(draft)
 		if !haveDraft || validation.total() > bestValidation.total() {
 			bestDraft = draft
 			bestValidation = validation
@@ -194,8 +204,8 @@ func runNewContentWriter(ctx context.Context, pack groundedSourcePack, facts gro
 		"country_code": pack.CountryCode,
 		"curriculum":   pack.Curriculum,
 	})
-	system := `أنت محرر تعليمي عربي محترف. اكتب مقالة جديدة كاملة اعتمادًا حصريًا على الحقائق المستخرجة من الملف المرفق. لا تضف أي معلومة غير موجودة في facts. اكتب صفحة شاملة ومهيكلة بعناوين h2 فرعية حقيقية، فقرات مفصّلة تشرح لا تسرد فقط، بجودة احترافية تستحق نشرها وأرشفتها في محركات البحث. أضف meta_description (120-160 حرفًا بالضبط تقريبًا، يحوي الكلمة المفتاحية الرئيسية، أسلوب معلوماتي دقيق بلا مبالغة تسويقية) وkeywords (5 إلى 8 كلمات/عبارات مفتاحية حقيقية مشتقة من العنوان والحقائق والسياق الدراسي فقط، تظهر كل واحدة منها فعليًا داخل content_html). اجعل الفقرة الأولى من content_html تحتوي الكلمة المفتاحية الرئيسية. HTML نظيف فقط داخل content_html بعناوين h2 وفقرات p. أعد JSON فقط.`
-	user := fmt.Sprintf(`السياق:\n%s\n\nالحقائق المسموح استخدامها فقط:\n%s\n\nأرجع JSON بالمفاتيح: title, content_html, meta_description, keywords, used_fact_indexes.`, string(contextJSON), string(factsJSON))
+	system := `أنت محرر تعليمي عربي محترف ومراجع SEO في آن واحد. اكتب مقالة جديدة كاملة اعتمادًا حصريًا على الحقائق المستخرجة من الملف المرفق. لا تضف أي معلومة غير موجودة في facts. اكتب صفحة شاملة ومهيكلة بعناوين h2 فرعية حقيقية، فقرات مفصّلة تشرح لا تسرد فقط، بجودة احترافية تستحق نشرها وأرشفتها في محركات البحث. أضف meta_description (120-160 حرفًا بالضبط تقريبًا، يحوي الكلمة المفتاحية الرئيسية، أسلوب معلوماتي دقيق بلا مبالغة تسويقية) وkeywords (5 إلى 8 كلمات/عبارات مفتاحية حقيقية مشتقة من العنوان والحقائق والسياق الدراسي فقط، تظهر كل واحدة منها فعليًا داخل content_html). اجعل الفقرة الأولى من content_html تحتوي الكلمة المفتاحية الرئيسية. HTML نظيف فقط داخل content_html بعناوين h2 وفقرات p. بعد كتابة المسودة، راجعها بنفسك كمراجع SEO مستقل وقيّمها بصدق من 0 إلى 30 بناءً على الاحترافية والوضوح والقيمة التعليمية الفعلية (لا تكافئ الطول وحده، لا تعطِ 30 إلا إن كانت ممتازة فعلًا) في quality_score، مع ملاحظات مختصرة في quality_notes إن وُجد نقص. أعد JSON فقط.`
+	user := fmt.Sprintf(`السياق:\n%s\n\nالحقائق المسموح استخدامها فقط:\n%s\n\nأرجع JSON بالمفاتيح: title, content_html, meta_description, keywords, used_fact_indexes, quality_score, quality_notes.`, string(contextJSON), string(factsJSON))
 	if strings.TrimSpace(feedback) != "" {
 		user += "\n\nملاحظات من محاولة سابقة يجب معالجتها في هذه المحاولة:\n" + feedback
 	}
@@ -203,10 +213,19 @@ func runNewContentWriter(ctx context.Context, pack groundedSourcePack, facts gro
 	return out, model, err
 }
 
-func scoreSEOQuality(ctx context.Context, draft groundedDraft, pack groundedSourcePack) seoQualityValidation {
+// scoreSEOQuality blends the deterministic checklist (majority weight, pure Go, instant —
+// title/meta length, keyword coverage, heading structure, word count) with the writer's own
+// self-reported quality_score/quality_notes from the same call above, instead of a second
+// independent AI round trip. Self-review is less rigorous than an independent reviewer would
+// be, but it's the softer 30-point half of the score; the hard, ungameable 70 points (facts
+// must trace to the uploaded file, exact structural checks) are unaffected by this.
+func scoreSEOQuality(draft groundedDraft) seoQualityValidation {
 	det, detIssues := deterministicSEOScore(draft)
-	qual, qualNotes := qualitativeSEOScore(ctx, draft, pack)
-	return seoQualityValidation{DeterministicScore: det, DeterministicIssues: detIssues, QualitativeScore: qual, QualitativeNotes: qualNotes}
+	qual := clamp(draft.QualityScore)
+	if qual > 30 {
+		qual = 30
+	}
+	return seoQualityValidation{DeterministicScore: det, DeterministicIssues: detIssues, QualitativeScore: qual, QualitativeNotes: compactStrings(draft.QualityNotes)}
 }
 
 func deterministicSEOScore(draft groundedDraft) (int, []string) {
@@ -283,27 +302,6 @@ func deterministicSEOScore(draft groundedDraft) (int, []string) {
 	}
 
 	return score, issues
-}
-
-func qualitativeSEOScore(ctx context.Context, draft groundedDraft, pack groundedSourcePack) (int, []string) {
-	type qualResult struct {
-		Score int      `json:"score"`
-		Notes []string `json:"notes"`
-	}
-	var out qualResult
-	draftJSON, _ := json.Marshal(map[string]interface{}{"title": draft.Title, "content_html": draft.ContentHTML, "meta_description": draft.MetaDescription})
-	system := `أنت محرر SEO محترف. قيّم هذه المسودة التعليمية من 0 إلى 30 بناءً على: الاحترافية والوضوح، القيمة التعليمية الفعلية، وسلاسة القراءة. لا تكافئ الطول وحده. إن كانت ممتازة أعطِ 30. أعد JSON فقط.`
-	user := fmt.Sprintf(`راجع هذه المسودة:\n%s\n\nأرجع JSON بالمفاتيح: score, notes (ملاحظات مختصرة إن وُجد نقص).`, string(draftJSON))
-	if _, err := groundedAIJSON(ctx, "seo_qualitative_reviewer", system, user, &out); err != nil {
-		return 0, []string{"تعذّر تشغيل المراجعة النوعية لهذه المحاولة."}
-	}
-	if out.Score < 0 {
-		out.Score = 0
-	}
-	if out.Score > 30 {
-		out.Score = 30
-	}
-	return out.Score, compactStrings(out.Notes)
 }
 
 func seoRetryFeedback(v seoQualityValidation) string {

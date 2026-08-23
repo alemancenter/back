@@ -77,6 +77,12 @@ type groundedDraft struct {
 	MetaDescription string   `json:"meta_description"`
 	Keywords        []string `json:"keywords"`
 	UsedFactIndexes []int    `json:"used_fact_indexes"`
+	// QualityScore/QualityNotes are only requested by grounded_generate.go's new-content
+	// writer prompt (self-reported in the same call instead of a separate qualitative-review
+	// round trip) — grounded_fix.go's fix writer never asks for them, so they stay zero/nil
+	// there and are simply ignored.
+	QualityScore int      `json:"quality_score,omitempty"`
+	QualityNotes []string `json:"quality_notes,omitempty"`
 }
 
 type groundedValidation struct {

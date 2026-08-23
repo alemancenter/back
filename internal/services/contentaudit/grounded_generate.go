@@ -19,7 +19,7 @@ const (
 	// seoQualityMinScore is deliberately strict — content only clears it with near-perfect
 	// compliance on every deterministic check plus a strong AI qualitative pass. The retry
 	// loop below (not luck on one attempt) is what makes hitting it realistic.
-	seoQualityMinScore      = 99
+	seoQualityMinScore       = 99
 	seoGenerationMaxAttempts = 3
 )
 
@@ -56,62 +56,111 @@ func (v seoQualityValidation) issues() []string {
 	return compactStrings(append(append([]string{}, v.DeterministicIssues...), v.QualitativeNotes...))
 }
 
-// GenerateGroundedDraft builds new title/content/meta_description/keywords grounded in
-// uploaded file evidence, retrying with specific feedback until the SEO-quality bar is
-// cleared or attempts are exhausted. Always returns its best attempt with the real score
-// disclosed in SEOScore/SEOIssues — never silently claims the bar was met when it wasn't.
+// draftWriter is either runNewContentWriter (grounded-in-file) or runTitleOnlyWriter
+// (general-knowledge fallback) with pack/facts already bound via closure — lets the shared
+// quality-retry loop in runQualityLoop stay identical regardless of which produced the draft.
+type draftWriter func(feedback string) (groundedDraft, error)
+
+// GenerateGroundedDraft builds new title/content/meta_description/keywords. It strongly
+// prefers grounding every claim in the uploaded file's real text; when that file can't be
+// read at all (lost, or unreadable — most commonly a scanned/image-only PDF with no text
+// layer), it falls back to professional general-knowledge generation from the title instead
+// of hard-failing. This fallback was a deliberate decision after weighing it against OCR
+// (unreliable for Arabic here) and web-search-then-reword (rejected — matches Google's
+// "scraped/auto-generated content" policy, a distinct and often more severely penalized
+// violation than thin content). Either way, the same strict SEO-quality retry loop applies,
+// and the real score is always disclosed in SEOScore/SEOIssues — never silently claims the
+// bar was met when it wasn't.
 func (s *Service) GenerateGroundedDraft(ctx context.Context, req GroundedGenerateRequest) (*coreai.SEOArticle, error) {
 	if len(req.FileIDs) == 0 {
 		return nil, ErrGroundedSourceInsufficient
 	}
 
-	pack, err := buildNewContentSourcePack(ctx, req)
+	pack, fileEvidenceFound, err := buildNewContentSourcePack(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	if len(pack.Evidence) == 0 {
-		return nil, ErrGroundedSourceInsufficient
-	}
 
-	// Fact extraction is a mechanical, well-scoped task (pull short quoted facts out of
-	// already-provided evidence) — it doesn't need the same heavy model tier the writer does,
-	// and routing it to the fast/economy tier is most of what makes this pipeline take minutes
+	// "balanced"/"economy" trade a little raw model horsepower for real speed — routing every
+	// call to the heaviest default tier is most of what made this pipeline take minutes
 	// instead of tens of seconds. See WithAIModelStrategy / groundedModelCandidatesForContext.
-	facts, _, err := runGroundedFactExtraction(WithAIModelStrategy(ctx, "economy"), pack)
-	if err != nil {
-		return nil, err
-	}
-	facts = sanitizeGroundedFacts(facts, pack)
-	if facts.InsufficientSource || len(facts.Facts) == 0 {
-		detail := groundedSourceNotesSummary(facts.SourceNotes)
-		if detail != "" {
-			return nil, fmt.Errorf("%w: %s", ErrGroundedSourceInsufficient, detail)
+	var write draftWriter
+	var audience []string
+	usingFallback := !fileEvidenceFound
+	if fileEvidenceFound {
+		facts, _, err := runGroundedFactExtraction(WithAIModelStrategy(ctx, "economy"), pack)
+		if err != nil {
+			return nil, err
 		}
-		return nil, fmt.Errorf("%w: لا توجد حقائق موثقة كافية في الملف المرفوع", ErrGroundedSourceInsufficient)
+		facts = sanitizeGroundedFacts(facts, pack)
+		if facts.InsufficientSource || len(facts.Facts) == 0 {
+			// The file was readable but yielded nothing substantive (e.g. a near-empty
+			// document) — same fallback as an unreadable file, not a hard failure.
+			usingFallback = true
+		} else {
+			audience = facts.Audience
+			writerCtx := WithAIModelStrategy(ctx, "balanced")
+			write = func(feedback string) (groundedDraft, error) {
+				draft, _, err := runNewContentWriter(writerCtx, pack, facts, feedback)
+				return draft, err
+			}
+		}
+	}
+	if usingFallback {
+		writerCtx := WithAIModelStrategy(ctx, "balanced")
+		write = func(feedback string) (groundedDraft, error) {
+			draft, _, err := runTitleOnlyWriter(writerCtx, pack, feedback)
+			return draft, err
+		}
 	}
 
+	bestDraft, bestValidation, haveDraft := runQualityLoop(write, req.Title, audience)
+	if !haveDraft {
+		return nil, fmt.Errorf("%w: تعذّر توليد مسودة صالحة", ErrGroundedValidationFailed)
+	}
+
+	issues := bestValidation.issues()
+	if bestValidation.total() < seoQualityMinScore {
+		issues = append([]string{fmt.Sprintf("لم تصل المسودة لحد الجودة %d%% بعد %d محاولة — الدرجة الفعلية %d%%.", seoQualityMinScore, seoGenerationMaxAttempts, bestValidation.total())}, issues...)
+	}
+	if usingFallback {
+		issues = append([]string{"تعذّرت قراءة الملف المرفق، فتم التوليد من معرفة عامة موثوقة عن العنوان بدل ملفك — راجع الدقة الواقعية والتفاصيل الإجرائية بعناية إضافية قبل النشر."}, issues...)
+	}
+
+	plainText := normalizePlainText(bestDraft.ContentHTML)
+	return &coreai.SEOArticle{
+		Title:           bestDraft.Title,
+		MetaDescription: bestDraft.MetaDescription,
+		Keywords:        bestDraft.Keywords,
+		Content:         plainText,
+		ContentHTML:     bestDraft.ContentHTML,
+		CoverAltText:    bestDraft.CoverAltText,
+		SEOScore:        bestValidation.total(),
+		SEOIssues:       issues,
+		WordCount:       len(strings.Fields(plainText)),
+	}, nil
+}
+
+// runQualityLoop drives up to seoGenerationMaxAttempts rounds of write-then-score, shared by
+// both the grounded and title-only-fallback paths — the retry/feedback/best-attempt-tracking
+// logic doesn't care which produced the draft.
+func runQualityLoop(write draftWriter, fallbackTitle string, audience []string) (groundedDraft, seoQualityValidation, bool) {
 	var bestDraft groundedDraft
 	var bestValidation seoQualityValidation
 	haveDraft := false
 	feedback := ""
 
-	// "balanced" trades a little raw model horsepower for real speed on the writer stage
-	// itself — the stage that actually determines whether the deterministic checklist below
-	// passes. Left at "quality"/default here, this pipeline routes to the heaviest, slowest
-	// model tier for every single call, which is most of where the multi-minute wall time
-	// came from; "balanced" is still a strong model, just a faster one.
-	writerCtx := WithAIModelStrategy(ctx, "balanced")
 	for attempt := 0; attempt < seoGenerationMaxAttempts; attempt++ {
-		draft, _, err := runNewContentWriter(writerCtx, pack, facts, feedback)
+		draft, err := write(feedback)
 		if err != nil {
 			if !haveDraft {
-				return nil, err
+				return groundedDraft{}, seoQualityValidation{}, false
 			}
 			break
 		}
 		draft.Title = strings.TrimSpace(draft.Title)
 		if draft.Title == "" {
-			draft.Title = strings.TrimSpace(req.Title)
+			draft.Title = strings.TrimSpace(fallbackTitle)
 		}
 		draft.ContentHTML = normalizeFixedHTML(draft.ContentHTML)
 		draft.MetaDescription = strings.TrimSpace(draft.MetaDescription)
@@ -121,7 +170,7 @@ func (s *Service) GenerateGroundedDraft(ctx context.Context, req GroundedGenerat
 			draft.MetaDescription = deriveMetaDescriptionFallback(draft.ContentHTML)
 		}
 		if len(draft.Keywords) == 0 {
-			draft.Keywords = deriveKeywordsFallback(draft.Title, facts)
+			draft.Keywords = deriveKeywordsFallback(draft.Title, audience)
 		}
 		if draft.CoverAltText == "" {
 			draft.CoverAltText = draft.Title
@@ -139,33 +188,19 @@ func (s *Service) GenerateGroundedDraft(ctx context.Context, req GroundedGenerat
 		feedback = seoRetryFeedback(validation)
 	}
 
-	if !haveDraft {
-		return nil, fmt.Errorf("%w: تعذّر توليد مسودة صالحة من الملف المرفوع", ErrGroundedValidationFailed)
-	}
-
-	issues := bestValidation.issues()
-	if bestValidation.total() < seoQualityMinScore {
-		issues = append([]string{fmt.Sprintf("لم تصل المسودة لحد الجودة %d%% بعد %d محاولة — الدرجة الفعلية %d%%.", seoQualityMinScore, seoGenerationMaxAttempts, bestValidation.total())}, issues...)
-	}
-
-	plainText := normalizePlainText(bestDraft.ContentHTML)
-	return &coreai.SEOArticle{
-		Title:           bestDraft.Title,
-		MetaDescription: bestDraft.MetaDescription,
-		Keywords:        bestDraft.Keywords,
-		Content:         plainText,
-		ContentHTML:     bestDraft.ContentHTML,
-		CoverAltText:    bestDraft.CoverAltText,
-		SEOScore:        bestValidation.total(),
-		SEOIssues:       issues,
-		WordCount:       len(strings.Fields(plainText)),
-	}, nil
+	return bestDraft, bestValidation, haveDraft
 }
 
 // buildNewContentSourcePack loads the requested files (per-country DB, matching how
 // Article/Post/File rows are sharded) and extracts their text via fileextract, plus the
 // title and educational classification context — no existing content row to load from.
-func buildNewContentSourcePack(ctx context.Context, req GroundedGenerateRequest) (groundedSourcePack, error) {
+// The returned bool reports whether any real file evidence was found; when it's false (file
+// lost, or unreadable — most commonly a scanned/image-only PDF with no text layer),
+// GenerateGroundedDraft falls back to title-only generation instead of erroring, per the
+// user's explicit decision after weighing that against OCR (unreliable for Arabic here) and
+// web-search-then-reword (flagged and rejected as it matches Google's "scraped/auto-generated
+// content" policy — a distinct, often more severely penalized violation than thin content).
+func buildNewContentSourcePack(ctx context.Context, req GroundedGenerateRequest) (groundedSourcePack, bool, error) {
 	cc := strings.ToLower(strings.TrimSpace(req.CountryCode))
 	if cc == "" {
 		cc = "jo"
@@ -192,37 +227,18 @@ func buildNewContentSourcePack(ctx context.Context, req GroundedGenerateRequest)
 	db := database.GetManager().GetByCode(cc).WithContext(ctx)
 	storageRoot := config.Get().Storage.Path
 	extractedAny := false
-	notFoundCount, unreadableCount := 0, 0
 	for _, id := range req.FileIDs {
 		var file models.File
 		if err := db.First(&file, id).Error; err != nil {
-			notFoundCount++
 			continue
 		}
 		if extracted, ok := fileextract.ReadAttachmentEvidence(file, storageRoot); ok {
 			extractedAny = true
 			label := "نص مستخرج من الملف " + firstNonEmptyLocal(file.FileName, "#"+strconv.FormatUint(uint64(file.ID), 10))
 			pack.Evidence = append(pack.Evidence, groundedEvidence{ID: fmt.Sprintf("file:%d:text", file.ID), Kind: "attachment_text", Label: label, Text: truncateAttachmentEvidence(extracted), Verified: true})
-		} else {
-			unreadableCount++
 		}
 	}
-
-	// Without this, a file that fails extraction (most commonly: a scanned/image-only PDF
-	// with no real text layer — pdftotext then returns nothing) silently degrades to a pack
-	// with only the title as "evidence". The writer then has nothing real to work from and
-	// pads out a hollow article that just restates the title in different words — exactly the
-	// thin content this whole feature exists to prevent — while still costing 3 full retry
-	// rounds before failing the SEO bar anyway. Fail fast instead, with a specific reason.
-	if len(req.FileIDs) > 0 && !extractedAny {
-		switch {
-		case unreadableCount > 0:
-			return pack, fmt.Errorf("%w: تعذّر استخراج أي نص من الملف المرفق. تأكد أنه مستند نصي حقيقي (DOCX أو PDF بنص قابل للتحديد) وليس صورة ممسوحة ضوئيًا أو PDF بلا طبقة نصية", ErrGroundedSourceInsufficient)
-		case notFoundCount > 0:
-			return pack, fmt.Errorf("%w: الملف المرفق لم يعد موجودًا، يرجى رفعه من جديد", ErrGroundedSourceInsufficient)
-		}
-	}
-	return pack, nil
+	return pack, extractedAny, nil
 }
 
 func runNewContentWriter(ctx context.Context, pack groundedSourcePack, facts groundedFactExtraction, feedback string) (groundedDraft, string, error) {
@@ -240,6 +256,33 @@ func runNewContentWriter(ctx context.Context, pack groundedSourcePack, facts gro
 		user += "\n\nملاحظات من محاولة سابقة يجب معالجتها في هذه المحاولة:\n" + feedback
 	}
 	model, err := groundedAIJSON(ctx, "new_content_writer", system, user, &out)
+	return out, model, err
+}
+
+// runTitleOnlyWriter is the fallback path used when the attached file can't be read at all
+// (lost, or unreadable — most commonly a scanned/image-only PDF with no text layer). It writes
+// from the model's own well-established general knowledge about the title/curriculum instead
+// of extracted facts. This was a deliberate choice after the user rejected both alternatives:
+// OCR (unreliable for Arabic in this pipeline) and web-search-then-reword (flagged as matching
+// Google's "scraped/auto-generated content" policy — more severely penalized than thin content).
+// Because there is no source evidence to ground against, the prompt explicitly forbids
+// inventing specific administrative/regulatory/numeric/date details and instead directs the
+// reader to the official source for those — the honesty principle that runs through this whole
+// pipeline (disclose limits rather than fabricate confidence).
+func runTitleOnlyWriter(ctx context.Context, pack groundedSourcePack, feedback string) (groundedDraft, string, error) {
+	var out groundedDraft
+	contextJSON, _ := json.Marshal(map[string]interface{}{
+		"title":        pack.Title,
+		"content_type": pack.ContentType,
+		"country_code": pack.CountryCode,
+		"curriculum":   pack.Curriculum,
+	})
+	system := `أنت محرر تعليمي عربي محترف ومراجع SEO في آن واحد. تعذّر قراءة أي ملف مصدر مرفق لهذا المحتوى (مفقود أو غير قابل لاستخراج النص)، لذا اكتب المقالة اعتمادًا حصريًا على معرفتك العامة الموثوقة والراسخة عن الموضوع المحدَّد في العنوان والسياق الدراسي. اكتب بثقة عن الحقائق العامة المستقرة والمعروفة جيدًا فقط. يُمنع اختراع أو تخمين أي تفاصيل إدارية أو تنظيمية أو أرقام أو تواريخ أو إجراءات دقيقة لا تكون متأكدًا منها تمامًا؛ إن احتاج الموضوع لتفاصيل من هذا النوع فاذكر بوضوح داخل النص أنها تختلف بحسب الجهة الرسمية أو الفترة وأنه يجب على القارئ مراجعة المصدر أو الجهة الرسمية المختصة لتأكيدها، بدل اختلاقها. اكتب صفحة شاملة ومهيكلة بعناوين h2 فرعية حقيقية، فقرات مفصّلة تشرح لا تسرد فقط، بجودة احترافية تستحق نشرها وأرشفتها في محركات البحث. أضف meta_description (120-160 حرفًا بالضبط تقريبًا، يحوي الكلمة المفتاحية الرئيسية، أسلوب معلوماتي دقيق بلا مبالغة تسويقية)، keywords (5 إلى 8 كلمات/عبارات مفتاحية حقيقية مشتقة من العنوان والسياق الدراسي فقط، تظهر كل واحدة منها فعليًا داخل content_html — هذا الحقل إلزامي ولا يجوز أن يكون فارغًا أبدًا)، وcover_alt_text (جملة قصيرة تصف موضوع المحتوى، تُستخدم كنص بديل لصورة الغلاف). اجعل الفقرة الأولى من content_html تحتوي الكلمة المفتاحية الرئيسية. HTML نظيف فقط داخل content_html بعناوين h2 وفقرات p. بعد كتابة المسودة، راجعها بنفسك كمراجع SEO مستقل وقيّمها بصدق من 0 إلى 30 بناءً على الاحترافية والوضوح والقيمة التعليمية الفعلية (لا تكافئ الطول وحده، لا تعطِ 30 إلا إن كانت ممتازة فعلًا) في quality_score، مع ملاحظات مختصرة في quality_notes إن وُجد نقص. أعد JSON فقط.`
+	user := fmt.Sprintf(`السياق:\n%s\n\nأرجع JSON بالمفاتيح: title, content_html, meta_description, keywords, cover_alt_text, quality_score, quality_notes.`, string(contextJSON))
+	if strings.TrimSpace(feedback) != "" {
+		user += "\n\nملاحظات من محاولة سابقة يجب معالجتها في هذه المحاولة:\n" + feedback
+	}
+	model, err := groundedAIJSON(ctx, "title_only_writer", system, user, &out)
 	return out, model, err
 }
 
@@ -340,7 +383,7 @@ func deterministicSEOScore(draft groundedDraft) (int, []string) {
 // keywords field is never left empty for a genuinely successful generation.
 var titleWordSplitter = regexp.MustCompile(`[\s,،.:؛!؟\-_/]+`)
 
-func deriveKeywordsFallback(title string, facts groundedFactExtraction) []string {
+func deriveKeywordsFallback(title string, audience []string) []string {
 	keywords := make([]string, 0, 6)
 	seen := map[string]bool{}
 	add := func(word string) {
@@ -354,8 +397,8 @@ func deriveKeywordsFallback(title string, facts groundedFactExtraction) []string
 	for _, word := range titleWordSplitter.Split(title, -1) {
 		add(word)
 	}
-	for _, audience := range facts.Audience {
-		add(audience)
+	for _, item := range audience {
+		add(item)
 	}
 	return keywords
 }

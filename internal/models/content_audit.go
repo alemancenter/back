@@ -213,23 +213,27 @@ type ContentAISuggestion struct {
 func (ContentAISuggestion) TableName() string { return "content_ai_suggestions" }
 
 type ContentAIFixPreview struct {
-	ID               uint       `gorm:"primaryKey" json:"id"`
-	DecisionID       uint       `gorm:"not null;index" json:"decision_id"`
-	ContentType      string     `gorm:"type:varchar(30);not null;index" json:"content_type"`
-	ContentID        string     `gorm:"type:varchar(50);not null;index" json:"content_id"`
-	CountryCode      string     `gorm:"type:varchar(10);not null;default:'jo';index" json:"country_code"`
-	OriginalTitle    string     `gorm:"type:text" json:"original_title"`
-	OriginalContent  string     `gorm:"type:longtext" json:"original_content"`
-	FixedTitle       string     `gorm:"type:text" json:"fixed_title"`
-	FixedContent     string     `gorm:"type:longtext" json:"fixed_content"`
-	FixSummary       string     `gorm:"type:text" json:"fix_summary"`
-	Status           string     `gorm:"type:varchar(20);not null;default:'previewed';index" json:"status"`
-	AppliedByUserID  *uint      `gorm:"index" json:"applied_by_user_id,omitempty"`
-	AppliedAt        *time.Time `json:"applied_at,omitempty"`
-	RejectedByUserID *uint      `gorm:"index" json:"rejected_by_user_id,omitempty"`
-	RejectedAt       *time.Time `json:"rejected_at,omitempty"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
+	ID                      uint       `gorm:"primaryKey" json:"id"`
+	DecisionID              uint       `gorm:"not null;index" json:"decision_id"`
+	ContentType             string     `gorm:"type:varchar(30);not null;index" json:"content_type"`
+	ContentID               string     `gorm:"type:varchar(50);not null;index" json:"content_id"`
+	CountryCode             string     `gorm:"type:varchar(10);not null;default:'jo';index" json:"country_code"`
+	OriginalTitle           string     `gorm:"type:text" json:"original_title"`
+	OriginalContent         string     `gorm:"type:longtext" json:"original_content"`
+	OriginalMetaDescription *string    `gorm:"type:varchar(500)" json:"original_meta_description,omitempty"`
+	OriginalKeywords        *string    `gorm:"type:text" json:"original_keywords,omitempty"`
+	FixedTitle              string     `gorm:"type:text" json:"fixed_title"`
+	FixedContent            string     `gorm:"type:longtext" json:"fixed_content"`
+	FixedMetaDescription    *string    `gorm:"type:varchar(500)" json:"fixed_meta_description,omitempty"`
+	FixedKeywords           *string    `gorm:"type:text" json:"fixed_keywords,omitempty"`
+	FixSummary              string     `gorm:"type:text" json:"fix_summary"`
+	Status                  string     `gorm:"type:varchar(20);not null;default:'previewed';index" json:"status"`
+	AppliedByUserID         *uint      `gorm:"index" json:"applied_by_user_id,omitempty"`
+	AppliedAt               *time.Time `json:"applied_at,omitempty"`
+	RejectedByUserID        *uint      `gorm:"index" json:"rejected_by_user_id,omitempty"`
+	RejectedAt              *time.Time `json:"rejected_at,omitempty"`
+	CreatedAt               time.Time  `json:"created_at"`
+	UpdatedAt               time.Time  `json:"updated_at"`
 }
 
 func (ContentAIFixPreview) TableName() string { return "content_ai_fix_previews" }

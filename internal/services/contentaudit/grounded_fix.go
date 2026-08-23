@@ -21,6 +21,7 @@ import (
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/utils"
+	"gorm.io/gorm"
 )
 
 var (
@@ -37,6 +38,11 @@ const (
 	groundingReadLimit     = int64(64 * 1024)
 	groundingDOCXXMLLimit  = int64(16 * 1024 * 1024)
 	groundingEvidenceLimit = 12000
+	// Attachments are the richest, most substantive source available (a real worksheet/PDF,
+	// not just the page's own possibly-thin existing body text), so they get a higher ceiling
+	// than title/body/curriculum evidence — this is what lets the writer produce genuinely
+	// deep, non-"thin" pages instead of a couple of sentences when the source supports it.
+	groundingAttachmentTextLimit = 20000
 )
 
 type groundedEvidence struct {
@@ -72,9 +78,11 @@ type groundedFactExtraction struct {
 }
 
 type groundedDraft struct {
-	Title           string `json:"title"`
-	ContentHTML     string `json:"content_html"`
-	UsedFactIndexes []int  `json:"used_fact_indexes"`
+	Title           string   `json:"title"`
+	ContentHTML     string   `json:"content_html"`
+	MetaDescription string   `json:"meta_description"`
+	Keywords        []string `json:"keywords"`
+	UsedFactIndexes []int    `json:"used_fact_indexes"`
 }
 
 type groundedValidation struct {
@@ -98,6 +106,8 @@ type groundedLoadedContent struct {
 	CountryCode       string
 	Title             string
 	Content           string
+	MetaDescription   *string
+	Keywords          *string
 	URL               string
 	GradeName         string
 	SubjectName       string
@@ -147,6 +157,8 @@ func (s *Service) CreateGroundedFixPreview(ctx context.Context, decisionID uint6
 	if draft.Title == "" {
 		draft.Title = content.Title
 	}
+	draft.MetaDescription = strings.TrimSpace(draft.MetaDescription)
+	draft.Keywords = compactStrings(draft.Keywords)
 	draft.ContentHTML = normalizeFixedHTML(draft.ContentHTML)
 	if strings.TrimSpace(normalizePlainText(draft.ContentHTML)) == "" || strings.EqualFold(normalizePlainText(draft.ContentHTML), normalizePlainText(content.Content)) {
 		return nil, fmt.Errorf("%w: المسودة الجديدة لا تضيف قيمة موثقة كافية", ErrGroundedValidationFailed)
@@ -170,16 +182,20 @@ func (s *Service) CreateGroundedFixPreview(ctx context.Context, decisionID uint6
 
 	summary := buildGroundingSummary(validation, len(pack.Evidence), modelName, facts, pack)
 	preview := &models.ContentAIFixPreview{
-		DecisionID:      decision.ID,
-		ContentType:     normalizeContentType(decision.ContentType),
-		ContentID:       fmt.Sprintf("%s:%d", content.CountryCode, content.ID),
-		CountryCode:     content.CountryCode,
-		OriginalTitle:   content.Title,
-		OriginalContent: content.Content,
-		FixedTitle:      draft.Title,
-		FixedContent:    draft.ContentHTML,
-		FixSummary:      summary,
-		Status:          models.AIFixStatusPreviewed,
+		DecisionID:              decision.ID,
+		ContentType:             normalizeContentType(decision.ContentType),
+		ContentID:               fmt.Sprintf("%s:%d", content.CountryCode, content.ID),
+		CountryCode:             content.CountryCode,
+		OriginalTitle:           content.Title,
+		OriginalContent:         content.Content,
+		OriginalMetaDescription: content.MetaDescription,
+		OriginalKeywords:        content.Keywords,
+		FixedTitle:              draft.Title,
+		FixedContent:            draft.ContentHTML,
+		FixedMetaDescription:    nonEmptyStringPtr(draft.MetaDescription),
+		FixedKeywords:           nonEmptyStringPtr(strings.Join(draft.Keywords, "، ")),
+		FixSummary:              summary,
+		Status:                  models.AIFixStatusPreviewed,
 	}
 	if err := s.repo.SaveFixPreview(ctx, preview); err != nil {
 		return nil, fmt.Errorf("save grounded fix preview failed: %w", err)
@@ -212,39 +228,65 @@ func (s *Service) ApplyGroundedFix(ctx context.Context, previewID uint64, userID
 	var notifType, notifTitle, notifMsg, notifURL string
 	var authorID *uint
 
-	switch normalizeContentType(preview.ContentType) {
-	case "article":
-		var item models.Article
-		if err := db.Preload("Subject").Preload("Subject.SchoolClass").Preload("Semester").Preload("Semester.SchoolClass").First(&item, id).Error; err != nil {
-			return nil, err
+	// Applying now writes to two tables for an article (the row itself, plus the
+	// article_keyword join table) instead of one — wrap both in a transaction so a failed
+	// keyword write can no longer leave the row updated but the preview still "previewed".
+	err = db.Transaction(func(tx *gorm.DB) error {
+		switch normalizeContentType(preview.ContentType) {
+		case "article":
+			var item models.Article
+			if err := tx.Preload("Subject").Preload("Subject.SchoolClass").Preload("Semester").Preload("Semester.SchoolClass").First(&item, id).Error; err != nil {
+				return err
+			}
+			item.Title = utils.SanitizeInput(preview.FixedTitle)
+			item.Content = utils.SanitizeHTML(preview.FixedContent)
+			if preview.FixedMetaDescription != nil {
+				metaDescription := utils.SanitizeInput(*preview.FixedMetaDescription)
+				item.MetaDescription = &metaDescription
+			}
+			if err := tx.Save(&item).Error; err != nil {
+				return err
+			}
+			if preview.FixedKeywords != nil {
+				if err := applyArticleKeywords(tx, item.ID, utils.SanitizeInput(*preview.FixedKeywords)); err != nil {
+					return err
+				}
+			}
+			authorID = item.AuthorID
+			notifType = `App\Notifications\ArticleUpdatedByAI`
+			notifTitle = fmt.Sprintf("تم تحديث المقالة: %s", shortNotificationTitle(item.Title, 70))
+			notifMsg = fmt.Sprintf("تم اعتماد تحسين موثق بالأدلة وتحديث المقالة: %s", item.Title)
+			notifURL = contentAuditEditURL("article", item.ID, preview.CountryCode)
+		case "post":
+			var item models.Post
+			if err := tx.Preload("Category").First(&item, id).Error; err != nil {
+				return err
+			}
+			item.Title = utils.SanitizeInput(preview.FixedTitle)
+			item.Content = utils.StripBlockedLinks(utils.SanitizeHTML(preview.FixedContent))
+			if preview.FixedMetaDescription != nil {
+				metaDescription := utils.SanitizeInput(*preview.FixedMetaDescription)
+				item.MetaDescription = &metaDescription
+			}
+			if preview.FixedKeywords != nil {
+				keywords := utils.SanitizeInput(*preview.FixedKeywords)
+				item.Keywords = &keywords
+			}
+			if err := tx.Save(&item).Error; err != nil {
+				return err
+			}
+			authorID = item.AuthorID
+			notifType = `App\Notifications\PostUpdatedByAI`
+			notifTitle = fmt.Sprintf("تم تحديث المنشور: %s", shortNotificationTitle(item.Title, 70))
+			notifMsg = fmt.Sprintf("تم اعتماد تحسين موثق بالأدلة وتحديث المنشور: %s", item.Title)
+			notifURL = contentAuditEditURL("post", item.ID, preview.CountryCode)
+		default:
+			return ErrUnsupportedContentType
 		}
-		item.Title = utils.SanitizeInput(preview.FixedTitle)
-		item.Content = utils.SanitizeHTML(preview.FixedContent)
-		if err := db.Save(&item).Error; err != nil {
-			return nil, err
-		}
-		authorID = item.AuthorID
-		notifType = `App\Notifications\ArticleUpdatedByAI`
-		notifTitle = fmt.Sprintf("تم تحديث المقالة: %s", shortNotificationTitle(item.Title, 70))
-		notifMsg = fmt.Sprintf("تم اعتماد تحسين موثق بالأدلة وتحديث المقالة: %s", item.Title)
-		notifURL = contentAuditEditURL("article", item.ID, preview.CountryCode)
-	case "post":
-		var item models.Post
-		if err := db.Preload("Category").First(&item, id).Error; err != nil {
-			return nil, err
-		}
-		item.Title = utils.SanitizeInput(preview.FixedTitle)
-		item.Content = utils.StripBlockedLinks(utils.SanitizeHTML(preview.FixedContent))
-		if err := db.Save(&item).Error; err != nil {
-			return nil, err
-		}
-		authorID = item.AuthorID
-		notifType = `App\Notifications\PostUpdatedByAI`
-		notifTitle = fmt.Sprintf("تم تحديث المنشور: %s", shortNotificationTitle(item.Title, 70))
-		notifMsg = fmt.Sprintf("تم اعتماد تحسين موثق بالأدلة وتحديث المنشور: %s", item.Title)
-		notifURL = contentAuditEditURL("post", item.ID, preview.CountryCode)
-	default:
-		return nil, ErrUnsupportedContentType
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	now := time.Now()
@@ -282,7 +324,7 @@ func (s *Service) loadGroundedContent(ctx context.Context, decision *models.Cont
 	switch normalizeContentType(decision.ContentType) {
 	case "article":
 		var item models.Article
-		if err := db.Preload("Subject").Preload("Subject.SchoolClass").Preload("Semester").Preload("Semester.SchoolClass").Preload("Files").First(&item, id).Error; err != nil {
+		if err := db.Preload("Subject").Preload("Subject.SchoolClass").Preload("Semester").Preload("Semester.SchoolClass").Preload("Files").Preload("KeywordsRel").First(&item, id).Error; err != nil {
 			return nil, err
 		}
 		gradeName, subjectName, semesterName := articleEducationContext(item)
@@ -292,6 +334,8 @@ func (s *Service) loadGroundedContent(ctx context.Context, decision *models.Cont
 			CountryCode:       cc,
 			Title:             item.Title,
 			Content:           item.Content,
+			MetaDescription:   item.MetaDescription,
+			Keywords:          articleKeywordsString(item.KeywordsRel),
 			URL:               fmt.Sprintf("/%s/lesson/articles/%d", cc, item.ID),
 			GradeName:         gradeName,
 			SubjectName:       subjectName,
@@ -314,6 +358,8 @@ func (s *Service) loadGroundedContent(ctx context.Context, decision *models.Cont
 			CountryCode:       cc,
 			Title:             item.Title,
 			Content:           item.Content,
+			MetaDescription:   item.MetaDescription,
+			Keywords:          item.Keywords,
 			URL:               fmt.Sprintf("/%s/posts/%d", cc, item.ID),
 			CategoryName:      categoryName,
 			CurriculumContext: buildCurriculumContext(cc, "", "", "", categoryName),
@@ -322,6 +368,55 @@ func (s *Service) loadGroundedContent(ctx context.Context, decision *models.Cont
 	default:
 		return nil, ErrUnsupportedContentType
 	}
+}
+
+// applyArticleKeywords mirrors internal/repositories/article_repository.go's UpdateKeywords —
+// same FirstOrCreate-per-keyword + Association("KeywordsRel").Replace(...) pattern, reused
+// verbatim here (rather than imported) because this call already has a transaction (tx) open
+// and Article's keywords are a many2many relation, unlike Post's plain string column.
+func applyArticleKeywords(tx *gorm.DB, articleID uint, keywordsStr string) error {
+	keywordList := utils.SplitKeywords(keywordsStr)
+	if len(keywordList) == 0 {
+		return tx.Model(&models.Article{ID: articleID}).Association("KeywordsRel").Clear()
+	}
+	var keywords []models.Keyword
+	for _, kw := range keywordList {
+		var keyword models.Keyword
+		if err := tx.Where("keyword = ?", kw).FirstOrCreate(&keyword, models.Keyword{Keyword: kw}).Error; err == nil {
+			keywords = append(keywords, keyword)
+		}
+	}
+	return tx.Model(&models.Article{ID: articleID}).Association("KeywordsRel").Replace(keywords)
+}
+
+// nonEmptyStringPtr returns nil for a blank value instead of a pointer to an empty string,
+// matching the nullable-column convention used throughout this model (omitempty on save).
+func nonEmptyStringPtr(value string) *string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+// articleKeywordsString mirrors the plain comma-separated Keywords convention Post already
+// uses natively, so groundedLoadedContent.Keywords stays a single *string across both content
+// types regardless of Article's many2many KeywordsRel relation underneath.
+func articleKeywordsString(keywords []models.Keyword) *string {
+	if len(keywords) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(keywords))
+	for _, kw := range keywords {
+		if name := strings.TrimSpace(kw.Keyword); name != "" {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	joined := strings.Join(names, "، ")
+	return &joined
 }
 
 func buildGroundedSourcePack(content *groundedLoadedContent) groundedSourcePack {
@@ -351,7 +446,7 @@ func buildGroundedSourcePack(content *groundedLoadedContent) groundedSourcePack 
 		meta := attachmentMetadata(file)
 		pack.Evidence = append(pack.Evidence, groundedEvidence{ID: fmt.Sprintf("attachment:%d:meta", file.ID), Kind: "attachment_metadata", Label: "بيانات المرفق " + firstNonEmptyLocal(file.FileName, filepath.Base(file.FilePath)), Text: meta, Verified: true})
 		if extracted, ok := readAttachmentEvidence(file); ok {
-			pack.Evidence = append(pack.Evidence, groundedEvidence{ID: fmt.Sprintf("attachment:%d:text", file.ID), Kind: "attachment_text", Label: "نص مستخرج من المرفق " + firstNonEmptyLocal(file.FileName, filepath.Base(file.FilePath)), Text: truncateGroundingEvidence(extracted), Verified: true})
+			pack.Evidence = append(pack.Evidence, groundedEvidence{ID: fmt.Sprintf("attachment:%d:text", file.ID), Kind: "attachment_text", Label: "نص مستخرج من المرفق " + firstNonEmptyLocal(file.FileName, filepath.Base(file.FilePath)), Text: truncateAttachmentEvidence(extracted), Verified: true})
 		}
 	}
 	return pack
@@ -471,7 +566,7 @@ func extractDOCXText(path string) (string, error) {
 
 		appendText := func(value string) {
 			for _, ch := range value {
-				if runeCount >= groundingEvidenceLimit {
+				if runeCount >= groundingAttachmentTextLimit {
 					return
 				}
 				out.WriteRune(ch)
@@ -479,7 +574,7 @@ func extractDOCXText(path string) (string, error) {
 			}
 		}
 		appendSeparator := func(ch rune) {
-			if runeCount >= groundingEvidenceLimit || out.Len() == 0 {
+			if runeCount >= groundingAttachmentTextLimit || out.Len() == 0 {
 				return
 			}
 			out.WriteRune(ch)
@@ -518,7 +613,7 @@ func extractDOCXText(path string) (string, error) {
 					appendSeparator('\n')
 				}
 			}
-			if runeCount >= groundingEvidenceLimit {
+			if runeCount >= groundingAttachmentTextLimit {
 				break
 			}
 		}
@@ -571,11 +666,19 @@ func (w *limitedWriter) Write(p []byte) (int, error) {
 }
 
 func truncateGroundingEvidence(value string) string {
+	return truncateGroundingEvidenceTo(value, groundingEvidenceLimit)
+}
+
+func truncateAttachmentEvidence(value string) string {
+	return truncateGroundingEvidenceTo(value, groundingAttachmentTextLimit)
+}
+
+func truncateGroundingEvidenceTo(value string, limit int) string {
 	value = strings.TrimSpace(value)
-	if len([]rune(value)) <= groundingEvidenceLimit {
+	if len([]rune(value)) <= limit {
 		return value
 	}
-	return string([]rune(value)[:groundingEvidenceLimit]) + "…"
+	return string([]rune(value)[:limit]) + "…"
 }
 
 func sanitizeGroundedFacts(in groundedFactExtraction, pack groundedSourcePack) groundedFactExtraction {
@@ -666,7 +769,7 @@ func runGroundedFactExtraction(ctx context.Context, pack groundedSourcePack) (gr
 	var out groundedFactExtraction
 	packJSON, _ := json.Marshal(pack)
 	system := `أنت مدقق مصادر لمحتوى تعليمي. لا تكتب المقال. استخرج فقط حقائق صريحة يمكن إثباتها من الأدلة التي verified=true. لا تستخدم أي دليل verified=false لدعم حقيقة. كل حقيقة يجب أن تشير إلى evidence_ids صحيحة وموثقة. ممنوع الاستنتاج من عنوان الصفحة وحده أن المرفق يحتوي أهدافًا أو أنشطة أو أسئلة أو حلولًا ما لم يذكر دليل موثق ذلك. إذا لم تكف الأدلة لإنشاء صفحة مفيدة ودقيقة، اجعل insufficient_source=true. أعد JSON فقط، بلا Markdown وبلا شرح خارج JSON.`
-	user := fmt.Sprintf(`نسخة البرومبت: %s\nحزمة المصدر:\n%s\n\nأرجع JSON بالمفاتيح فقط: purpose, audience, facts, insufficient_source, source_notes. facts عنصره: claim, evidence_ids, confidence. قيود الإخراج: حد أقصى 10 حقائق؛ كل claim مختصر (نحو 180 حرفًا أو أقل)؛ audience بحد أقصى 4 عناصر؛ source_notes بحد أقصى عنصرين مختصرين.`, groundingPromptVersion, string(packJSON))
+	user := fmt.Sprintf(`نسخة البرومبت: %s\nحزمة المصدر:\n%s\n\nأرجع JSON بالمفاتيح فقط: purpose, audience, facts, insufficient_source, source_notes. facts عنصره: claim, evidence_ids, confidence. قيود الإخراج: حد أقصى 18 حقيقة (استخرج كل الحقائق الموثقة المتاحة حتى هذا الحد، لا تكتفِ بعدد قليل إذا كانت الأدلة تدعم أكثر)؛ كل claim مختصر (نحو 240 حرفًا أو أقل)؛ audience بحد أقصى 4 عناصر؛ source_notes بحد أقصى عنصرين مختصرين.`, groundingPromptVersion, string(packJSON))
 	model, err := groundedAIJSON(ctx, "fact_extractor", system, user, &out)
 	return out, model, err
 }
@@ -680,8 +783,8 @@ func runGroundedWriter(ctx context.Context, pack groundedSourcePack, facts groun
 		"country_code": pack.CountryCode,
 		"curriculum":   pack.Curriculum,
 	})
-	system := `أنت محرر تعليمي عربي. اكتب مسودة مفيدة ودقيقة اعتمادًا حصريًا على الحقائق المستخرجة. لا تضف أي معلومة غير موجودة في facts. لا تطارد عدد كلمات ولا تضف حشو SEO. إذا كانت الأدلة محدودة فاكتب صفحة قصيرة صادقة بدل اختراع تفاصيل. لا تقل إن الملف يحتوي أهدافًا أو أنشطة أو أسئلة أو حلولًا إلا إذا كانت حقيقة صريحة. اجعل الملف جزءًا من المحتوى لا مجرد غلاف له: اشرح ما هو المورد، لمن يفيد، وما الذي يمكن إثباته عنه، ثم وجّه القارئ للاستفادة من المرفق. HTML نظيف فقط داخل content_html بعناوين h2 وفقرات p عند الحاجة. أعد JSON فقط.`
-	user := fmt.Sprintf(`السياق:\n%s\n\nالحقائق المسموح استخدامها فقط:\n%s\n\nأرجع JSON بالمفاتيح: title, content_html, used_fact_indexes. used_fact_indexes هي فهارس الحقائق المستخدمة (تبدأ من 0). اجعل المسودة مركزة ولا تكرر الحقائق.`, string(contextJSON), string(factsJSON))
+	system := `أنت محرر تعليمي عربي. اكتب مسودة مفيدة ودقيقة اعتمادًا حصريًا على الحقائق المستخرجة. لا تضف أي معلومة غير موجودة في facts. لا تطارد عدد كلمات ولا تضف حشو SEO. إذا كانت الأدلة محدودة فاكتب صفحة قصيرة صادقة بدل اختراع تفاصيل. أما إذا كانت الحقائق كافية وغنية، فاكتب صفحة شاملة ومهيكلة تغطي كل حقيقة متاحة بعمق حقيقي: عناوين h2 فرعية لكل محور، فقرات مفصّلة تشرح لا تسرد فقط — الهدف صفحة تستحق فهرستها في محركات البحث، لا فقرة مختصرة، لكن دون تجاوز حدود ما تثبته الحقائق. لا تقل إن الملف يحتوي أهدافًا أو أنشطة أو أسئلة أو حلولًا إلا إذا كانت حقيقة صريحة. اجعل الملف جزءًا من المحتوى لا مجرد غلاف له: اشرح ما هو المورد، لمن يفيد، وما الذي يمكن إثباته عنه، ثم وجّه القارئ للاستفادة من المرفق. HTML نظيف فقط داخل content_html بعناوين h2 وفقرات p عند الحاجة. أضف أيضًا meta_description (نحو 120-160 حرفًا، أسلوب معلوماتي دقيق مبني على الحقائق فقط، بلا عبارات تسويقية غير مؤكدة) وkeywords (3 إلى 8 كلمات/عبارات مفتاحية مشتقة من العنوان والحقائق والسياق الدراسي فقط، لا مواضيع غير مذكورة في الأدلة). أعد JSON فقط.`
+	user := fmt.Sprintf(`السياق:\n%s\n\nالحقائق المسموح استخدامها فقط:\n%s\n\nأرجع JSON بالمفاتيح: title, content_html, meta_description, keywords, used_fact_indexes. used_fact_indexes هي فهارس الحقائق المستخدمة (تبدأ من 0). اجعل المسودة مركزة ولا تكرر الحقائق، لكن استخدم كل حقيقة متاحة ذات صلة بدل الاقتصار على جزء منها.`, string(contextJSON), string(factsJSON))
 	model, err := groundedAIJSON(ctx, "grounded_writer", system, user, &out)
 	return out, model, err
 }
@@ -689,7 +792,7 @@ func runGroundedWriter(ctx context.Context, pack groundedSourcePack, facts groun
 func runGroundedValidator(ctx context.Context, pack groundedSourcePack, facts groundedFactExtraction, draft groundedDraft) (groundedValidation, string, error) {
 	var out groundedValidation
 	payload, _ := json.Marshal(map[string]interface{}{"source_pack": pack, "facts": facts, "draft": draft})
-	system := `أنت مدقق ادعاءات صارم. قارن كل ادعاء واقعي في المسودة مع الحقائق وحزمة الأدلة. الأدلة التي verified=false سياق فقط ولا يجوز اعتبارها مصدر إثبات. اعتبر أي معلومة غير مثبتة unsupported حتى لو بدت منطقية تربويًا. لا تكافئ طول النص. grounding_score يقيس نسبة الادعاءات المدعومة ودقتها من 0 إلى 100. إذا وجد ادعاء مهم غير مدعوم فاذكره باختصار في unsupported_claims. أعد JSON فقط.`
+	system := `أنت مدقق ادعاءات صارم. قارن كل ادعاء واقعي في المسودة — بما في ذلك title وcontent_html وmeta_description وkeywords معًا، لا content_html فقط — مع الحقائق وحزمة الأدلة. الأدلة التي verified=false سياق فقط ولا يجوز اعتبارها مصدر إثبات. اعتبر أي معلومة غير مثبتة unsupported حتى لو بدت منطقية تربويًا، بما في ذلك أي كلمة مفتاحية تشير لموضوع غير مذكور في الحقائق. لا تكافئ طول النص. grounding_score يقيس نسبة الادعاءات المدعومة ودقتها من 0 إلى 100. إذا وجد ادعاء مهم غير مدعوم فاذكره باختصار في unsupported_claims. أعد JSON فقط.`
 	user := fmt.Sprintf(`راجع هذه البيانات:\n%s\n\nأرجع JSON بالمفاتيح: grounding_score, supported_claims, unsupported_claims, notes. اجعل notes مختصرة.`, string(payload))
 	model, err := groundedAIJSON(ctx, "claim_validator", system, user, &out)
 	return out, model, err

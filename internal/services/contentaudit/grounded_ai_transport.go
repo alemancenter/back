@@ -34,45 +34,59 @@ func groundedStageMaxTokens(stage string, attempt int) int {
 	return base
 }
 
-func groundedModelCandidatesForContext(ctx context.Context) []string {
-	strategy := aiModelStrategyFromContext(ctx)
-	quality := os.Getenv("AI_MODELS_FIX_QUALITY")
-	final := os.Getenv("AI_MODELS_FIX_FINAL")
-	generic := os.Getenv("TOGETHER_AI_MODEL")
-
-	ordered := []string{}
-	switch strategy {
-	case "final_review":
-		ordered = append(ordered, final, quality, generic)
-	case "quality":
-		ordered = append(ordered, quality, final, generic)
-	case "economy", "balanced":
-		ordered = append(ordered, generic, quality, final)
-	default:
-		ordered = append(ordered, quality, final, generic)
-	}
-	ordered = append(ordered, "deepseek-ai/DeepSeek-V4-Pro")
-
-	models := []string{}
-	for _, raw := range ordered {
-		for _, part := range strings.Split(raw, ",") {
-			part = strings.TrimSpace(part)
-			if part != "" {
-				models = append(models, part)
-			}
+func groundedParseModelList(raw string) []string {
+	parts := strings.Split(raw, ",")
+	models := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			models = append(models, part)
 		}
 	}
 	return compactStrings(models)
 }
 
+func groundedModelRoute(envKey, defaults string) []string {
+	if configured := groundedParseModelList(os.Getenv(envKey)); len(configured) > 0 {
+		return configured
+	}
+	return groundedParseModelList(defaults)
+}
+
+func groundedModelCandidatesForContext(ctx context.Context) []string {
+	strategy := aiModelStrategyFromContext(ctx)
+	generic := firstNonEmptyLocal(os.Getenv("TOGETHER_AI_MODEL"), "deepseek-ai/DeepSeek-V4-Pro")
+	fallbacks := groundedParseModelList(os.Getenv("TOGETHER_AI_FALLBACK_MODELS"))
+	if len(fallbacks) == 0 {
+		fallbacks = groundedParseModelList("openai/gpt-oss-20b,google/gemma-3n-E4B-it")
+	}
+	base := append([]string{generic}, fallbacks...)
+
+	var route []string
+	switch strategy {
+	case "final_review":
+		route = groundedModelRoute("AI_MODELS_FIX_FINAL", "Qwen/Qwen3-235B-A22B-Instruct-2507-tput,zai-org/GLM-5.1,openai/gpt-oss-120b")
+	case "economy":
+		route = groundedModelRoute("AI_MODELS_FIX_ECONOMY", "google/gemma-3n-E4B-it,openai/gpt-oss-20b")
+	case "balanced":
+		route = groundedModelRoute("AI_MODELS_FIX_BALANCED", "meta-llama/Llama-3.3-70B-Instruct-Turbo,pearl-ai/gemma-4-31b-it,google/gemma-4-31B-it")
+	case "quality", "":
+		route = groundedModelRoute("AI_MODELS_FIX_QUALITY", "Qwen/Qwen3-235B-A22B-Instruct-2507-tput,openai/gpt-oss-120b,zai-org/GLM-5.1")
+	default:
+		route = groundedModelRoute("AI_MODELS_FIX_QUALITY", "Qwen/Qwen3-235B-A22B-Instruct-2507-tput,openai/gpt-oss-120b,zai-org/GLM-5.1")
+	}
+
+	return compactStrings(append(route, base...))
+}
+
 func groundedRetryInstruction(stage string) string {
 	switch stage {
 	case "fact_extractor":
-		return "\n\nالمحاولة السابقة كانت ناقصة أو JSON غير صالح. أعد JSON قصيرًا وصحيحًا فقط. لا تستخدم Markdown. حد أقصى 10 حقائق، كل claim مختصر، وsource_notes بحد أقصى عنصرين."
+		return "\n\nالمحاولة السابقة كانت ناقصة أو غير صالحة بنيويًا أو دلاليًا. أعد JSON قصيرًا وصحيحًا فقط بلا Markdown. حد أقصى 10 حقائق. confidence عدد صحيح من 0 إلى 100 وليس مقياس 0-1. لا تستنتج رقم الصف من content_id أو evidence_ids أو أرقام داخلية. استخدم اسم الصف الحرفي الموجود في الأدلة مثل «الصف الأول الثانوي» كما هو. إذا أعدت facts موثقة فلا تجعل insufficient_source=true. source_notes بحد أقصى عنصرين ولا تضع فيها تفكيرًا داخليًا أو استنتاجات غير موجودة في الأدلة."
 	case "grounded_writer":
-		return "\n\nالمحاولة السابقة كانت ناقصة أو JSON غير صالح. أعد JSON صحيحًا ومختصرًا فقط، بدون Markdown خارج content_html وبدون حشو."
+		return "\n\nالمحاولة السابقة كانت ناقصة أو غير صالحة دلاليًا. أعد JSON صحيحًا ومختصرًا فقط، بدون Markdown خارج content_html وبدون حشو. يجب أن يكون content_html غير فارغ وأن تحتوي used_fact_indexes على فهرس حقيقة صالح واحد على الأقل."
 	case "claim_validator":
-		return "\n\nالمحاولة السابقة كانت ناقصة أو JSON غير صالح. أعد JSON صحيحًا ومختصرًا فقط، واجعل notes مختصرة."
+		return "\n\nالمحاولة السابقة كانت ناقصة أو غير صالحة دلاليًا. أعد JSON صحيحًا ومختصرًا فقط. لا تُرجع نتيجة فارغة من نوع grounding_score=0 وsupported_claims=0 وunsupported_claims=[] عندما توجد مسودة للمراجعة. احسب النتيجة فعليًا واجعل notes مختصرة."
 	default:
 		return "\n\nالمحاولة السابقة كانت ناقصة أو JSON غير صالح. أعد JSON صحيحًا ومختصرًا فقط."
 	}
@@ -94,6 +108,65 @@ func decodeGroundedAIJSON(raw string, out interface{}) error {
 		return err
 	}
 	value.Elem().Set(candidate.Elem())
+	return nil
+}
+
+func validateGroundedStageOutput(stage string, out interface{}) error {
+	switch value := out.(type) {
+	case *groundedFactExtraction:
+		if stage != "fact_extractor" {
+			return nil
+		}
+		if value.InsufficientSource && len(value.Facts) > 0 {
+			return errors.New("contradictory insufficient_source=true with extracted facts")
+		}
+		if !value.InsufficientSource && len(value.Facts) == 0 {
+			return errors.New("no facts returned while insufficient_source=false")
+		}
+		maxConfidence := -1
+		for _, fact := range value.Facts {
+			if strings.TrimSpace(fact.Claim) == "" {
+				return errors.New("fact has empty claim")
+			}
+			if len(fact.EvidenceIDs) == 0 {
+				return errors.New("fact has no evidence_ids")
+			}
+			if fact.Confidence < 0 || fact.Confidence > 100 {
+				return fmt.Errorf("fact confidence out of range: %d", fact.Confidence)
+			}
+			if fact.Confidence > maxConfidence {
+				maxConfidence = fact.Confidence
+			}
+		}
+		if len(value.Facts) > 0 && maxConfidence < 60 {
+			return fmt.Errorf("all extracted facts have low confidence: max=%d", maxConfidence)
+		}
+
+	case *groundedDraft:
+		if stage != "grounded_writer" {
+			return nil
+		}
+		if strings.TrimSpace(normalizePlainText(value.ContentHTML)) == "" {
+			return errors.New("writer returned empty content")
+		}
+		if len(value.UsedFactIndexes) == 0 {
+			return errors.New("writer returned no used_fact_indexes")
+		}
+
+	case *groundedValidation:
+		if stage != "claim_validator" {
+			return nil
+		}
+		if value.GroundingScore < 0 || value.GroundingScore > 100 {
+			return fmt.Errorf("validator grounding_score out of range: %d", value.GroundingScore)
+		}
+		if value.SupportedClaims < 0 {
+			return fmt.Errorf("validator supported_claims out of range: %d", value.SupportedClaims)
+		}
+		if value.GroundingScore == 0 && value.SupportedClaims == 0 && len(value.UnsupportedClaims) == 0 {
+			return errors.New("validator returned semantically empty result")
+		}
+	}
 	return nil
 }
 
@@ -187,6 +260,10 @@ func groundedAIJSONV3(ctx context.Context, stage, systemPrompt, userPrompt strin
 			}
 			if err := decodeGroundedAIJSON(choice.Message.Content, out); err != nil {
 				attemptErrors = append(attemptErrors, fmt.Sprintf("%s attempt=%d invalid_json=%v", model, attempt+1, err))
+				continue
+			}
+			if err := validateGroundedStageOutput(stage, out); err != nil {
+				attemptErrors = append(attemptErrors, fmt.Sprintf("%s attempt=%d semantic=%v", model, attempt+1, err))
 				continue
 			}
 			return model, nil

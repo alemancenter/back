@@ -107,6 +107,42 @@ func decodeGroundedIntList(raw json.RawMessage) ([]int, error) {
 	return []int{n}, nil
 }
 
+// decodeGroundedClaimCount keeps the validator's internal contract numeric while
+// tolerating a common provider shape drift: several models return supported_claims
+// as an array containing the supported claim texts instead of the requested integer
+// count. In that case the array itself is semantically richer than the count, so we
+// normalize it to the number of distinct non-empty strings. We deliberately reject
+// objects, booleans and non-numeric scalar strings rather than guessing their meaning.
+func decodeGroundedClaimCount(raw json.RawMessage) (int, error) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+		return 0, nil
+	}
+	if raw[0] != '[' {
+		return decodeGroundedInt(raw)
+	}
+
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return 0, err
+	}
+	seen := map[string]bool{}
+	count := 0
+	for _, item := range items {
+		var claim string
+		if err := json.Unmarshal(item, &claim); err != nil {
+			return 0, fmt.Errorf("supported claim array item must be a string: %w", err)
+		}
+		claim = strings.TrimSpace(claim)
+		if claim == "" || seen[claim] {
+			continue
+		}
+		seen[claim] = true
+		count++
+	}
+	return count, nil
+}
+
 func decodeGroundedBool(raw json.RawMessage) (bool, error) {
 	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
@@ -212,7 +248,7 @@ func (validation *groundedValidation) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("grounding_score: %w", err)
 	}
-	supportedClaims, err := decodeGroundedInt(raw.SupportedClaims)
+	supportedClaims, err := decodeGroundedClaimCount(raw.SupportedClaims)
 	if err != nil {
 		return fmt.Errorf("supported_claims: %w", err)
 	}

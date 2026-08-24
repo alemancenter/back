@@ -156,18 +156,9 @@ func (s *Service) CreateGroundedFixPreview(ctx context.Context, decisionID uint6
 	if strings.TrimSpace(writerModel) != "" {
 		modelName = writerModel
 	}
-	draft.Title = strings.TrimSpace(draft.Title)
-	if draft.Title == "" {
-		draft.Title = content.Title
-	}
-	draft.MetaDescription = strings.TrimSpace(draft.MetaDescription)
-	draft.Keywords = compactStrings(draft.Keywords)
-	draft.ContentHTML = normalizeFixedHTML(draft.ContentHTML)
-	if strings.TrimSpace(normalizePlainText(draft.ContentHTML)) == "" || strings.EqualFold(normalizePlainText(draft.ContentHTML), normalizePlainText(content.Content)) {
-		return nil, fmt.Errorf("%w: المسودة الجديدة لا تضيف قيمة موثقة كافية", ErrGroundedValidationFailed)
-	}
-	if !validUsedFactIndexes(draft.UsedFactIndexes, len(facts.Facts)) {
-		return nil, fmt.Errorf("%w: المسودة تشير إلى حقائق غير موجودة في حزمة الأدلة", ErrGroundedValidationFailed)
+	draft = normalizeGroundedFixDraft(draft, content.Title)
+	if err := validateGroundedFixDraft(draft, content.Content, len(facts.Facts)); err != nil {
+		return nil, err
 	}
 
 	validation, validatorModel, err := runGroundedValidator(ctx, pack, facts, draft)
@@ -177,10 +168,38 @@ func (s *Service) CreateGroundedFixPreview(ctx context.Context, decisionID uint6
 	if strings.TrimSpace(validatorModel) != "" {
 		modelName = validatorModel
 	}
-	validation.GroundingScore = clamp(validation.GroundingScore)
-	validation.UnsupportedClaims = compactStrings(validation.UnsupportedClaims)
-	if validation.GroundingScore < groundingMinScore || len(validation.UnsupportedClaims) > 0 {
-		return nil, fmt.Errorf("%w: grounding_score=%d unsupported_claims=%d", ErrGroundedValidationFailed, validation.GroundingScore, len(validation.UnsupportedClaims))
+	validation = normalizeGroundedFixValidation(validation)
+
+	// A validator rejection is useful feedback, not a reason to lower the safety gate.
+	// Give the writer one bounded chance to remove/rephrase exactly those unsupported claims,
+	// then validate the revised draft independently again. No revision can bypass the same
+	// >=90 + zero-unsupported requirement used by the original draft.
+	for revisionPass := 0; !groundedFixValidationPasses(validation) && revisionPass < groundedFixMaxRevisionPasses; revisionPass++ {
+		revisedDraft, revisionModel, revisionErr := runGroundedFixRevision(ctx, facts, draft, validation)
+		if revisionErr != nil {
+			return nil, fmt.Errorf("%w: %s; revision_error=%v", ErrGroundedValidationFailed, groundedValidationFailureDetail(validation), revisionErr)
+		}
+		if strings.TrimSpace(revisionModel) != "" {
+			modelName = revisionModel
+		}
+		revisedDraft = normalizeGroundedFixDraft(revisedDraft, content.Title)
+		if err := validateGroundedFixDraft(revisedDraft, content.Content, len(facts.Facts)); err != nil {
+			return nil, err
+		}
+		draft = revisedDraft
+
+		validation, validatorModel, err = runGroundedValidator(ctx, pack, facts, draft)
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(validatorModel) != "" {
+			modelName = validatorModel
+		}
+		validation = normalizeGroundedFixValidation(validation)
+	}
+
+	if !groundedFixValidationPasses(validation) {
+		return nil, fmt.Errorf("%w: %s", ErrGroundedValidationFailed, groundedValidationFailureDetail(validation))
 	}
 
 	// Smaller/cheaper writer models sometimes drop meta_description/keywords from their JSON

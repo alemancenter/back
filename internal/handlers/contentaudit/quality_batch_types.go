@@ -1,6 +1,7 @@
 package contentaudit
 
 import (
+	"strconv"
 	"strings"
 	"time"
 )
@@ -19,6 +20,12 @@ type contentQualityBatchRequest struct {
 	ModelStrategy string `json:"model_strategy"`
 	Source        string `json:"source"`
 	Preset        string `json:"preset"`
+	Targets       []contentQualityBatchTarget `json:"targets,omitempty"`
+}
+
+type contentQualityBatchTarget struct {
+	ContentType string `json:"content_type"`
+	ContentID   uint   `json:"content_id"`
 }
 
 type contentQualityBatchItem struct {
@@ -145,7 +152,10 @@ func normalizeQualityBatchRequest(req contentQualityBatchRequest) contentQuality
 
 	req.Preset = strings.ToLower(strings.TrimSpace(req.Preset))
 	switch req.Preset {
-	case "weak_first", "indexed_weak", "short_file_pages", "custom_filter":
+	case "weak_first", "indexed_weak", "short_file_pages", "custom_filter", "selected_items",
+		readinessProblemUnaudited, readinessProblemPolicyBlocked, readinessProblemAdsNotEligible,
+		readinessProblemThinContent, readinessProblemNeedsEnrichment, readinessProblemMetaDescription,
+		readinessProblemShortTitle:
 		// accepted
 	case "", "default":
 		req.Preset = "weak_first"
@@ -158,8 +168,36 @@ func normalizeQualityBatchRequest(req contentQualityBatchRequest) contentQuality
 	// the highest-risk pages from the AdSense readiness report.
 	if req.Source == "adsense_readiness" {
 		switch req.Preset {
-		case "weak_first", "indexed_weak", "short_file_pages":
+		case "weak_first", "indexed_weak", "short_file_pages", readinessProblemPolicyBlocked:
 			req.Level = "weak"
+		}
+	}
+
+	// Explicit selections are bounded and de-duplicated. They still go through the
+	// same preview-first pipeline; this only narrows target selection to the rows
+	// the reviewer chose in the readiness table.
+	if len(req.Targets) > 0 {
+		seen := make(map[string]struct{}, len(req.Targets))
+		normalized := make([]contentQualityBatchTarget, 0, len(req.Targets))
+		for _, target := range req.Targets {
+			target.ContentType = strings.ToLower(strings.TrimSpace(target.ContentType))
+			if (target.ContentType != "article" && target.ContentType != "post") || target.ContentID == 0 {
+				continue
+			}
+			key := target.ContentType + ":" + strconv.FormatUint(uint64(target.ContentID), 10)
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			normalized = append(normalized, target)
+			if len(normalized) >= 100 {
+				break
+			}
+		}
+		req.Targets = normalized
+		if len(normalized) > 0 {
+			req.Preset = "selected_items"
+			req.Limit = len(normalized)
 		}
 	}
 

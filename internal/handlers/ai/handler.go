@@ -67,18 +67,11 @@ func (h *Handler) Generate(c *fiber.Ctx) error {
 		contentType = "article"
 	}
 
-	generationContext := services.SEOGenerationContext{
-		CountryCode:       firstNonEmpty(req.CountryCode, req.Country),
-		GradeLevel:        req.GradeLevel,
-		GradeName:         req.GradeName,
-		SubjectID:         req.SubjectID,
-		SubjectName:       req.SubjectName,
-		SemesterID:        req.SemesterID,
-		SemesterName:      req.SemesterName,
-		CategoryID:        req.CategoryID,
-		CategoryName:      req.CategoryName,
-		CurriculumContext: req.CurriculumContext,
-	}
+	// grade_level in the dashboard payload is the internal school_classes ID/order
+	// (e.g. 12 can mean "الصف الأول الثانوي" because kindergarten occupies ID 1).
+	// Resolve it to the human grade name before any AI pipeline sees the context.
+	// Numeric internal IDs are never forwarded as semantic grade numbers.
+	generationContext := buildGenerationContext(req, lookupSchoolClassGradeName)
 
 	jobID := uuid.New().String()
 	store := services.GetAIJobStore()
@@ -140,7 +133,7 @@ func (h *Handler) Generate(c *fiber.Ctx) error {
 	})
 }
 
-// Status returns the current state of an async AI generation job.
+// Status returns the current state of an async AI content generation job.
 func (h *Handler) Status(c *fiber.Ctx) error {
 	jobID := c.Params("id")
 	if jobID == "" {

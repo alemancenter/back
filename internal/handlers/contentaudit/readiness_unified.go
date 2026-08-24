@@ -36,6 +36,8 @@ type unifiedReadinessItem struct {
 	GateReasons       []string `json:"gate_reasons"`
 	DiagnosticSignals []string `json:"diagnostic_signals"`
 	Issues            []string `json:"issues"`
+	Problems          []readinessItemProblem `json:"problems"`
+	PrimaryProblem    string   `json:"primary_problem,omitempty"`
 	URL               string   `json:"url"`
 }
 
@@ -169,6 +171,7 @@ func readinessGate(decision *models.ContentAIDecision, title, content, meta, key
 
 func buildUnifiedReadinessItem(title, content, meta, keywords string, filesCount int, published bool, contentType string, id uint, countryCode string, gate auditservice.ContentQualityGate, baseline *models.ContentPolicyReadiness) unifiedReadinessItem {
 	diagnostics := contentquality.EvaluateDiagnostics(title, readinessPlainText(content), meta, filesCount, published)
+	problems := classifyReadinessProblems(title, meta, diagnostics, published, gate)
 	shouldIndex := published && gate.Indexable
 	shouldShowAds := published && gate.AdsEligible
 
@@ -208,6 +211,10 @@ func buildUnifiedReadinessItem(title, content, meta, keywords string, filesCount
 	if contentType == "post" {
 		urlType = "posts"
 	}
+	primaryProblem := ""
+	if len(problems) > 0 {
+		primaryProblem = problems[0].Code
+	}
 
 	return unifiedReadinessItem{
 		ID:                id,
@@ -227,6 +234,8 @@ func buildUnifiedReadinessItem(title, content, meta, keywords string, filesCount
 		GateReasons:       append([]string(nil), reasons...),
 		DiagnosticSignals: append([]string(nil), diagnostics.Signals...),
 		Issues:            issues,
+		Problems:          problems,
+		PrimaryProblem:    primaryProblem,
 		URL:               "/" + countryCode + "/" + urlType + "/" + strconv.FormatUint(uint64(id), 10),
 	}
 }
@@ -278,10 +287,15 @@ func (h *Handler) AdsenseReadinessUnified(c *fiber.Ctx) error {
 		levelFilter = ""
 	}
 	search := strings.TrimSpace(c.Query("q"))
+	problemFilter := strings.ToLower(strings.TrimSpace(c.Query("problem")))
+	if _, ok := readinessProblemCatalog()[problemFilter]; problemFilter != "" && !ok {
+		problemFilter = ""
+	}
 
 	articleFileCounts, postFileCounts := readinessFileCountMaps(ctx, db)
 	rows := make([]unifiedReadinessRow, 0, 256)
 	globalSummary := unifiedReadinessSummary{}
+	repairCollector := newReadinessRepairCollector()
 
 	if contentType == "all" || contentType == "article" {
 		decisions, err := latestReadinessDecisions(ctx, "article", countryCode)
@@ -314,7 +328,8 @@ func (h *Handler) AdsenseReadinessUnified(c *fiber.Ctx) error {
 			gate := readinessGate(decisions[article.ID], article.Title, article.Content, meta, "", editorial[article.ID])
 			item := buildUnifiedReadinessItem(article.Title, article.Content, meta, "", articleFileCounts[article.ID], article.Status == 1, "article", article.ID, countryCode, gate, policyBaselines[article.ID])
 			updateUnifiedReadinessSummary(&globalSummary, item)
-			if levelFilter == "" || item.Level == levelFilter {
+			repairCollector.Add(item)
+			if (levelFilter == "" || item.Level == levelFilter) && hasReadinessProblem(item, problemFilter) {
 				rows = append(rows, unifiedReadinessRow{Item: item, CreatedAt: article.CreatedAt})
 			}
 		}
@@ -355,7 +370,8 @@ func (h *Handler) AdsenseReadinessUnified(c *fiber.Ctx) error {
 			gate := readinessGate(decisions[post.ID], post.Title, post.Content, meta, keywords, editorial[post.ID])
 			item := buildUnifiedReadinessItem(post.Title, post.Content, meta, keywords, postFileCounts[post.ID], post.IsActive, "post", post.ID, countryCode, gate, policyBaselines[post.ID])
 			updateUnifiedReadinessSummary(&globalSummary, item)
-			if levelFilter == "" || item.Level == levelFilter {
+			repairCollector.Add(item)
+			if (levelFilter == "" || item.Level == levelFilter) && hasReadinessProblem(item, problemFilter) {
 				rows = append(rows, unifiedReadinessRow{Item: item, CreatedAt: post.CreatedAt})
 			}
 		}
@@ -380,8 +396,9 @@ func (h *Handler) AdsenseReadinessUnified(c *fiber.Ctx) error {
 
 	meta := pag.BuildMeta(filteredTotal)
 	return utils.Success(c, "success", fiber.Map{
-		"summary": globalSummary,
-		"items":   items,
+		"summary":       globalSummary,
+		"repair_center": repairCollector.Build(),
+		"items":         items,
 		"meta": fiber.Map{
 			"current_page":   meta.CurrentPage,
 			"per_page":       meta.PerPage,

@@ -20,8 +20,10 @@ jobs:
           cache: true
       - name: Grounded repair tests
         run: go test ./internal/services/contentaudit
-      - name: Handler compile and tests
+      - name: Content audit handler compile and tests
         run: go test ./internal/handlers/contentaudit
+      - name: AI generation handler tests
+        run: go test ./internal/handlers/ai
       - name: Routes compile and tests
         run: go test ./internal/routes
       - name: Server compile

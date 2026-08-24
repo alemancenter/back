@@ -92,14 +92,43 @@ func groundedModelCandidatesForContext(ctx context.Context) []string {
 	return compactStrings(ordered)
 }
 
+// groundedStageContract makes the wire schema unambiguous before any provider sees the
+// request. This matters because several otherwise capable models interpret a field named
+// supported_claims as a list of claim strings even though the Go contract intentionally
+// stores only the count. The compatibility decoder still accepts that richer list shape,
+// but the preferred canonical output remains a numeric count.
+func groundedStageContract(stage string) string {
+	switch stage {
+	case "claim_validator":
+		return `
+
+عقد إخراج إلزامي لهذه المرحلة:
+- أعد كائن JSON واحد فقط.
+- grounding_score: عدد صحيح من 0 إلى 100.
+- supported_claims: عدد صحيح فقط يمثل عدد الادعاءات المدعومة. ممنوع أن يكون array أو قائمة نصوص.
+- unsupported_claims: مصفوفة نصوص فقط للادعاءات غير المدعومة.
+- notes: مصفوفة نصوص قصيرة.
+- facts ليست مصدر إثبات مستقلًا. يجب مطابقة كل ادعاء فعليًا مع evidence ذي verified=true داخل source_pack. إذا أضاف fact أو draft رقم صف/مرحلة أو أي رقم غير مثبت في evidence المشار إليه فلا تعتبره مدعومًا.`
+	case "fact_extractor":
+		return `
+
+قيد تأريض إضافي إلزامي:
+- لا تحوّل أسماء الصفوف أو المراحل المكتوبة نصيًا إلى أرقام.
+- لا تستخدم content_id أو file id أو evidence id أو أي معرف داخلي كحقيقة تعليمية.
+- أي رقم تضعه داخل claim يجب أن يكون ظاهرًا في نص evidence الموثق الذي تستشهد به، لا مستنتجًا من المعرفات أو ترتيب الصفوف.`
+	default:
+		return ""
+	}
+}
+
 func groundedRetryInstruction(stage string) string {
 	switch stage {
 	case "fact_extractor":
-		return "\n\nالمحاولة السابقة كانت ناقصة أو غير صالحة بنيويًا أو دلاليًا. أعد JSON قصيرًا وصحيحًا فقط بلا Markdown. حد أقصى 10 حقائق. confidence عدد صحيح من 0 إلى 100 وليس مقياس 0-1. لا تستنتج رقم الصف من content_id أو evidence_ids أو أرقام داخلية. استخدم اسم الصف الحرفي الموجود في الأدلة مثل «الصف الأول الثانوي» كما هو. إذا أعدت facts موثقة فلا تجعل insufficient_source=true. source_notes بحد أقصى عنصرين ولا تضع فيها تفكيرًا داخليًا أو استنتاجات غير موجودة في الأدلة."
+		return "\n\nالمحاولة السابقة كانت ناقصة أو غير صالحة بنيويًا أو دلاليًا. أعد JSON قصيرًا وصحيحًا فقط بلا Markdown. حد أقصى 10 حقائق. confidence عدد صحيح من 0 إلى 100 وليس مقياس 0-1. لا تستنتج رقم الصف من content_id أو evidence_ids أو أرقام داخلية، ولا تحوّل اسم الصف النصي إلى رقم. أي رقم في claim يجب أن يظهر في evidence الموثق المشار إليه. استخدم اسم الصف الحرفي الموجود في الأدلة مثل «الصف الأول الثانوي» كما هو. إذا أعدت facts موثقة فلا تجعل insufficient_source=true. source_notes بحد أقصى عنصرين ولا تضع فيها تفكيرًا داخليًا أو استنتاجات غير موجودة في الأدلة."
 	case "grounded_writer":
 		return "\n\nالمحاولة السابقة كانت ناقصة أو غير صالحة دلاليًا. أعد JSON صحيحًا ومختصرًا فقط، بدون Markdown خارج content_html وبدون حشو. يجب أن يكون content_html غير فارغ وأن تحتوي used_fact_indexes على فهرس حقيقة صالح واحد على الأقل."
 	case "claim_validator":
-		return "\n\nالمحاولة السابقة كانت ناقصة أو غير صالحة دلاليًا. أعد JSON صحيحًا ومختصرًا فقط. لا تُرجع نتيجة فارغة من نوع grounding_score=0 وsupported_claims=0 وunsupported_claims=[] عندما توجد مسودة للمراجعة. احسب النتيجة فعليًا واجعل notes مختصرة."
+		return "\n\nالمحاولة السابقة كانت ناقصة أو غير صالحة دلاليًا. أعد JSON صحيحًا ومختصرًا فقط. supported_claims يجب أن يكون عددًا صحيحًا فقط يمثل COUNT وليس array ولا قائمة ادعاءات. unsupported_claims وحده مصفوفة نصوص. لا تثق في facts تلقائيًا: طابق الادعاءات مع evidence ذي verified=true. لا تُرجع نتيجة فارغة من نوع grounding_score=0 وsupported_claims=0 وunsupported_claims=[] عندما توجد مسودة للمراجعة. احسب النتيجة فعليًا واجعل notes مختصرة."
 	default:
 		return "\n\nالمحاولة السابقة كانت ناقصة أو JSON غير صالح. أعد JSON صحيحًا ومختصرًا فقط."
 	}
@@ -194,6 +223,7 @@ func groundedAIJSONV3(ctx context.Context, stage, systemPrompt, userPrompt strin
 		return "", ErrGroundedAIUnavailable
 	}
 
+	effectiveSystemPrompt := systemPrompt + groundedStageContract(stage)
 	attemptErrors := []string{}
 	hadSuccessfulHTTP := false
 
@@ -207,7 +237,7 @@ func groundedAIJSONV3(ctx context.Context, stage, systemPrompt, userPrompt strin
 			payload := map[string]interface{}{
 				"model": model,
 				"messages": []map[string]string{
-					{"role": "system", "content": systemPrompt},
+					{"role": "system", "content": effectiveSystemPrompt},
 					{"role": "user", "content": prompt},
 				},
 				"temperature": 0.05,

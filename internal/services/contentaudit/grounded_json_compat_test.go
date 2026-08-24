@@ -82,7 +82,8 @@ func TestGroundedFactExtractionAcceptsIntegerValuedDecimalConfidence(t *testing.
 }
 
 func TestGroundedFactExtractionAcceptsDecimalStringConfidence(t *testing.T) {
-	raw := []byte(`{
+	var got groundedFactExtraction
+	if err := json.Unmarshal([]byte(`{
 		"purpose":"وصف التحضير",
 		"audience":["المعلم"],
 		"facts":[{
@@ -92,10 +93,7 @@ func TestGroundedFactExtractionAcceptsDecimalStringConfidence(t *testing.T) {
 		}],
 		"insufficient_source":false,
 		"source_notes":[]
-	}`)
-
-	var got groundedFactExtraction
-	if err := json.Unmarshal(raw, &got); err != nil {
+	}`), &got); err != nil {
 		t.Fatalf("decimal string confidence should decode: %v", err)
 	}
 	if got.Facts[0].Confidence != 98 {
@@ -182,5 +180,55 @@ func TestGroundedValidatorAcceptsIntegerValuedDecimalCounts(t *testing.T) {
 	}
 	if got.GroundingScore != 96 || got.SupportedClaims != 7 {
 		t.Fatalf("unexpected validator numeric normalization: %+v", got)
+	}
+}
+
+func TestGroundedValidatorAcceptsSupportedClaimTextArray(t *testing.T) {
+	var got groundedValidation
+	if err := json.Unmarshal([]byte(`{
+		"grounding_score":97,
+		"supported_claims":[
+			"العنوان يوضح أن الملف تحضير للتربية الإسلامية.",
+			"النص المستخرج يذكر الصف الحادي عشر.",
+			"يتضمن الملف خطة درس حول سورة آل عمران."
+		],
+		"unsupported_claims":[],
+		"notes":[]
+	}`), &got); err != nil {
+		t.Fatalf("supported claim text arrays should normalize to a count: %v", err)
+	}
+	if got.SupportedClaims != 3 {
+		t.Fatalf("expected 3 supported claims, got %d", got.SupportedClaims)
+	}
+}
+
+func TestGroundedValidatorCountsDistinctNonEmptySupportedClaims(t *testing.T) {
+	var got groundedValidation
+	if err := json.Unmarshal([]byte(`{
+		"grounding_score":92,
+		"supported_claims":["title","content_html","title","   "],
+		"unsupported_claims":[],
+		"notes":[]
+	}`), &got); err != nil {
+		t.Fatalf("supported claim labels should normalize to a distinct count: %v", err)
+	}
+	if got.SupportedClaims != 2 {
+		t.Fatalf("expected 2 distinct supported claims, got %d", got.SupportedClaims)
+	}
+}
+
+func TestGroundedValidatorRejectsNonNumericScalarSupportedClaimText(t *testing.T) {
+	var got groundedValidation
+	err := json.Unmarshal([]byte(`{
+		"grounding_score":92,
+		"supported_claims":"هذا ادعاء مدعوم",
+		"unsupported_claims":[],
+		"notes":[]
+	}`), &got)
+	if err == nil {
+		t.Fatal("non-numeric scalar supported_claims must remain invalid")
+	}
+	if !strings.Contains(err.Error(), "supported_claims") || !strings.Contains(err.Error(), "invalid integer value") {
+		t.Fatalf("unexpected supported_claims scalar error: %v", err)
 	}
 }

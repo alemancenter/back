@@ -107,6 +107,15 @@ func (h *Handler) selectQualityBatchTargets(ctx context.Context, req contentQual
 // Batch presets choose editorial work; they do not make SEO/ad decisions.
 // should_index/should_show_ads already come from the canonical Content Quality Gate.
 func shouldIncludeQualityTarget(item unifiedReadinessItem, req contentQualityBatchRequest) bool {
+	if req.Preset == "selected_items" {
+		for _, target := range req.Targets {
+			if target.ContentType == item.Type && target.ContentID == item.ID {
+				return true
+			}
+		}
+		return false
+	}
+
 	// The dashboard's custom filter has a hidden legacy level=weak field. When an
 	// operator supplies an explicit query, the query itself is the intended scope,
 	// so do not silently discard an exact title/ID match because its readiness
@@ -127,6 +136,20 @@ func shouldIncludeQualityTarget(item unifiedReadinessItem, req contentQualityBat
 		return item.FilesCount > 0 && item.WordCount < contentquality.DiagnosticShortFileMaxWords && !item.ShouldShowAds
 	case "weak_first":
 		return !item.ShouldShowAds
+	case readinessProblemUnaudited:
+		return hasReadinessProblem(item, readinessProblemUnaudited)
+	case readinessProblemPolicyBlocked:
+		return hasReadinessProblem(item, readinessProblemPolicyBlocked)
+	case readinessProblemAdsNotEligible:
+		return hasReadinessProblem(item, readinessProblemAdsNotEligible)
+	case readinessProblemThinContent:
+		return !item.ShouldShowAds && hasReadinessProblem(item, readinessProblemThinContent)
+	case readinessProblemNeedsEnrichment:
+		return !item.ShouldShowAds && hasReadinessProblem(item, readinessProblemNeedsEnrichment)
+	case readinessProblemMetaDescription:
+		return !item.ShouldShowAds && hasReadinessProblem(item, readinessProblemMetaDescription)
+	case readinessProblemShortTitle:
+		return !item.ShouldShowAds && hasReadinessProblem(item, readinessProblemShortTitle)
 	default:
 		return item.Level == req.Level
 	}
@@ -160,6 +183,26 @@ func qualityTargetPriority(item unifiedReadinessItem, req contentQualityBatchReq
 	case "weak_first":
 		if item.Level == "weak" {
 			priority += 50
+		}
+	case readinessProblemPolicyBlocked:
+		if hasReadinessProblem(item, readinessProblemPolicyBlocked) {
+			priority += 100
+		}
+	case readinessProblemUnaudited:
+		if hasReadinessProblem(item, readinessProblemUnaudited) {
+			priority += 80
+		}
+	case readinessProblemAdsNotEligible:
+		if hasReadinessProblem(item, readinessProblemAdsNotEligible) {
+			priority += 75
+		}
+	case readinessProblemThinContent:
+		if hasReadinessProblem(item, readinessProblemThinContent) {
+			priority += 70
+		}
+	case readinessProblemNeedsEnrichment, readinessProblemMetaDescription, readinessProblemShortTitle:
+		if hasReadinessProblem(item, req.Preset) {
+			priority += 55
 		}
 	}
 	return priority

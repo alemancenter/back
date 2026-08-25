@@ -236,7 +236,7 @@ func (h *Handler) ApplyFix(c *fiber.Ctx) error {
 	defer cancel()
 	preview, err := h.svc.ApplyGroundedFix(ctx, req.FixPreviewID, currentUserID(c), req.Note)
 	if err != nil {
-		if errors.Is(err, auditservice.ErrFixAlreadyClosed) || errors.Is(err, auditservice.ErrUnsupportedContentType) || errors.Is(err, auditservice.ErrUngroundedFixPreview) || errors.Is(err, auditservice.ErrGroundedValidationFailed) {
+		if errors.Is(err, auditservice.ErrFixAlreadyClosed) || errors.Is(err, auditservice.ErrUnsupportedContentType) || errors.Is(err, auditservice.ErrUngroundedFixPreview) || errors.Is(err, auditservice.ErrGroundedValidationFailed) || errors.Is(err, auditservice.ErrGroundedSourceChanged) {
 			return utils.BadRequest(c, err.Error())
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {

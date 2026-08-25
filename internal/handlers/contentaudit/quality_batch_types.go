@@ -6,9 +6,8 @@ import (
 	"time"
 )
 
-// Content quality batch processing is intentionally preview-first:
-// it may analyze and create fix previews, but it never applies generated text
-// automatically. A human reviewer must approve every fix preview.
+// Content quality batch processing is preview-first for substantive content.
+// The sole auto-apply exception is the guarded meta_description repair path.
 type contentQualityBatchRequest struct {
 	CountryCode   string `json:"country_code"`
 	ContentType   string `json:"content_type"`
@@ -106,7 +105,7 @@ func normalizeQualityBatchRequest(req contentQualityBatchRequest) contentQuality
 		req.Level = "weak"
 	}
 	req.Mode = strings.ToLower(strings.TrimSpace(req.Mode))
-	if req.Mode != "analyze_only" && req.Mode != "fix_preview" && req.Mode != "full_review" {
+	if req.Mode != "analyze_only" && req.Mode != "fix_preview" && req.Mode != "full_review" && req.Mode != "auto_apply" {
 		req.Mode = "fix_preview"
 	}
 	req.ModelStrategy = strings.ToLower(strings.TrimSpace(req.ModelStrategy))
@@ -173,9 +172,8 @@ func normalizeQualityBatchRequest(req contentQualityBatchRequest) contentQuality
 		}
 	}
 
-	// Explicit selections are bounded and de-duplicated. They still go through the
-	// same preview-first pipeline; this only narrows target selection to the rows
-	// the reviewer chose in the readiness table.
+	// Explicit selections are bounded and de-duplicated. An issue-specific preset
+	// remains intact so the backend can verify every selected row has that issue.
 	if len(req.Targets) > 0 {
 		seen := make(map[string]struct{}, len(req.Targets))
 		normalized := make([]contentQualityBatchTarget, 0, len(req.Targets))
@@ -196,11 +194,31 @@ func normalizeQualityBatchRequest(req contentQualityBatchRequest) contentQuality
 		}
 		req.Targets = normalized
 		if len(normalized) > 0 {
-			req.Preset = "selected_items"
+			if !isIssueSpecificQualityPreset(req.Preset) {
+				req.Preset = "selected_items"
+			}
 			req.Limit = len(normalized)
 		}
 	}
 
+	// Auto-apply is deliberately allowlisted to metadata. Any malformed or future
+	// request attempting to auto-apply title/body/policy work is downgraded to a
+	// human-reviewed preview.
+	if req.Mode == "auto_apply" && req.Preset != readinessProblemMetaDescription {
+		req.Mode = "fix_preview"
+	}
+
 	req.Query = strings.TrimSpace(req.Query)
 	return req
+}
+
+func isIssueSpecificQualityPreset(preset string) bool {
+	switch preset {
+	case readinessProblemUnaudited, readinessProblemPolicyBlocked, readinessProblemAdsNotEligible,
+		readinessProblemThinContent, readinessProblemNeedsEnrichment, readinessProblemMetaDescription,
+		readinessProblemShortTitle:
+		return true
+	default:
+		return false
+	}
 }

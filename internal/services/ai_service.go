@@ -219,6 +219,7 @@ type ContentIntelligenceRequest struct {
 	Title             string `json:"title"`
 	Content           string `json:"content"`
 	PlainText         string `json:"plain_text"`
+	MetaDescription   string `json:"meta_description,omitempty"`
 	URL               string `json:"url"`
 	Language          string `json:"language"`
 	JobID             string `json:"job_id,omitempty"`
@@ -239,28 +240,29 @@ type ContentIntelligenceSuggestion struct {
 }
 
 type ContentIntelligenceResponse struct {
-	Decision         string                          `json:"decision"`
-	AdSenseRisk      string                          `json:"adsense_risk"`
-	Score            int                             `json:"score"`
-	PolicyScore      int                             `json:"policy_score"`
-	SEOScore         int                             `json:"seo_score"`
-	LanguageScore    int                             `json:"language_score"`
-	SafetyLinksScore int                             `json:"safety_links_score"`
-	StructureScore   int                             `json:"structure_score"`
-	CanAutoFix       bool                            `json:"can_auto_fix"`
-	Summary          string                          `json:"summary"`
-	Issues           []ContentIntelligenceIssue      `json:"issues"`
-	Suggestions      []ContentIntelligenceSuggestion `json:"suggestions"`
-	FixedTitle       string                          `json:"fixed_title,omitempty"`
-	FixedContent     string                          `json:"fixed_content,omitempty"`
-	FixSummary       string                          `json:"fix_summary,omitempty"`
-	Provider         string                          `json:"provider"`
-	Model            string                          `json:"model"`
-	PromptVersion    string                          `json:"prompt_version"`
-	Tokens           int                             `json:"tokens"`
-	ProcessingTimeMS int64                           `json:"processing_time_ms"`
-	ModelStrategy    string                          `json:"model_strategy,omitempty"`
-	ModelRole        string                          `json:"model_role,omitempty"`
+	Decision             string                          `json:"decision"`
+	AdSenseRisk          string                          `json:"adsense_risk"`
+	Score                int                             `json:"score"`
+	PolicyScore          int                             `json:"policy_score"`
+	SEOScore             int                             `json:"seo_score"`
+	LanguageScore        int                             `json:"language_score"`
+	SafetyLinksScore     int                             `json:"safety_links_score"`
+	StructureScore       int                             `json:"structure_score"`
+	CanAutoFix           bool                            `json:"can_auto_fix"`
+	Summary              string                          `json:"summary"`
+	Issues               []ContentIntelligenceIssue      `json:"issues"`
+	Suggestions          []ContentIntelligenceSuggestion `json:"suggestions"`
+	FixedTitle           string                          `json:"fixed_title,omitempty"`
+	FixedContent         string                          `json:"fixed_content,omitempty"`
+	FixedMetaDescription string                          `json:"fixed_meta_description,omitempty"`
+	FixSummary           string                          `json:"fix_summary,omitempty"`
+	Provider             string                          `json:"provider"`
+	Model                string                          `json:"model"`
+	PromptVersion        string                          `json:"prompt_version"`
+	Tokens               int                             `json:"tokens"`
+	ProcessingTimeMS     int64                           `json:"processing_time_ms"`
+	ModelStrategy        string                          `json:"model_strategy,omitempty"`
+	ModelRole            string                          `json:"model_role,omitempty"`
 }
 
 type aiService struct {
@@ -522,13 +524,17 @@ func (s *aiService) runContentIntelligenceWithFallback(ctx context.Context, req 
 	log.Printf("Content AI | strategy=%s | role=%s | model=%s | attempt=%d | task=%s | title=%q", req.ModelStrategy, modelRole, currentModel, attempt, req.Task, truncate(req.Title, 70))
 	systemPrompt, userPrompt := buildContentIntelligencePrompts(req)
 	estimatedInputTokens := estimateAITokens(systemPrompt + "\n" + userPrompt)
+	maxTokens := 2000
+	if req.Task == "repair_meta_description" {
+		maxTokens = 500
+	}
 	payload := map[string]interface{}{
 		"model": currentModel,
 		"messages": []map[string]string{
 			{"role": "system", "content": systemPrompt},
 			{"role": "user", "content": userPrompt},
 		},
-		"max_tokens":  2000,
+		"max_tokens":  maxTokens,
 		"temperature": 0.25,
 		"top_p":       0.9,
 		"stop":        []string{"<|eot_id|>", "<|im_end|>"},
@@ -555,6 +561,7 @@ func (s *aiService) runContentIntelligenceWithFallback(ctx context.Context, req 
 						"suggestions":        map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "object"}},
 						"fixed_title":        map[string]interface{}{"type": "string"},
 						"fixed_content":      map[string]interface{}{"type": "string"},
+						"fixed_meta_description": map[string]interface{}{"type": "string"},
 						"fix_summary":        map[string]interface{}{"type": "string"},
 					},
 				},
@@ -634,7 +641,7 @@ func (s *aiService) runContentIntelligenceWithFallback(ctx context.Context, req 
 	out.Model = currentModel
 	out.ModelStrategy = req.ModelStrategy
 	out.ModelRole = modelRole
-	out.PromptVersion = "content-intelligence-v1:" + req.ModelStrategy + ":" + modelRole
+	out.PromptVersion = "content-intelligence-v2:" + req.ModelStrategy + ":" + modelRole
 	out.ProcessingTimeMS = time.Since(started).Milliseconds()
 	outputTokens := usage.CompletionTokens
 	if outputTokens <= 0 {
@@ -678,6 +685,21 @@ func curriculumSummary(req ContentIntelligenceRequest) string {
 }
 
 func buildContentIntelligencePrompts(req ContentIntelligenceRequest) (string, string) {
+	if req.Task == "repair_meta_description" {
+		system := `أنت محرر SEO عربي دقيق. مهمتك إنشاء وصف تعريفي واحد فقط اعتمادًا حصريًا على العنوان والنص الحالي والسياق التعليمي المرسل. لا تضف أرقامًا أو مواعيد أو جهات أو ادعاءات غير موجودة في المصدر. لا تستخدم HTML أو روابط أو عبارات تسويقية مبالغًا فيها. أعد JSON فقط بالمفتاح fixed_meta_description.`
+		user := fmt.Sprintf(`أنشئ وصفًا تعريفيًا عربيًا بين 120 و160 حرفًا يشرح قيمة الصفحة بوضوح ويطابق مضمونها الفعلي.
+
+العنوان: %s
+السياق التعليمي: %s
+الوصف الحالي: %s
+النص الحالي:
+%s
+
+أعد هذا JSON فقط:
+{"fixed_meta_description":"..."}`, req.Title, curriculumSummary(req), strings.TrimSpace(req.MetaDescription), truncate(req.PlainText, 6000))
+		return system, user
+	}
+
 	kind := "مقال طويل SEO"
 	minWords := 300
 	if req.ContentType == "post" {
@@ -711,10 +733,13 @@ func buildContentIntelligencePrompts(req ContentIntelligenceRequest) (string, st
 
 HTML الأصلي:
 %s
+
+الوصف التعريفي الحالي:
+%s
 %s
 
 أرجع JSON بهذه المفاتيح فقط: decision, adsense_risk, score, policy_score, seo_score, language_score, safety_links_score, structure_score, can_auto_fix, summary, issues, suggestions, fixed_title, fixed_content, fix_summary.
-قواعد القرار: أي Thin Content أو مخالفة سياسة مهمة يجب أن تكون needs_fix أو restricted_ads أو rejected وليس approved. إذا كانت المهمة fix_content فأعد fixed_content بصيغة HTML نظيفة مناسبة لـ %s.`, mode, kind, req.Title, req.URL, curriculumSummary(req), truncate(req.PlainText, 6000), truncate(req.Content, 6000), extra, kind)
+قواعد القرار: أي Thin Content أو وصف تعريفي أقصر من 80 حرفًا أو مخالفة سياسة مهمة يجب أن تكون needs_fix أو restricted_ads أو rejected وليس approved. إذا كانت المهمة fix_content فأعد fixed_content بصيغة HTML نظيفة مناسبة لـ %s.`, mode, kind, req.Title, req.URL, curriculumSummary(req), truncate(req.PlainText, 6000), truncate(req.Content, 6000), strings.TrimSpace(req.MetaDescription), extra, kind)
 	return system, user
 }
 
@@ -752,6 +777,10 @@ func newAIModelRouter(defaultModel string, fallbackModels []string) aiModelRoute
 			"fix_content:balanced":       modelRouteFromEnv("AI_MODELS_FIX_BALANCED", append(parseModelList("meta-llama/Llama-3.3-70B-Instruct-Turbo,pearl-ai/gemma-4-31b-it,google/gemma-4-31B-it"), base...)),
 			"fix_content:quality":        modelRouteFromEnv("AI_MODELS_FIX_QUALITY", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,openai/gpt-oss-120b,zai-org/GLM-5.1"), base...)),
 			"fix_content:final_review":   modelRouteFromEnv("AI_MODELS_FIX_FINAL", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,zai-org/GLM-5.1,openai/gpt-oss-120b"), base...)),
+			"repair_meta_description:economy":      modelRouteFromEnv("AI_MODELS_META_ECONOMY", append(parseModelList("google/gemma-3n-E4B-it,openai/gpt-oss-20b"), base...)),
+			"repair_meta_description:balanced":     modelRouteFromEnv("AI_MODELS_META_BALANCED", append(parseModelList("openai/gpt-oss-20b,pearl-ai/gemma-4-31b-it,google/gemma-4-31B-it"), base...)),
+			"repair_meta_description:quality":      modelRouteFromEnv("AI_MODELS_META_QUALITY", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,openai/gpt-oss-120b"), base...)),
+			"repair_meta_description:final_review": modelRouteFromEnv("AI_MODELS_META_FINAL", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,zai-org/GLM-5.1"), base...)),
 		},
 	}
 }

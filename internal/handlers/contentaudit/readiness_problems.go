@@ -33,12 +33,14 @@ type readinessProblemDefinition struct {
 }
 
 type readinessItemProblem struct {
-	Code       string `json:"code"`
-	Label      string `json:"label"`
-	Message    string `json:"message"`
-	Severity   string `json:"severity"`
-	ActionType string `json:"action_type"`
-	Preset     string `json:"preset,omitempty"`
+	Code          string `json:"code"`
+	Label         string `json:"label"`
+	Message       string `json:"message"`
+	Severity      string `json:"severity"`
+	ActionType    string `json:"action_type"`
+	Preset        string `json:"preset,omitempty"`
+	Mode          string `json:"mode,omitempty"`
+	ModelStrategy string `json:"model_strategy,omitempty"`
 }
 
 type readinessProblemSummary struct {
@@ -104,9 +106,9 @@ var readinessProblems = map[string]readinessProblemDefinition{
 		},
 		readinessProblemMetaDescription: {
 			Code: readinessProblemMetaDescription, Label: "وصف تعريفي ناقص أو قصير",
-			Description: "إنشاء وصف دقيق من مضمون الصفحة بدل نص عام أو حشو كلمات مفتاحية.",
-			Severity: "medium", ActionType: "ai_preview", Preset: readinessProblemMetaDescription,
-			Mode: "fix_preview", ModelStrategy: "balanced", Priority: 60,
+			Description: "توليد وصف دقيق من مضمون الصفحة، تطبيقه على الحقل الوصفي فقط، ثم إعادة فحص الجاهزية تلقائيًا.",
+			Severity: "medium", ActionType: "auto_repair", Preset: readinessProblemMetaDescription,
+			Mode: "auto_apply", ModelStrategy: "balanced", Priority: 70,
 		},
 		readinessProblemShortTitle: {
 			Code: readinessProblemShortTitle, Label: "عنوان يحتاج مراجعة",
@@ -145,8 +147,6 @@ func classifyReadinessProblems(title, meta string, diagnostics contentquality.Di
 		add(readinessProblemUnaudited, "لم يخضع المحتوى لتدقيق الجودة؛ ابدأ بالتحليل قبل إنشاء أي إصلاح.")
 	} else if !gate.Indexable {
 		add(readinessProblemPolicyBlocked, "بوابة الجودة تمنع الفهرسة والإعلانات حتى معالجة سبب الرفض أو المخاطرة الحرجة.")
-	} else if !gate.AdsEligible {
-		add(readinessProblemAdsNotEligible, "المحتوى مفهرس لكنه لم يستوفِ شروط الاعتماد الداخلية لعرض الإعلانات.")
 	}
 
 	if diagnostics.WordCount < contentquality.DiagnosticReviewMinWords {
@@ -163,19 +163,36 @@ func classifyReadinessProblems(title, meta string, diagnostics contentquality.Di
 	if !published {
 		add(readinessProblemUnpublished, "العنصر غير منشور أو غير فعال، لذلك لا يمكن فهرسته أو عرض الإعلانات عليه.")
 	}
+	if gate.Audited && gate.Indexable && !gate.AdsEligible &&
+		!hasProblemCode(codes, readinessProblemThinContent) &&
+		!hasProblemCode(codes, readinessProblemNeedsEnrichment) &&
+		!hasProblemCode(codes, readinessProblemMetaDescription) &&
+		!hasProblemCode(codes, readinessProblemShortTitle) {
+		add(readinessProblemAdsNotEligible, "المحتوى مفهرس لكنه لم يستوفِ شروط الاعتماد الداخلية لعرض الإعلانات.")
+	}
 
 	problems := make([]readinessItemProblem, 0, len(codes))
 	for _, code := range codes {
 		definition := catalog[code]
 		problems = append(problems, readinessItemProblem{
 			Code: code, Label: definition.Label, Message: messages[code], Severity: definition.Severity,
-			ActionType: definition.ActionType, Preset: definition.Preset,
+			ActionType: definition.ActionType, Preset: definition.Preset, Mode: definition.Mode,
+			ModelStrategy: definition.ModelStrategy,
 		})
 	}
 	sort.SliceStable(problems, func(i, j int) bool {
 		return catalog[problems[i].Code].Priority > catalog[problems[j].Code].Priority
 	})
 	return problems
+}
+
+func hasProblemCode(codes []string, code string) bool {
+	for _, existing := range codes {
+		if existing == code {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *readinessRepairCollector) Add(item unifiedReadinessItem) {

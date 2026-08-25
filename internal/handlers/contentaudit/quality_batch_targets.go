@@ -107,13 +107,20 @@ func (h *Handler) selectQualityBatchTargets(ctx context.Context, req contentQual
 // Batch presets choose editorial work; they do not make SEO/ad decisions.
 // should_index/should_show_ads already come from the canonical Content Quality Gate.
 func shouldIncludeQualityTarget(item unifiedReadinessItem, req contentQualityBatchRequest) bool {
-	if req.Preset == "selected_items" {
+	if len(req.Targets) > 0 {
+		matched := false
 		for _, target := range req.Targets {
 			if target.ContentType == item.Type && target.ContentID == item.ID {
-				return true
+				matched = true
+				break
 			}
 		}
-		return false
+		if !matched {
+			return false
+		}
+	}
+	if req.Preset == "selected_items" {
+		return len(req.Targets) > 0
 	}
 
 	// The dashboard's custom filter has a hidden legacy level=weak field. When an
@@ -147,7 +154,7 @@ func shouldIncludeQualityTarget(item unifiedReadinessItem, req contentQualityBat
 	case readinessProblemNeedsEnrichment:
 		return !item.ShouldShowAds && hasReadinessProblem(item, readinessProblemNeedsEnrichment)
 	case readinessProblemMetaDescription:
-		return !item.ShouldShowAds && hasReadinessProblem(item, readinessProblemMetaDescription)
+		return hasReadinessProblem(item, readinessProblemMetaDescription)
 	case readinessProblemShortTitle:
 		return !item.ShouldShowAds && hasReadinessProblem(item, readinessProblemShortTitle)
 	default:

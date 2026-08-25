@@ -66,7 +66,7 @@ var ErrAIAnalysisInProgress = errors.New("AI analysis is already running for thi
 
 var fixPreviewLocks sync.Map
 
-const contentIntelligencePromptVersion = "content-intelligence-v1"
+const contentIntelligencePromptVersion = "content-intelligence-v2"
 
 type contentAIContextKey string
 
@@ -141,15 +141,16 @@ func acquireContentAILock(ctx context.Context, key string, ttl time.Duration) (f
 }
 
 type AIAnalyzeRequest struct {
-	RunID         *uint  `json:"run_id,omitempty"`
-	FindingID     *uint  `json:"finding_id,omitempty"`
-	ContentType   string `json:"content_type"`
-	ContentID     string `json:"content_id"`
-	CountryCode   string `json:"country_code"`
-	Title         string `json:"title"`
-	Content       string `json:"content"`
-	URL           string `json:"url"`
-	ModelStrategy string `json:"model_strategy,omitempty"`
+	RunID           *uint  `json:"run_id,omitempty"`
+	FindingID       *uint  `json:"finding_id,omitempty"`
+	ContentType     string `json:"content_type"`
+	ContentID       string `json:"content_id"`
+	CountryCode     string `json:"country_code"`
+	Title           string `json:"title"`
+	Content         string `json:"content"`
+	MetaDescription string `json:"meta_description,omitempty"`
+	URL             string `json:"url"`
+	ModelStrategy   string `json:"model_strategy,omitempty"`
 }
 
 type AIFixRequest struct {
@@ -171,6 +172,7 @@ type loadedContent struct {
 	CountryCode       string
 	Title             string
 	Content           string
+	MetaDescription   string
 	URL               string
 	GradeName         string
 	SubjectName       string
@@ -238,10 +240,11 @@ func (s *Service) AnalyzeWithAI(ctx context.Context, req AIAnalyzeRequest, userI
 	}
 
 	if s.ai != nil && strings.TrimSpace(plain) != "" {
-		if aiResp, err := s.ai.RunContentIntelligence(ctx, coreai.ContentIntelligenceRequest{Task: "audit_content", ModelStrategy: modelStrategy, ContentType: content.Type, ContentID: fmt.Sprintf("%d", content.ID), CountryCode: content.CountryCode, GradeName: content.GradeName, SubjectName: content.SubjectName, SemesterName: content.SemesterName, CategoryName: content.CategoryName, CurriculumContext: content.CurriculumContext, Title: content.Title, Content: content.Content, PlainText: plain, URL: firstNonEmptyLocal(req.URL, content.URL), Language: "ar", JobID: aiJobIDFromContext(ctx)}); err == nil {
+		if aiResp, err := s.ai.RunContentIntelligence(ctx, coreai.ContentIntelligenceRequest{Task: "audit_content", ModelStrategy: modelStrategy, ContentType: content.Type, ContentID: fmt.Sprintf("%d", content.ID), CountryCode: content.CountryCode, GradeName: content.GradeName, SubjectName: content.SubjectName, SemesterName: content.SemesterName, CategoryName: content.CategoryName, CurriculumContext: content.CurriculumContext, Title: content.Title, Content: content.Content, PlainText: plain, MetaDescription: content.MetaDescription, URL: firstNonEmptyLocal(req.URL, content.URL), Language: "ar", JobID: aiJobIDFromContext(ctx)}); err == nil {
 			report = reportFromAI(aiResp, report)
 		}
 	}
+	report = enforceCurrentSourceRequirements(report, content)
 	report = enforcePolicyDecision(report)
 	reportBytes, _ := json.Marshal(report)
 	decision := &models.ContentAIDecision{RunID: req.RunID, FindingID: req.FindingID, ContentType: content.Type, ContentID: fmt.Sprintf("%s:%d", content.CountryCode, content.ID), CountryCode: content.CountryCode, Title: content.Title, Decision: report.Decision, AdSenseRisk: report.AdSenseRisk, Score: report.Score, PolicyScore: report.PolicyScore, SEOScore: report.SEOScore, LanguageScore: report.LanguageScore, SafetyLinksScore: report.SafetyLinksScore, StructureScore: report.StructureScore, CanAutoFix: report.CanAutoFix, Provider: report.Provider, Model: report.Model, PromptVersion: report.PromptVersion, AITokens: report.Tokens, ProcessingTimeMS: report.ProcessingTimeMS, Summary: report.Summary, ReportJSON: string(reportBytes), CreatedByUserID: userID}
@@ -314,7 +317,7 @@ func (s *Service) CreateFixPreview(ctx context.Context, decisionID uint64) (*mod
 
 	if s.ai != nil {
 		// First try the dedicated content-intelligence fixing task. It should return a real fixed HTML draft.
-		if aiResp, err := s.ai.RunContentIntelligence(ctx, coreai.ContentIntelligenceRequest{Task: "fix_content", ModelStrategy: modelStrategy, ContentType: content.Type, ContentID: fmt.Sprintf("%d", content.ID), CountryCode: content.CountryCode, GradeName: content.GradeName, SubjectName: content.SubjectName, SemesterName: content.SemesterName, CategoryName: content.CategoryName, CurriculumContext: content.CurriculumContext, Title: content.Title, Content: content.Content, PlainText: originalPlain, URL: content.URL, Language: "ar", JobID: aiJobIDFromContext(ctx)}); err == nil {
+		if aiResp, err := s.ai.RunContentIntelligence(ctx, coreai.ContentIntelligenceRequest{Task: "fix_content", ModelStrategy: modelStrategy, ContentType: content.Type, ContentID: fmt.Sprintf("%d", content.ID), CountryCode: content.CountryCode, GradeName: content.GradeName, SubjectName: content.SubjectName, SemesterName: content.SemesterName, CategoryName: content.CategoryName, CurriculumContext: content.CurriculumContext, Title: content.Title, Content: content.Content, PlainText: originalPlain, MetaDescription: content.MetaDescription, URL: content.URL, Language: "ar", JobID: aiJobIDFromContext(ctx)}); err == nil {
 			candidateTitle := firstNonEmptyLocal(strings.TrimSpace(aiResp.FixedTitle), fixedTitle)
 			candidateContent := strings.TrimSpace(aiResp.FixedContent)
 			candidateSummary := firstNonEmptyLocal(strings.TrimSpace(aiResp.FixSummary), "تم إنشاء نسخة محسّنة بالذكاء الاصطناعي وفق سياسات AdSense ومعايير SEO.")
@@ -481,7 +484,7 @@ func (s *Service) resolveContent(ctx context.Context, req AIAnalyzeRequest) (*lo
 	if id > 0 {
 		return s.loadContentByRef(ctx, ct, cc, id)
 	}
-	return &loadedContent{Type: ct, ID: 0, CountryCode: cc, Title: strings.TrimSpace(req.Title), Content: req.Content, URL: req.URL}, nil
+	return &loadedContent{Type: ct, ID: 0, CountryCode: cc, Title: strings.TrimSpace(req.Title), Content: req.Content, MetaDescription: strings.TrimSpace(req.MetaDescription), URL: req.URL}, nil
 }
 
 func (s *Service) loadContentByRef(ctx context.Context, contentType, countryCode string, id uint) (*loadedContent, error) {
@@ -500,7 +503,11 @@ func (s *Service) loadContentByRef(ctx context.Context, contentType, countryCode
 			normalizedCountry = "jo"
 		}
 		gradeName, subjectName, semesterName := articleEducationContext(item)
-		return &loadedContent{Type: "article", ID: item.ID, CountryCode: normalizedCountry, Title: item.Title, Content: item.Content, URL: fmt.Sprintf("/%s/articles/%d", normalizedCountry, item.ID), GradeName: gradeName, SubjectName: subjectName, SemesterName: semesterName, CurriculumContext: buildCurriculumContext(normalizedCountry, gradeName, subjectName, semesterName, "")}, nil
+		metaDescription := ""
+		if item.MetaDescription != nil {
+			metaDescription = *item.MetaDescription
+		}
+		return &loadedContent{Type: "article", ID: item.ID, CountryCode: normalizedCountry, Title: item.Title, Content: item.Content, MetaDescription: metaDescription, URL: fmt.Sprintf("/%s/articles/%d", normalizedCountry, item.ID), GradeName: gradeName, SubjectName: subjectName, SemesterName: semesterName, CurriculumContext: buildCurriculumContext(normalizedCountry, gradeName, subjectName, semesterName, "")}, nil
 	case "post":
 		var item models.Post
 		if err := db.Preload("Category").First(&item, id).Error; err != nil {
@@ -514,7 +521,11 @@ func (s *Service) loadContentByRef(ctx context.Context, contentType, countryCode
 		if item.Category != nil {
 			categoryName = strings.TrimSpace(item.Category.Name)
 		}
-		return &loadedContent{Type: "post", ID: item.ID, CountryCode: normalizedCountry, Title: item.Title, Content: item.Content, URL: fmt.Sprintf("/%s/posts/%d", normalizedCountry, item.ID), CategoryName: categoryName, CurriculumContext: buildCurriculumContext(normalizedCountry, "", "", "", categoryName)}, nil
+		metaDescription := ""
+		if item.MetaDescription != nil {
+			metaDescription = *item.MetaDescription
+		}
+		return &loadedContent{Type: "post", ID: item.ID, CountryCode: normalizedCountry, Title: item.Title, Content: item.Content, MetaDescription: metaDescription, URL: fmt.Sprintf("/%s/posts/%d", normalizedCountry, item.ID), CategoryName: categoryName, CurriculumContext: buildCurriculumContext(normalizedCountry, "", "", "", categoryName)}, nil
 	default:
 		return nil, ErrUnsupportedContentType
 	}
@@ -574,9 +585,14 @@ func buildDecisionReport(content *loadedContent) aiReport {
 		languageScore -= 15
 		issues = append(issues, aiIssueDTO{"quality", "high", "المحتوى قصير وقد يُعتبر Thin Content.", "expand_content", fmt.Sprintf("words=%d minimum=%d", wc, minWords)})
 	}
-	if strings.TrimSpace(content.Title) == "" || len([]rune(content.Title)) < 12 {
+	if strings.TrimSpace(content.Title) == "" || len([]rune(content.Title)) < 20 {
 		seoScore -= 20
 		issues = append(issues, aiIssueDTO{"seo", "medium", "العنوان قصير أو غير واضح لمحركات البحث.", "improve_title", ""})
+	}
+	if len([]rune(strings.TrimSpace(content.MetaDescription))) < 80 {
+		seoScore -= 20
+		issues = append(issues, aiIssueDTO{"seo", "medium", "الوصف التعريفي مفقود أو أقصر من الحد التحريري الداخلي.", "repair_meta_description", fmt.Sprintf("chars=%d minimum=%d", len([]rune(strings.TrimSpace(content.MetaDescription))), 80)})
+		suggestions = append(suggestions, aiSuggestionDTO{"seo", "high", "إنشاء وصف تعريفي دقيق بين 120 و160 حرفًا اعتمادًا على مضمون الصفحة الحالي."})
 	}
 	if unsafeMarkupPattern.MatchString(content.Content) {
 		policyScore -= 45
@@ -689,6 +705,64 @@ func enforcePolicyDecision(r aiReport) aiReport {
 		r.Summary = buildSummary(r.Decision, r.Score, r.AdSenseRisk)
 	}
 	return r
+}
+
+func enforceCurrentSourceRequirements(r aiReport, content *loadedContent) aiReport {
+	if content == nil {
+		return r
+	}
+	type requirement struct {
+		failed bool
+		issue  aiIssueDTO
+	}
+	requirements := []requirement{
+		{
+			failed: aiWordCount(normalizePlainText(content.Content)) < 300,
+			issue:  aiIssueDTO{Type: "quality", Severity: "high", Message: "المحتوى أقل من 300 كلمة ويحتاج إثراءً تحريريًا قبل تفعيل الإعلانات.", Action: "expand_content"},
+		},
+		{
+			failed: len([]rune(strings.TrimSpace(content.Title))) < 20,
+			issue:  aiIssueDTO{Type: "seo", Severity: "medium", Message: "العنوان أقصر من الحد التحريري الداخلي ويحتاج مراجعة.", Action: "improve_title"},
+		},
+		{
+			failed: len([]rune(strings.TrimSpace(content.MetaDescription))) < 80,
+			issue:  aiIssueDTO{Type: "seo", Severity: "medium", Message: "الوصف التعريفي مفقود أو أقصر من 80 حرفًا.", Action: "repair_meta_description"},
+		},
+	}
+
+	failed := false
+	for _, requirement := range requirements {
+		if !requirement.failed {
+			continue
+		}
+		failed = true
+		if !reportHasIssueAction(r.Issues, requirement.issue.Action) {
+			r.Issues = append(r.Issues, requirement.issue)
+		}
+	}
+	if !failed {
+		return r
+	}
+	if r.Decision == models.AIDecisionApproved {
+		r.Decision = models.AIDecisionNeedsFix
+	}
+	if r.AdSenseRisk == "low" {
+		r.AdSenseRisk = "medium"
+	}
+	if r.Score >= QualityGateApprovedMinScore {
+		r.Score = QualityGateApprovedMinScore - 1
+	}
+	r.Summary = buildSummary(r.Decision, r.Score, r.AdSenseRisk)
+	return r
+}
+
+func reportHasIssueAction(issues []aiIssueDTO, action string) bool {
+	for _, issue := range issues {
+		if strings.EqualFold(strings.TrimSpace(issue.Action), action) {
+			return true
+		}
+	}
+	return false
 }
 
 func classifyDecision(total, policy, links int, issues []aiIssueDTO) (string, string) {

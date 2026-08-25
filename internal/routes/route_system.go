@@ -103,6 +103,7 @@ func registerSystemRoutes(api, _, dash fiber.Router, h *Handlers) {
 	dashContentAudit.Get("/ai/fix-preview/:id", h.ContentAudit.ShowFixPreview)
 	dashContentAudit.Post("/ai/apply-fix", h.ContentAudit.ApplyFix)
 	dashContentAudit.Post("/ai/reject-fix", h.ContentAudit.RejectFix)
+	dashContentAudit.Post("/ai/bulk-review", h.ContentAudit.BulkReviewFixes)
 
 	// Deterministic corruption operations are intentionally stricter than the
 	// generic content-audit permission. Only Admin and Super Admin may scan,

@@ -57,6 +57,13 @@ type unifiedReadinessSummary struct {
 	AdsEligible int   `json:"ads_eligible"`
 	Audited     int   `json:"audited"`
 	Unaudited   int   `json:"unaudited"`
+	// Governance-state counts (see rulesregistry.ReadinessState / plan §1) — the
+	// site-wide numbers a "/dashboard/quality" status view should lead with,
+	// e.g. "N critical blockers before requesting AdSense review".
+	CriticalBlocker      int `json:"critical_blocker"`
+	NeedsImprovement     int `json:"needs_improvement"`
+	HumanDecisionPending int `json:"human_decision_pending"`
+	InternallyReady      int `json:"internally_ready"`
 }
 
 type unifiedReadinessRow struct {
@@ -275,6 +282,16 @@ func updateUnifiedReadinessSummary(summary *unifiedReadinessSummary, item unifie
 		summary.Audited++
 	} else {
 		summary.Unaudited++
+	}
+	switch rulesregistry.ReadinessState(item.ReadinessState) {
+	case rulesregistry.StateCriticalBlocker:
+		summary.CriticalBlocker++
+	case rulesregistry.StateNeedsImprovement:
+		summary.NeedsImprovement++
+	case rulesregistry.StateHumanDecisionPending:
+		summary.HumanDecisionPending++
+	default:
+		summary.InternallyReady++
 	}
 }
 

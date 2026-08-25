@@ -34,9 +34,9 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 # Install runtime dependencies
 RUN apk add --no-cache ca-certificates tzdata curl
 
-# Copy binary and assets
+# Copy the production binary. Runtime configuration is injected by the
+# orchestrator through environment variables / env_file and is never baked in.
 COPY --from=builder /app/bin/fiber-api .
-COPY --from=builder /app/.env.example .env.example
 
 # Create storage directories
 RUN mkdir -p storage/uploads storage/logs && \

@@ -6,18 +6,27 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gofiber/fiber/v2"
+	"github.com/imanjo/fiber-api/internal/contentquality"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/middleware"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/services"
 	"github.com/imanjo/fiber-api/internal/utils"
-	"github.com/gofiber/fiber/v2"
 )
 
 // Handler contains articles route handlers
 type Handler struct {
 	svc          services.ArticleService
 	notification services.NotificationService
+}
+
+// articleWithQuality embeds the saved article so its fields marshal flat as before,
+// and adds the editor-facing SEO/quality readout (see contentquality.ContentQualitySignal)
+// so gaps are visible in the save response itself, not only in a later audit scan.
+type articleWithQuality struct {
+	*models.Article
+	QualitySignal contentquality.ContentQualitySignal `json:"quality_signal"`
 }
 
 // New creates a new articles Handler
@@ -435,7 +444,7 @@ func (h *Handler) DashboardCreate(c *fiber.Ctx) error {
 		authorID = &user.ID
 	}
 
-	article, err := h.svc.CreateArticle(countryID, &req, authorID)
+	article, qualitySignal, err := h.svc.CreateArticle(countryID, &req, authorID)
 	if err != nil {
 		return utils.InternalError(c, "فشل إنشاء المقالة")
 	}
@@ -457,7 +466,7 @@ func (h *Handler) DashboardCreate(c *fiber.Ctx) error {
 		}()
 	}
 
-	return utils.Created(c, "تم إنشاء المقالة بنجاح", article)
+	return utils.Created(c, "تم إنشاء المقالة بنجاح", articleWithQuality{Article: article, QualitySignal: qualitySignal})
 }
 
 // DashboardUpdate updates an existing article
@@ -495,7 +504,7 @@ func (h *Handler) DashboardUpdate(c *fiber.Ctx) error {
 		authorID = &user.ID
 	}
 
-	article, err := h.svc.UpdateArticle(countryID, id, &req, authorID)
+	article, qualitySignal, err := h.svc.UpdateArticle(countryID, id, &req, authorID)
 	if err != nil {
 		if err == services.ErrNotFound {
 			return utils.NotFound(c)
@@ -523,7 +532,7 @@ func (h *Handler) DashboardUpdate(c *fiber.Ctx) error {
 		}()
 	}
 
-	return utils.Success(c, "تم تحديث المقالة بنجاح", article)
+	return utils.Success(c, "تم تحديث المقالة بنجاح", articleWithQuality{Article: article, QualitySignal: qualitySignal})
 }
 
 // DashboardDelete deletes an article

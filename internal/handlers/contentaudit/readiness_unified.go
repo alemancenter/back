@@ -13,32 +13,39 @@ import (
 	"github.com/imanjo/fiber-api/internal/contentquality"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
+	"github.com/imanjo/fiber-api/internal/rulesregistry"
 	auditservice "github.com/imanjo/fiber-api/internal/services/contentaudit"
 	"github.com/imanjo/fiber-api/internal/utils"
 	"gorm.io/gorm"
 )
 
 type unifiedReadinessItem struct {
-	ID                uint     `json:"id"`
-	Type              string   `json:"type"`
-	Title             string   `json:"title"`
-	Status            string   `json:"status"`
-	Score             int      `json:"score"`
-	Level             string   `json:"level"`
-	WordCount         int      `json:"word_count"`
-	CharCount         int      `json:"char_count"`
-	FilesCount        int      `json:"files_count"`
-	ShouldIndex       bool     `json:"should_index"`
-	ShouldShowAds     bool     `json:"should_show_ads"`
-	Audited           bool     `json:"audited"`
-	Decision          string   `json:"decision"`
-	AdSenseRisk       string   `json:"adsense_risk"`
-	GateReasons       []string `json:"gate_reasons"`
-	DiagnosticSignals []string `json:"diagnostic_signals"`
-	Issues            []string `json:"issues"`
+	ID                uint                   `json:"id"`
+	Type              string                 `json:"type"`
+	Title             string                 `json:"title"`
+	Status            string                 `json:"status"`
+	Score             int                    `json:"score"`
+	Level             string                 `json:"level"`
+	WordCount         int                    `json:"word_count"`
+	CharCount         int                    `json:"char_count"`
+	FilesCount        int                    `json:"files_count"`
+	ShouldIndex       bool                   `json:"should_index"`
+	ShouldShowAds     bool                   `json:"should_show_ads"`
+	Audited           bool                   `json:"audited"`
+	Decision          string                 `json:"decision"`
+	AdSenseRisk       string                 `json:"adsense_risk"`
+	GateReasons       []string               `json:"gate_reasons"`
+	DiagnosticSignals []string               `json:"diagnostic_signals"`
+	Issues            []string               `json:"issues"`
 	Problems          []readinessItemProblem `json:"problems"`
-	PrimaryProblem    string   `json:"primary_problem,omitempty"`
-	URL               string   `json:"url"`
+	PrimaryProblem    string                 `json:"primary_problem,omitempty"`
+	// ReadinessState is the single governance status (see
+	// rulesregistry.ReadinessState / plan §1) derived from Audited/Indexable and
+	// the matched Problems — computed here, never a stored column, so this is
+	// the only place "ready" gets decided. Level/ShouldIndex/ShouldShowAds above
+	// are kept unchanged for existing API consumers during migration.
+	ReadinessState string `json:"readiness_state"`
+	URL            string `json:"url"`
 }
 
 type unifiedReadinessSummary struct {
@@ -217,6 +224,11 @@ func buildUnifiedReadinessItem(title, content, meta, keywords string, filesCount
 	if len(problems) > 0 {
 		primaryProblem = problems[0].Code
 	}
+	problemCodes := make([]string, len(problems))
+	for i, problem := range problems {
+		problemCodes[i] = problem.Code
+	}
+	readinessState := rulesregistry.DeriveReadinessState(gate.Indexable, problemCodes)
 
 	return unifiedReadinessItem{
 		ID:                id,
@@ -238,6 +250,7 @@ func buildUnifiedReadinessItem(title, content, meta, keywords string, filesCount
 		Issues:            issues,
 		Problems:          problems,
 		PrimaryProblem:    primaryProblem,
+		ReadinessState:    string(readinessState),
 		URL:               "/" + countryCode + "/" + urlType + "/" + strconv.FormatUint(uint64(id), 10),
 	}
 }

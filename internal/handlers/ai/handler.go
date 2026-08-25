@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/imanjo/fiber-api/internal/services"
 	"github.com/imanjo/fiber-api/internal/services/contentaudit"
 	"github.com/imanjo/fiber-api/internal/utils"
-	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 )
 
 // groundedGenerationTimeout bounds the whole grounded-from-file pipeline (fact extraction +
@@ -201,6 +201,66 @@ func clientAIErrorMessage(err error) string {
 	default:
 		return "تعذر توليد محتوى صالح لهذا العنوان. يرجى تعديل العنوان والمحاولة مرة أخرى."
 	}
+}
+
+const draftAssistTimeout = 60 * time.Second
+
+// DraftAssistRequest carries unsaved editor draft text — no article/post ID, no
+// prior audit decision. Used by the editor-time SEO panel so gaps are visible and
+// fixable while writing, not only after publish.
+type DraftAssistRequest struct {
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
+// SuggestMetaDescription suggests a meta description from unsaved draft text.
+func (h *Handler) SuggestMetaDescription(c *fiber.Ctx) error {
+	var req DraftAssistRequest
+	if err := c.BodyParser(&req); err != nil {
+		return utils.BadRequest(c, "بيانات غير صالحة")
+	}
+	title := strings.TrimSpace(req.Title)
+	if title == "" && strings.TrimSpace(req.Content) == "" {
+		return utils.BadRequest(c, "أدخل عنوانًا أو محتوى أولًا")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), draftAssistTimeout)
+	defer cancel()
+	suggestion, provider, err := contentaudit.GenerateDraftMetaDescription(ctx, h.svc, title, req.Content)
+	if err != nil {
+		return utils.BadRequest(c, "تعذر اقتراح وصف تعريفي مناسب لهذا النص حاليًا")
+	}
+
+	return utils.Success(c, "تم اقتراح وصف تعريفي", fiber.Map{
+		"suggestion": suggestion,
+		"provider":   provider,
+	})
+}
+
+// SuggestKeywords suggests internal taxonomy keywords from unsaved draft text.
+// These are stored as first-party site taxonomy (search/related-content), not the
+// HTML meta-keywords tag Google Search ignores for ranking.
+func (h *Handler) SuggestKeywords(c *fiber.Ctx) error {
+	var req DraftAssistRequest
+	if err := c.BodyParser(&req); err != nil {
+		return utils.BadRequest(c, "بيانات غير صالحة")
+	}
+	title := strings.TrimSpace(req.Title)
+	if title == "" && strings.TrimSpace(req.Content) == "" {
+		return utils.BadRequest(c, "أدخل عنوانًا أو محتوى أولًا")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), draftAssistTimeout)
+	defer cancel()
+	keywords, provider, err := contentaudit.GenerateDraftKeywords(ctx, h.svc, title, req.Content)
+	if err != nil {
+		return utils.BadRequest(c, "تعذر اقتراح كلمات دلالية مناسبة لهذا النص حاليًا")
+	}
+
+	return utils.Success(c, "تم اقتراح كلمات دلالية", fiber.Map{
+		"keywords": keywords,
+		"provider": provider,
+	})
 }
 
 func firstNonEmpty(values ...string) string {

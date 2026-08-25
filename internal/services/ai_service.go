@@ -255,6 +255,7 @@ type ContentIntelligenceResponse struct {
 	FixedTitle           string                          `json:"fixed_title,omitempty"`
 	FixedContent         string                          `json:"fixed_content,omitempty"`
 	FixedMetaDescription string                          `json:"fixed_meta_description,omitempty"`
+	FixedKeywords        string                          `json:"fixed_keywords,omitempty"`
 	FixSummary           string                          `json:"fix_summary,omitempty"`
 	Provider             string                          `json:"provider"`
 	Model                string                          `json:"model"`
@@ -525,7 +526,7 @@ func (s *aiService) runContentIntelligenceWithFallback(ctx context.Context, req 
 	systemPrompt, userPrompt := buildContentIntelligencePrompts(req)
 	estimatedInputTokens := estimateAITokens(systemPrompt + "\n" + userPrompt)
 	maxTokens := 2000
-	if req.Task == "repair_meta_description" {
+	if req.Task == "repair_meta_description" || req.Task == "suggest_keywords" {
 		maxTokens = 500
 	}
 	payload := map[string]interface{}{
@@ -547,22 +548,23 @@ func (s *aiService) runContentIntelligenceWithFallback(ctx context.Context, req 
 				"schema": map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"decision":           map[string]interface{}{"type": "string"},
-						"adsense_risk":       map[string]interface{}{"type": "string"},
-						"score":              map[string]interface{}{"type": "integer"},
-						"policy_score":       map[string]interface{}{"type": "integer"},
-						"seo_score":          map[string]interface{}{"type": "integer"},
-						"language_score":     map[string]interface{}{"type": "integer"},
-						"safety_links_score": map[string]interface{}{"type": "integer"},
-						"structure_score":    map[string]interface{}{"type": "integer"},
-						"can_auto_fix":       map[string]interface{}{"type": "boolean"},
-						"summary":            map[string]interface{}{"type": "string"},
-						"issues":             map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "object"}},
-						"suggestions":        map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "object"}},
-						"fixed_title":        map[string]interface{}{"type": "string"},
-						"fixed_content":      map[string]interface{}{"type": "string"},
+						"decision":               map[string]interface{}{"type": "string"},
+						"adsense_risk":           map[string]interface{}{"type": "string"},
+						"score":                  map[string]interface{}{"type": "integer"},
+						"policy_score":           map[string]interface{}{"type": "integer"},
+						"seo_score":              map[string]interface{}{"type": "integer"},
+						"language_score":         map[string]interface{}{"type": "integer"},
+						"safety_links_score":     map[string]interface{}{"type": "integer"},
+						"structure_score":        map[string]interface{}{"type": "integer"},
+						"can_auto_fix":           map[string]interface{}{"type": "boolean"},
+						"summary":                map[string]interface{}{"type": "string"},
+						"issues":                 map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "object"}},
+						"suggestions":            map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "object"}},
+						"fixed_title":            map[string]interface{}{"type": "string"},
+						"fixed_content":          map[string]interface{}{"type": "string"},
 						"fixed_meta_description": map[string]interface{}{"type": "string"},
-						"fix_summary":        map[string]interface{}{"type": "string"},
+						"fixed_keywords":         map[string]interface{}{"type": "string"},
+						"fix_summary":            map[string]interface{}{"type": "string"},
 					},
 				},
 			},
@@ -700,27 +702,44 @@ func buildContentIntelligencePrompts(req ContentIntelligenceRequest) (string, st
 		return system, user
 	}
 
+	if req.Task == "suggest_keywords" {
+		system := `أنت مختص أرشفة داخلية لمنصة تعليمية عربية. مهمتك اقتراح كلمات دلالية داخلية (للبحث الداخلي والربط بين الصفحات) اعتمادًا حصريًا على العنوان والنص المرسل. هذه ليست وسم meta keywords ولا تؤثر في ترتيب جوجل؛ الهدف تصنيف داخلي فقط. لا تخترع مصطلحات غير مرتبطة بالنص. أعد JSON فقط بالمفتاح fixed_keywords كسلسلة نصية مفصولة بفواصل.`
+		user := fmt.Sprintf(`اقترح بين 3 و8 كلمات أو عبارات دلالية قصيرة (كلمة إلى ثلاث كلمات لكل عبارة) تلخص موضوع الصفحة وتفيد البحث الداخلي، مبنية على محتواها الفعلي فقط.
+
+العنوان: %s
+السياق التعليمي: %s
+النص الحالي:
+%s
+
+أعد هذا JSON فقط:
+{"fixed_keywords":"كلمة1, كلمة2, كلمة3"}`, req.Title, curriculumSummary(req), truncate(req.PlainText, 4000))
+		return system, user
+	}
+
 	kind := "مقال طويل SEO"
-	minWords := 300
 	if req.ContentType == "post" {
 		kind = "بوست تعليمي"
-		minWords = 300
 	}
 	system := "أنت محرر محتوى عربي محترف وخبير SEO وسياسات Google AdSense ومختص بالمحتوى التعليمي المدرسي. استخدم نفس أسلوب منصة الأيمان التعليمية: لغة عربية سليمة، محتوى تعليمي آمن، بنية واضحة، قيمة تعليمية حقيقية، بدون حشو أو مبالغة. التزم بالسياق الدراسي والمنهاج والصف والمادة عند توفرها. أعد Strict JSON فقط ولا تكتب أي نص خارج JSON."
 	mode := "حلل المحتوى واتخذ قرار نشر/تصحيح"
 	extra := ""
 	if req.Task == "fix_content" {
 		mode = "أنشئ نسخة مصححة وموسّعة آمنة للمراجعة البشرية دون تغيير الفكرة الأساسية"
-		extra = fmt.Sprintf(`
+		// Deliberately no word-count target here. A numeric floor ("expand to at
+		// least N words") rewards padding, not value — the same failure mode that
+		// got thin content rejected before. Value comes from real explanation,
+		// examples, and structure; a short page that already answers the need
+		// completely should stay short.
+		extra = `
 تعليمات صارمة لمهمة fix_content:
 - ممنوع إرجاع نفس HTML الأصلي أو نسخة مطابقة منه.
-- إذا كان المحتوى قصيراً أو Thin Content، وسّعه إلى %d كلمة على الأقل، والهدف الأفضل 450 كلمة.
-- يجب أن يكون التوسيع مبنيًا على شرح تعليمي بحت مرتبط بالمنهاج/الصف/المادة عند توفرها.
+- الهدف تحسين القيمة التعليمية الفعلية، وليس زيادة عدد الكلمات: أضف شرحًا حقيقيًا أو أمثلة أو تطبيقات إذا كان المحتوى ناقصًا أو غامضًا.
+- ممنوع الحشو أو الجمل العامة لمجرد الوصول إلى طول أطول؛ كل جملة يجب أن تضيف معنى جديدًا لم يكن موجودًا.
+- إذا كان المحتوى الأصلي قصيرًا لكنه يجيب عن حاجة القارئ بوضوح وبدون نقص، لا تُطِل الشرح تصنّعًا.
+- يجب أن يكون أي توسيع مبنيًا على شرح تعليمي بحت مرتبط بالمنهاج/الصف/المادة عند توفرها.
 - اكتب fixed_content بصيغة HTML نظيفة تحتوي على فقرات <p> وعناوين فرعية <h2> مناسبة.
-- أضف قيمة تعليمية حقيقية: شرح الفكرة، نقاط عملية، أمثلة أو إرشادات، وأسئلة شائعة مختصرة عند الحاجة.
 - لا تضف روابط خارجية، ولا أكواد، ولا عبارات تسويقية مبالغ فيها.
-- حافظ على أسلوب عربي تعليمي مناسب للطلاب وأولياء الأمور والمعلمين.
-- يجب أن يكون fixed_content أطول وأغنى من النص الأصلي بوضوح.`, minWords)
+- حافظ على أسلوب عربي تعليمي مناسب للطلاب وأولياء الأمور والمعلمين.`
 	}
 	user := fmt.Sprintf(`المهمة: %s
 نوع المحتوى: %s
@@ -769,14 +788,14 @@ func newAIModelRouter(defaultModel string, fallbackModels []string) aiModelRoute
 		defaultModel: defaultModel,
 		fallbacks:    fallbackModels,
 		routes: map[string][]string{
-			"audit_content:economy":      modelRouteFromEnv("AI_MODELS_AUDIT_ECONOMY", append(parseModelList("google/gemma-3n-E4B-it,openai/gpt-oss-20b"), base...)),
-			"audit_content:balanced":     modelRouteFromEnv("AI_MODELS_AUDIT_BALANCED", append(parseModelList("openai/gpt-oss-20b,pearl-ai/gemma-4-31b-it,google/gemma-4-31B-it"), base...)),
-			"audit_content:quality":      modelRouteFromEnv("AI_MODELS_AUDIT_QUALITY", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,openai/gpt-oss-120b,zai-org/GLM-5.1"), base...)),
-			"audit_content:final_review": modelRouteFromEnv("AI_MODELS_AUDIT_FINAL", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,zai-org/GLM-5.1,openai/gpt-oss-120b"), base...)),
-			"fix_content:economy":        modelRouteFromEnv("AI_MODELS_FIX_ECONOMY", append(parseModelList("google/gemma-3n-E4B-it,openai/gpt-oss-20b"), base...)),
-			"fix_content:balanced":       modelRouteFromEnv("AI_MODELS_FIX_BALANCED", append(parseModelList("meta-llama/Llama-3.3-70B-Instruct-Turbo,pearl-ai/gemma-4-31b-it,google/gemma-4-31B-it"), base...)),
-			"fix_content:quality":        modelRouteFromEnv("AI_MODELS_FIX_QUALITY", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,openai/gpt-oss-120b,zai-org/GLM-5.1"), base...)),
-			"fix_content:final_review":   modelRouteFromEnv("AI_MODELS_FIX_FINAL", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,zai-org/GLM-5.1,openai/gpt-oss-120b"), base...)),
+			"audit_content:economy":                modelRouteFromEnv("AI_MODELS_AUDIT_ECONOMY", append(parseModelList("google/gemma-3n-E4B-it,openai/gpt-oss-20b"), base...)),
+			"audit_content:balanced":               modelRouteFromEnv("AI_MODELS_AUDIT_BALANCED", append(parseModelList("openai/gpt-oss-20b,pearl-ai/gemma-4-31b-it,google/gemma-4-31B-it"), base...)),
+			"audit_content:quality":                modelRouteFromEnv("AI_MODELS_AUDIT_QUALITY", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,openai/gpt-oss-120b,zai-org/GLM-5.1"), base...)),
+			"audit_content:final_review":           modelRouteFromEnv("AI_MODELS_AUDIT_FINAL", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,zai-org/GLM-5.1,openai/gpt-oss-120b"), base...)),
+			"fix_content:economy":                  modelRouteFromEnv("AI_MODELS_FIX_ECONOMY", append(parseModelList("google/gemma-3n-E4B-it,openai/gpt-oss-20b"), base...)),
+			"fix_content:balanced":                 modelRouteFromEnv("AI_MODELS_FIX_BALANCED", append(parseModelList("meta-llama/Llama-3.3-70B-Instruct-Turbo,pearl-ai/gemma-4-31b-it,google/gemma-4-31B-it"), base...)),
+			"fix_content:quality":                  modelRouteFromEnv("AI_MODELS_FIX_QUALITY", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,openai/gpt-oss-120b,zai-org/GLM-5.1"), base...)),
+			"fix_content:final_review":             modelRouteFromEnv("AI_MODELS_FIX_FINAL", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,zai-org/GLM-5.1,openai/gpt-oss-120b"), base...)),
 			"repair_meta_description:economy":      modelRouteFromEnv("AI_MODELS_META_ECONOMY", append(parseModelList("google/gemma-3n-E4B-it,openai/gpt-oss-20b"), base...)),
 			"repair_meta_description:balanced":     modelRouteFromEnv("AI_MODELS_META_BALANCED", append(parseModelList("openai/gpt-oss-20b,pearl-ai/gemma-4-31b-it,google/gemma-4-31B-it"), base...)),
 			"repair_meta_description:quality":      modelRouteFromEnv("AI_MODELS_META_QUALITY", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,openai/gpt-oss-120b"), base...)),

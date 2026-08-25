@@ -71,21 +71,22 @@ func setConfigDefaultIfEmpty(v *viper.Viper, key string, value string) {
 }
 
 type Config struct {
-	App       AppConfig
-	JWT       JWTConfig
-	Frontend  FrontendConfig
-	Database  DatabaseConfig
-	Redis     RedisConfig
-	Mail      MailConfig
-	Google    GoogleConfig
-	Facebook  FacebookConfig
-	FCM       FCMConfig
-	Storage   StorageConfig
-	Security  SecurityConfig
-	Log       LogConfig
-	GeoIP     GeoIPConfig
-	AI        AIConfig
-	OneSignal OneSignalConfig
+	App           AppConfig
+	JWT           JWTConfig
+	Frontend      FrontendConfig
+	Database      DatabaseConfig
+	Redis         RedisConfig
+	Mail          MailConfig
+	Google        GoogleConfig
+	SearchConsole SearchConsoleConfig
+	Facebook      FacebookConfig
+	FCM           FCMConfig
+	Storage       StorageConfig
+	Security      SecurityConfig
+	Log           LogConfig
+	GeoIP         GeoIPConfig
+	AI            AIConfig
+	OneSignal     OneSignalConfig
 }
 
 type AppConfig struct {
@@ -175,6 +176,17 @@ type GoogleConfig struct {
 	ClientID     string
 	ClientSecret string
 	RedirectURI  string
+}
+
+// SearchConsoleConfig authenticates via a Google service account (not per-user
+// OAuth): the service account's email is added as a user on each Search Console
+// property once, manually, outside this app — see
+// back/docs/reports/CONTENT_QUALITY_GOVERNANCE_CENTER_PLAN.md §4.1. ServiceAccountJSON
+// is the raw JSON key content (not a file path), read from an env var like any
+// other secret in this config, never stored in the per-country settings table.
+type SearchConsoleConfig struct {
+	Enabled            bool
+	ServiceAccountJSON string
 }
 
 type FacebookConfig struct {
@@ -425,6 +437,10 @@ func Load() *Config {
 				ClientID:     v.GetString("GOOGLE_CLIENT_ID"),
 				ClientSecret: v.GetString("GOOGLE_CLIENT_SECRET"),
 				RedirectURI:  v.GetString("GOOGLE_REDIRECT_URI"),
+			},
+			SearchConsole: SearchConsoleConfig{
+				Enabled:            v.GetBool("GSC_ENABLED"),
+				ServiceAccountJSON: v.GetString("GSC_SERVICE_ACCOUNT_JSON"),
 			},
 			Facebook: FacebookConfig{
 				AppID:       v.GetString("FACEBOOK_APP_ID"),

@@ -200,7 +200,7 @@ func TestArticleService_UpdateArticle(t *testing.T) {
 		LogActivity = func(action string, entityType string, entityID uint, userID uint) {}
 
 		var authorID uint = 10
-		article, err := svc.UpdateArticle(database.CountryJordan, 1, updateReq, &authorID)
+		article, _, err := svc.UpdateArticle(database.CountryJordan, 1, updateReq, &authorID)
 
 		assert.NoError(t, err)
 		assert.NotNil(t, article)
@@ -213,7 +213,7 @@ func TestArticleService_UpdateArticle(t *testing.T) {
 		}
 
 		updateReq := &ArticleInput{Title: "Updated Title"}
-		article, err := svc.UpdateArticle(database.CountryJordan, 99, updateReq, nil)
+		article, _, err := svc.UpdateArticle(database.CountryJordan, 99, updateReq, nil)
 
 		assert.Error(t, err)
 		assert.Equal(t, ErrNotFound, err)
@@ -335,7 +335,7 @@ func TestArticleService_CreateArticle(t *testing.T) {
 		// Mock LogActivity to prevent database calls during test
 		LogActivity = func(action string, entityType string, entityID uint, userID uint) {}
 
-		article, err := svc.CreateArticle(database.CountryJordan, newArticle, &authorID)
+		article, _, err := svc.CreateArticle(database.CountryJordan, newArticle, &authorID)
 
 		assert.NoError(t, err)
 		assert.NotNil(t, article)
@@ -352,7 +352,7 @@ func TestArticleService_CreateArticle(t *testing.T) {
 			return expectedErr
 		}
 
-		article, err := svc.CreateArticle(database.CountryJordan, newArticle, nil)
+		article, _, err := svc.CreateArticle(database.CountryJordan, newArticle, nil)
 
 		assert.Error(t, err)
 		assert.Nil(t, article)

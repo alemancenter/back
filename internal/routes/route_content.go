@@ -141,4 +141,9 @@ func registerContentRoutes(api, public, dash fiber.Router, h *Handlers) {
 	// AI (dashboard)
 	dash.Post("/ai/generate", middleware.Can("manage articles"), h.AI.Generate)
 	dash.Get("/ai/status/:id", middleware.Can("manage articles"), h.AI.Status)
+	// Draft-time content assist: works on unsaved editor text, no article/post ID
+	// required — surfaces SEO suggestions while writing instead of only after
+	// publish (see CONTENT_QUALITY_GOVERNANCE_CENTER_PLAN.md §0.3).
+	dash.Post("/ai/suggest-meta-description", middleware.Can("manage articles"), h.AI.SuggestMetaDescription)
+	dash.Post("/ai/suggest-keywords", middleware.Can("manage articles"), h.AI.SuggestKeywords)
 }

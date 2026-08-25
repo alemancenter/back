@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/imanjo/fiber-api/internal/contentquality"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/repositories"
@@ -54,8 +55,8 @@ type ArticleService interface {
 	// Dashboard methods
 	GetDashboardCreateData(countryID database.CountryID) (*ArticleDashboardCreateData, error)
 	GetDashboardEditData(countryID database.CountryID, id uint64) (*ArticleDashboardEditData, error)
-	CreateArticle(countryID database.CountryID, req *ArticleInput, authorID *uint) (*models.Article, error)
-	UpdateArticle(countryID database.CountryID, id uint64, req *ArticleInput, authorID *uint) (*models.Article, error)
+	CreateArticle(countryID database.CountryID, req *ArticleInput, authorID *uint) (*models.Article, contentquality.ContentQualitySignal, error)
+	UpdateArticle(countryID database.CountryID, id uint64, req *ArticleInput, authorID *uint) (*models.Article, contentquality.ContentQualitySignal, error)
 	DeleteArticle(countryID database.CountryID, id uint64, authorID *uint) error
 	SetArticleStatus(countryID database.CountryID, id uint64, status int8) (*models.Article, error)
 	GetDashboardStats(countryID database.CountryID) (*ArticleDashboardStats, error)
@@ -315,7 +316,7 @@ func (s *articleService) GetDashboardEditData(countryID database.CountryID, id u
 	}, nil
 }
 
-func (s *articleService) CreateArticle(countryID database.CountryID, req *ArticleInput, authorID *uint) (*models.Article, error) {
+func (s *articleService) CreateArticle(countryID database.CountryID, req *ArticleInput, authorID *uint) (*models.Article, contentquality.ContentQualitySignal, error) {
 	article := &models.Article{
 		Title:   utils.SanitizeInput(req.Title),
 		Content: utils.SanitizeHTML(req.Content),
@@ -344,11 +345,12 @@ func (s *articleService) CreateArticle(countryID database.CountryID, req *Articl
 
 	err := s.repo.Create(countryID, article)
 	if err != nil {
-		return nil, MapError(err)
+		return nil, contentquality.ContentQualitySignal{}, MapError(err)
 	}
 
 	// Handle Keywords using KeywordsRel many-to-many relationship
-	if req.Keywords != "" {
+	hasKeywords := req.Keywords != ""
+	if hasKeywords {
 		// Same fix as post_service.go's UpdateKeywords calls: this was passing the raw request
 		// value straight into stored Keyword rows with no sanitization at all.
 		if err := s.repo.UpdateKeywords(countryID, article.ID, utils.SanitizeInput(req.Keywords)); err != nil {
@@ -365,13 +367,15 @@ func (s *articleService) CreateArticle(countryID database.CountryID, req *Articl
 	if authorID != nil {
 		LogActivity("أنشأ مقالة: "+article.Title, "Article", article.ID, *authorID)
 	}
-	return article, nil
+
+	signal := contentquality.BuildQualitySignal(req.MetaDescription, hasKeywords, countWords(stripHTML(article.Content)))
+	return article, signal, nil
 }
 
-func (s *articleService) UpdateArticle(countryID database.CountryID, id uint64, req *ArticleInput, authorID *uint) (*models.Article, error) {
+func (s *articleService) UpdateArticle(countryID database.CountryID, id uint64, req *ArticleInput, authorID *uint) (*models.Article, contentquality.ContentQualitySignal, error) {
 	article, err := s.repo.FindByID(countryID, id)
 	if err != nil {
-		return nil, MapError(err)
+		return nil, contentquality.ContentQualitySignal{}, MapError(err)
 	}
 
 	if req.Title != "" {
@@ -393,15 +397,17 @@ func (s *articleService) UpdateArticle(countryID database.CountryID, id uint64, 
 		article.MetaDescription = &req.MetaDescription
 	}
 
-	// TODO: Handle Keywords using KeywordsRel many-to-many relationship
-
 	if req.Status != nil {
 		article.Status = *req.Status
 	}
 
+	// Captured before Update/UpdateKeywords so a bare status-only edit still reports
+	// whether keywords already existed, instead of always reading as "missing".
+	hadExistingKeywords := len(article.KeywordsRel) > 0
+
 	err = s.repo.Update(countryID, article)
 	if err != nil {
-		return nil, MapError(err)
+		return nil, contentquality.ContentQualitySignal{}, MapError(err)
 	}
 
 	// Handle Keywords using KeywordsRel many-to-many relationship
@@ -421,7 +427,13 @@ func (s *articleService) UpdateArticle(countryID database.CountryID, id uint64, 
 		LogActivity("حدّث مقالة: "+article.Title, "Article", article.ID, *authorID)
 	}
 
-	return article, nil
+	metaDescription := ""
+	if article.MetaDescription != nil {
+		metaDescription = *article.MetaDescription
+	}
+	hasKeywords := req.Keywords != "" || hadExistingKeywords
+	signal := contentquality.BuildQualitySignal(metaDescription, hasKeywords, countWords(stripHTML(article.Content)))
+	return article, signal, nil
 }
 
 func (s *articleService) DeleteArticle(countryID database.CountryID, id uint64, authorID *uint) error {

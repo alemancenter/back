@@ -16,13 +16,13 @@ import (
 type MockPostRepository struct {
 	repositories.PostRepository // embed to satisfy interface
 
-	ListPaginatedFunc func(countryID database.CountryID, filter *models.PostFilter, limit, offset int) ([]models.Post, int64, error)
-	FindByIDFunc      func(countryID database.CountryID, id uint64) (*models.Post, error)
-	ExistsBySlugFunc  func(countryID database.CountryID, slug string, excludeID uint64) bool
-	IncrementViewFunc func(countryID database.CountryID, id uint64) error
-	CreateFunc        func(countryID database.CountryID, post *models.Post) error
-	UpdateFunc        func(countryID database.CountryID, post *models.Post) error
-	DeleteFunc        func(countryID database.CountryID, id uint64) error
+	ListPaginatedFunc  func(countryID database.CountryID, filter *models.PostFilter, limit, offset int) ([]models.Post, int64, error)
+	FindByIDFunc       func(countryID database.CountryID, id uint64) (*models.Post, error)
+	ExistsBySlugFunc   func(countryID database.CountryID, slug string, excludeID uint64) bool
+	IncrementViewFunc  func(countryID database.CountryID, id uint64) error
+	CreateFunc         func(countryID database.CountryID, post *models.Post) error
+	UpdateFunc         func(countryID database.CountryID, post *models.Post) error
+	DeleteFunc         func(countryID database.CountryID, id uint64) error
 	UpdateKeywordsFunc func(countryID database.CountryID, postID uint64, keywordsStr string) error
 }
 
@@ -156,7 +156,7 @@ func TestPostService_Create(t *testing.T) {
 			return nil
 		}
 
-		post, err := svc.Create(database.CountryJordan, "jo", &authorID, req, "")
+		post, _, err := svc.Create(database.CountryJordan, "jo", &authorID, req, "")
 
 		assert.NoError(t, err)
 		assert.NotNil(t, post)
@@ -216,7 +216,7 @@ func TestPostService_Create(t *testing.T) {
 			return nil
 		}
 
-		post, err := svc.Create(database.CountryJordan, "jo", nil, req, "")
+		post, _, err := svc.Create(database.CountryJordan, "jo", nil, req, "")
 		assert.True(t, keywordsUpdateCalled, "expected UpdateKeywords to be called since req.Keywords was non-empty")
 
 		assert.NoError(t, err)
@@ -233,7 +233,7 @@ func TestPostService_Create(t *testing.T) {
 			return expectedErr
 		}
 
-		post, err := svc.Create(database.CountryJordan, "jo", nil, req, "")
+		post, _, err := svc.Create(database.CountryJordan, "jo", nil, req, "")
 
 		assert.Error(t, err)
 		assert.Nil(t, post)
@@ -290,7 +290,7 @@ func TestPostService_Update_SanitizesPostFields(t *testing.T) {
 		return nil
 	}
 
-	post, err := svc.Update(database.CountryJordan, 1, &UpdatePostRequest{
+	post, _, err := svc.Update(database.CountryJordan, 1, &UpdatePostRequest{
 		Title:           "<b>Updated Title</b><script>alert(1)</script>",
 		Content:         `<p onclick="evil()">Updated</p><script>alert(1)</script><img src="javascript:alert(1)" onerror="bad()">`,
 		Alt:             "<b>Safe Alt</b>",

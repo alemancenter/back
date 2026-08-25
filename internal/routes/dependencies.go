@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"context"
+
 	"github.com/imanjo/fiber-api/internal/config"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/handlers/ai"
@@ -26,6 +28,7 @@ import (
 	"github.com/imanjo/fiber-api/internal/handlers/posts"
 	redisHandler "github.com/imanjo/fiber-api/internal/handlers/redis"
 	"github.com/imanjo/fiber-api/internal/handlers/roles"
+	searchconsoleHandler "github.com/imanjo/fiber-api/internal/handlers/searchconsole"
 	"github.com/imanjo/fiber-api/internal/handlers/security"
 	"github.com/imanjo/fiber-api/internal/handlers/settings"
 	"github.com/imanjo/fiber-api/internal/handlers/sitemap"
@@ -36,6 +39,9 @@ import (
 	"github.com/imanjo/fiber-api/internal/services"
 	chatbotSvc "github.com/imanjo/fiber-api/internal/services/chatbot"
 	contentauditService "github.com/imanjo/fiber-api/internal/services/contentaudit"
+	searchconsoleService "github.com/imanjo/fiber-api/internal/services/searchconsole"
+	"github.com/imanjo/fiber-api/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type Handlers struct {
@@ -64,6 +70,7 @@ type Handlers struct {
 	Keywords            *keywords.Handler
 	AI                  *ai.Handler
 	ContentAudit        *contentauditHandler.Handler
+	SearchConsole       *searchconsoleHandler.Handler
 	EmailVerify         *emailverification.Handler
 	EmailBounce         *emailbounce.Handler
 	TeacherSubscription *teacher_subscription.Handler
@@ -163,6 +170,24 @@ func NewDependencies() *Handlers {
 	contentAuditRepo := repositories.NewContentAuditRepository()
 	contentAuditSvc := contentauditService.NewServiceWithAIAndNotifications(contentAuditRepo, contentauditService.Options{}, aiSvc, notificationSvc)
 
+	// Google Search Console: absent-by-default. gscClient stays nil unless a
+	// service account key is configured, and searchconsoleService.Service
+	// tolerates a nil client (returns ErrNotConfigured on use) — see
+	// CONTENT_QUALITY_GOVERNANCE_CENTER_PLAN.md §4.1. No per-request credential
+	// exchange: one service account, added as a user on each property manually.
+	gscRepo := repositories.NewGSCRepository()
+	gscCfg := config.Load().SearchConsole
+	var gscClient *searchconsoleService.Client
+	if gscCfg.Enabled && gscCfg.ServiceAccountJSON != "" {
+		client, err := searchconsoleService.NewClient(context.Background(), gscCfg.ServiceAccountJSON)
+		if err != nil {
+			logger.Warn("google search console client init failed; GSC endpoints will report not-configured", zap.Error(err))
+		} else {
+			gscClient = client
+		}
+	}
+	gscSvc := searchconsoleService.NewService(gscRepo, gscClient)
+
 	homeSvc := services.NewHomeService(articleRepo, postRepo, categoryRepo, gradeRepo, cacheSvc, settingSvc)
 
 	bounceReader := services.NewBounceIMAPReader(services.NewBounceProcessorService())
@@ -193,6 +218,7 @@ func NewDependencies() *Handlers {
 		Keywords:            keywords.New(keywordSvc),
 		AI:                  ai.New(aiSvc, contentAuditSvc),
 		ContentAudit:        contentauditHandler.New(contentAuditSvc),
+		SearchConsole:       searchconsoleHandler.New(gscRepo, gscSvc),
 		EmailVerify:         emailverification.New(emailVerifySvc),
 		EmailBounce:         emailbounce.New(bounceReader),
 		TeacherSubscription: teacher_subscription.New(teacherSubSvc),

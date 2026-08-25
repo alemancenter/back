@@ -1,9 +1,9 @@
 package routes
 
 import (
+	"github.com/gofiber/fiber/v2"
 	"github.com/imanjo/fiber-api/internal/middleware"
 	"github.com/imanjo/fiber-api/internal/utils"
-	"github.com/gofiber/fiber/v2"
 )
 
 // registerSystemRoutes handles configuration, security settings,
@@ -90,6 +90,7 @@ func registerSystemRoutes(api, _, dash fiber.Router, h *Handlers) {
 	dashContentAudit.Get("/runs/:id/findings", h.ContentAudit.ListFindings)
 	dashContentAudit.Get("/runs/:id/export", h.ContentAudit.ExportCSV)
 	dashContentAudit.Get("/adsense-readiness", h.ContentAudit.AdsenseReadinessUnified)
+	dashContentAudit.Get("/quality-rules", h.ContentAudit.ListQualityRules)
 	dashContentAudit.Post("/ai/batch-jobs", h.ContentAudit.StartQualityBatch)
 	dashContentAudit.Get("/ai/batch-jobs", h.ContentAudit.ListQualityBatches)
 	dashContentAudit.Get("/ai/batch-jobs/:id", h.ContentAudit.ShowQualityBatch)
@@ -104,6 +105,18 @@ func registerSystemRoutes(api, _, dash fiber.Router, h *Handlers) {
 	dashContentAudit.Post("/ai/apply-fix", h.ContentAudit.ApplyFix)
 	dashContentAudit.Post("/ai/reject-fix", h.ContentAudit.RejectFix)
 	dashContentAudit.Post("/ai/bulk-review", h.ContentAudit.BulkReviewFixes)
+
+	// Google Search Console integration — separate from the readiness gate
+	// above by design: this reports what Google actually shows (index status,
+	// clicks/impressions), never what internal readiness thinks it should show.
+	// See CONTENT_QUALITY_GOVERNANCE_CENTER_PLAN.md §4.
+	dashGSC := dash.Group("/gsc", middleware.Can("manage content audit"))
+	dashGSC.Get("/properties", h.SearchConsole.ListProperties)
+	dashGSC.Post("/properties/:country_code", h.SearchConsole.UpsertProperty)
+	dashGSC.Post("/sync", h.SearchConsole.Sync)
+	dashGSC.Post("/analytics/sync", h.SearchConsole.SyncAnalytics)
+	dashGSC.Get("/analytics", h.SearchConsole.Analytics)
+	dashGSC.Get("/status/:content_type/:id", h.SearchConsole.Status)
 
 	// Deterministic corruption operations are intentionally stricter than the
 	// generic content-audit permission. Only Admin and Super Admin may scan,

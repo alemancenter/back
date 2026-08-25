@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/imanjo/fiber-api/internal/contentquality"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/repositories"
@@ -15,6 +16,14 @@ import (
 	"github.com/imanjo/fiber-api/pkg/logger"
 	"go.uber.org/zap"
 )
+
+// postWithQuality embeds the saved post so its fields marshal flat as before, and adds
+// the editor-facing SEO/quality readout (see contentquality.ContentQualitySignal) so
+// gaps are visible in the save response itself, not only in a later audit scan.
+type postWithQuality struct {
+	*models.Post
+	QualitySignal contentquality.ContentQualitySignal `json:"quality_signal"`
+}
 
 var adminRoleNames = []string{"admin", "super_admin", "super-admin", "manager", "administrator", "root"}
 
@@ -299,7 +308,7 @@ func (h *Handler) DashboardCreate(c *fiber.Ctx) error {
 		}
 	}
 
-	post, err := h.svc.Create(countryID, countryCode, userID, &req, imagePath)
+	post, qualitySignal, err := h.svc.Create(countryID, countryCode, userID, &req, imagePath)
 	if err != nil {
 		return utils.InternalError(c, "فشل إنشاء المنشور")
 	}
@@ -356,7 +365,7 @@ func (h *Handler) DashboardCreate(c *fiber.Ctx) error {
 		}()
 	}
 
-	return utils.Created(c, "تم إنشاء المنشور بنجاح", post)
+	return utils.Created(c, "تم إنشاء المنشور بنجاح", postWithQuality{Post: post, QualitySignal: qualitySignal})
 }
 
 // DashboardUpdate updates a post
@@ -406,7 +415,7 @@ func (h *Handler) DashboardUpdate(c *fiber.Ctx) error {
 		}
 	}
 
-	post, err := h.svc.Update(countryID, id, &req, callerID, isAdminUser(caller))
+	post, qualitySignal, err := h.svc.Update(countryID, id, &req, callerID, isAdminUser(caller))
 	if err != nil {
 		switch err {
 		case services.ErrNotFound:
@@ -473,7 +482,7 @@ func (h *Handler) DashboardUpdate(c *fiber.Ctx) error {
 		}()
 	}
 
-	return utils.Success(c, "تم تحديث المنشور بنجاح", post)
+	return utils.Success(c, "تم تحديث المنشور بنجاح", postWithQuality{Post: post, QualitySignal: qualitySignal})
 }
 
 // DashboardToggleStatus toggles post active status
@@ -511,7 +520,7 @@ func (h *Handler) DashboardToggleStatus(c *fiber.Ctx) error {
 	}
 
 	newStatus := !post.IsActive
-	updatedPost, err := h.svc.Update(countryID, id, &services.UpdatePostRequest{
+	updatedPost, _, err := h.svc.Update(countryID, id, &services.UpdatePostRequest{
 		IsActive: &newStatus,
 	}, callerID, isAdminUser(caller))
 	if err != nil {

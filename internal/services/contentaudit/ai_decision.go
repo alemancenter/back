@@ -812,15 +812,16 @@ func isMeaningfulFix(originalHTML, fixedHTML, contentType string) bool {
 	if strings.EqualFold(strings.TrimSpace(originalPlain), strings.TrimSpace(fixedPlain)) {
 		return false
 	}
-	originalWords := aiWordCount(originalPlain)
 	fixedWords := aiWordCount(fixedPlain)
 	minWords := minFixWords(contentType)
 	if fixedWords < minWords {
 		return false
 	}
-	if originalWords > 0 && fixedWords < originalWords+40 {
-		return false
-	}
+	// Deliberately no "must be N words longer than the original" requirement here.
+	// That check rewarded padding a fix to hit a length delta instead of judging
+	// whether it actually improved the content — the exact word-chasing anti-pattern
+	// that risks reproducing thin/padded content. A fix that clarifies or corrects
+	// without lengthening the text is still meaningful.
 	return true
 }
 

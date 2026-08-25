@@ -15,6 +15,7 @@ import (
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/repositories"
 	"github.com/imanjo/fiber-api/internal/routes"
+	"github.com/imanjo/fiber-api/internal/rulesregistry"
 	"github.com/imanjo/fiber-api/internal/services"
 	contentauditService "github.com/imanjo/fiber-api/internal/services/contentaudit"
 	"github.com/imanjo/fiber-api/internal/utils"
@@ -118,6 +119,11 @@ func main() {
 		&models.ContentAIFixPreview{},
 		&models.ContentAIApprovalLog{},
 		&models.ContentEditorialDecision{},
+		&models.ContentQualityRule{},
+		&models.GSCProperty{},
+		&models.GSCURLStatus{},
+		&models.GSCSearchAnalyticsDaily{},
+		&models.GSCSyncRun{},
 		&models.SubscriptionPlan{},
 		&models.TeacherProfile{},
 		&models.TeacherSubscription{},
@@ -142,6 +148,9 @@ func main() {
 			logger.Warn("auto-migrate failed", zap.String("country", database.CountryCode(id)), zap.Error(err))
 		}
 		ensureContentAISchema(db, database.CountryCode(id))
+		if err := rulesregistry.Seed(db); err != nil {
+			logger.Warn("content quality rule registry seed failed", zap.String("country", database.CountryCode(id)), zap.Error(err))
+		}
 		if err := services.EnsureTeacherSubscriptionDatabase(db); err != nil {
 			logger.Warn("teacher subscription database bootstrap failed", zap.String("country", database.CountryCode(id)), zap.Error(err))
 		}
@@ -198,7 +207,7 @@ func main() {
 		ReadBufferSize:          8192,
 		WriteBufferSize:         8192,
 		CompressedFileSuffix:    ".fiber.gz",
-		ProxyHeader:            "X-Forwarded-For",
+		ProxyHeader:             "X-Forwarded-For",
 		EnableTrustedProxyCheck: true,
 		TrustedProxies:          cfg.App.TrustedProxies,
 		EnableIPValidation:      true,

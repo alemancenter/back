@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/imanjo/fiber-api/internal/contentquality"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/repositories"
@@ -15,8 +16,8 @@ type PostService interface {
 	List(countryID database.CountryID, filter *models.PostFilter, limit, offset int) ([]models.Post, int64, error)
 	GetByID(countryID database.CountryID, id uint64) (*models.Post, error)
 	IncrementView(countryID database.CountryID, id uint64) error
-	Create(countryID database.CountryID, countryCode string, userID *uint, req *CreatePostRequest, imagePath string) (*models.Post, error)
-	Update(countryID database.CountryID, id uint64, req *UpdatePostRequest, callerID uint, callerIsAdmin bool) (*models.Post, error)
+	Create(countryID database.CountryID, countryCode string, userID *uint, req *CreatePostRequest, imagePath string) (*models.Post, contentquality.ContentQualitySignal, error)
+	Update(countryID database.CountryID, id uint64, req *UpdatePostRequest, callerID uint, callerIsAdmin bool) (*models.Post, contentquality.ContentQualitySignal, error)
 	Delete(countryID database.CountryID, id uint64, callerID uint, callerIsAdmin bool) error
 	GetSignedDownloadToken(countryID database.CountryID, fileID uint64) (string, error)
 	GetFileBySignedToken(token string) (*models.File, string, error)
@@ -184,7 +185,7 @@ func sanitizedOptionalText(value string) *string {
 	return &sanitized
 }
 
-func (s *postService) Create(countryID database.CountryID, countryCode string, userID *uint, req *CreatePostRequest, imagePath string) (*models.Post, error) {
+func (s *postService) Create(countryID database.CountryID, countryCode string, userID *uint, req *CreatePostRequest, imagePath string) (*models.Post, contentquality.ContentQualitySignal, error) {
 	title := sanitizePostPlainText(req.Title)
 	slug := s.uniqueSlug(countryID, utils.GenerateSlug(title), 0)
 	post := &models.Post{
@@ -214,7 +215,7 @@ func (s *postService) Create(countryID database.CountryID, countryCode string, u
 	post.Image = &imagePath
 
 	if err := s.repo.Create(countryID, post); err != nil {
-		return nil, MapError(err)
+		return nil, contentquality.ContentQualitySignal{}, MapError(err)
 	}
 
 	if req.Keywords != "" {
@@ -233,17 +234,22 @@ func (s *postService) Create(countryID database.CountryID, countryCode string, u
 	}
 	s.scheduleSitemapRefresh(countryID)
 
-	return post, nil
+	metaDescription := ""
+	if post.MetaDescription != nil {
+		metaDescription = *post.MetaDescription
+	}
+	signal := contentquality.BuildQualitySignal(metaDescription, post.Keywords != nil && *post.Keywords != "", countWords(stripHTML(post.Content)))
+	return post, signal, nil
 }
 
-func (s *postService) Update(countryID database.CountryID, id uint64, req *UpdatePostRequest, callerID uint, callerIsAdmin bool) (*models.Post, error) {
+func (s *postService) Update(countryID database.CountryID, id uint64, req *UpdatePostRequest, callerID uint, callerIsAdmin bool) (*models.Post, contentquality.ContentQualitySignal, error) {
 	post, err := s.repo.FindByID(countryID, id)
 	if err != nil {
-		return nil, MapError(err)
+		return nil, contentquality.ContentQualitySignal{}, MapError(err)
 	}
 
 	if !callerIsAdmin && callerID > 0 && post.AuthorID != nil && *post.AuthorID != callerID {
-		return nil, ErrForbidden
+		return nil, contentquality.ContentQualitySignal{}, ErrForbidden
 	}
 
 	if req.CategoryID != nil {
@@ -277,7 +283,7 @@ func (s *postService) Update(countryID database.CountryID, id uint64, req *Updat
 	}
 
 	if err := s.repo.Update(countryID, post); err != nil {
-		return nil, MapError(err)
+		return nil, contentquality.ContentQualitySignal{}, MapError(err)
 	}
 
 	if req.Keywords != "" {
@@ -291,7 +297,12 @@ func (s *postService) Update(countryID database.CountryID, id uint64, req *Updat
 	}
 	s.scheduleSitemapRefresh(countryID)
 
-	return post, nil
+	metaDescription := ""
+	if post.MetaDescription != nil {
+		metaDescription = *post.MetaDescription
+	}
+	signal := contentquality.BuildQualitySignal(metaDescription, post.Keywords != nil && *post.Keywords != "", countWords(stripHTML(post.Content)))
+	return post, signal, nil
 }
 
 func (s *postService) Delete(countryID database.CountryID, id uint64, callerID uint, callerIsAdmin bool) error {

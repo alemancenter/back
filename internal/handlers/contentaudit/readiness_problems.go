@@ -10,14 +10,15 @@ import (
 )
 
 const (
-	readinessProblemUnaudited        = "unaudited"
-	readinessProblemPolicyBlocked    = "policy_blocked"
-	readinessProblemAdsNotEligible   = "ads_not_eligible"
-	readinessProblemThinContent      = "thin_content"
-	readinessProblemNeedsEnrichment  = "needs_enrichment"
-	readinessProblemMetaDescription  = "meta_description"
-	readinessProblemShortTitle       = "short_title"
-	readinessProblemUnpublished      = "unpublished"
+	readinessProblemUnaudited              = "unaudited"
+	readinessProblemPolicyBlocked          = "policy_blocked"
+	readinessProblemAdsNotEligible         = "ads_not_eligible"
+	readinessProblemThinContent            = "thin_content"
+	readinessProblemUndocumentedAttachment = "undocumented_attachment"
+	readinessProblemNeedsEnrichment        = "needs_enrichment"
+	readinessProblemMetaDescription        = "meta_description"
+	readinessProblemShortTitle             = "short_title"
+	readinessProblemUnpublished            = "unpublished"
 )
 
 type readinessProblemDefinition struct {
@@ -57,13 +58,13 @@ type readinessProblemSummary struct {
 }
 
 type readinessRepairCenter struct {
-	AffectedItems    int                       `json:"affected_items"`
-	ActionableItems  int                       `json:"actionable_items"`
-	ManualItems      int                       `json:"manual_items"`
-	TotalFindings    int                       `json:"total_findings"`
+	AffectedItems   int                       `json:"affected_items"`
+	ActionableItems int                       `json:"actionable_items"`
+	ManualItems     int                       `json:"manual_items"`
+	TotalFindings   int                       `json:"total_findings"`
 	RecommendedCode string                    `json:"recommended_code,omitempty"`
-	BatchSize        int                       `json:"batch_size"`
-	Problems         []readinessProblemSummary `json:"problems"`
+	BatchSize       int                       `json:"batch_size"`
+	Problems        []readinessProblemSummary `json:"problems"`
 }
 
 type readinessRepairCollector struct {
@@ -74,53 +75,63 @@ type readinessRepairCollector struct {
 }
 
 var readinessProblems = map[string]readinessProblemDefinition{
-		readinessProblemUnaudited: {
-			Code: readinessProblemUnaudited, Label: "محتوى لم يُفحص بعد",
-			Description: "تشغيل تدقيق الجودة أولًا؛ تظل الإعلانات متوقفة حتى وجود قرار محفوظ.",
-			Severity: "high", ActionType: "analyze", Preset: readinessProblemUnaudited,
-			Mode: "analyze_only", ModelStrategy: "balanced", Priority: 90,
-		},
-		readinessProblemPolicyBlocked: {
-			Code: readinessProblemPolicyBlocked, Label: "حظر فهرسة أو سياسة",
-			Description: "محتوى يحتاج مراجعة نهائية لأنه مرفوض أو يحمل مخاطرة حرجة.",
-			Severity: "critical", ActionType: "full_review", Preset: readinessProblemPolicyBlocked,
-			Mode: "full_review", ModelStrategy: "final_review", Priority: 100,
-		},
-		readinessProblemAdsNotEligible: {
-			Code: readinessProblemAdsNotEligible, Label: "مفهرس وغير مؤهل للإعلانات",
-			Description: "يوجد قرار تدقيق، لكن المحتوى لم يجتز بوابة أهلية الإعلانات بعد.",
-			Severity: "high", ActionType: "ai_preview", Preset: readinessProblemAdsNotEligible,
-			Mode: "fix_preview", ModelStrategy: "quality", Priority: 85,
-		},
-		readinessProblemThinContent: {
-			Code: readinessProblemThinContent, Label: "محتوى قصير جدًا",
-			Description: "أقل من 120 كلمة ويحتاج إثراءً تحريريًا حقيقيًا ومعاينة بشرية.",
-			Severity: "high", ActionType: "ai_preview", Preset: readinessProblemThinContent,
-			Mode: "fix_preview", ModelStrategy: "quality", Priority: 80,
-		},
-		readinessProblemNeedsEnrichment: {
-			Code: readinessProblemNeedsEnrichment, Label: "محتوى يحتاج إثراء",
-			Description: "بين 120 و299 كلمة؛ يحتاج بنية وشرحًا وقيمة تعليمية أعمق.",
-			Severity: "medium", ActionType: "ai_preview", Preset: readinessProblemNeedsEnrichment,
-			Mode: "fix_preview", ModelStrategy: "quality", Priority: 65,
-		},
-		readinessProblemMetaDescription: {
-			Code: readinessProblemMetaDescription, Label: "وصف تعريفي ناقص أو قصير",
-			Description: "توليد وصف دقيق من مضمون الصفحة، تطبيقه على الحقل الوصفي فقط، ثم إعادة فحص الجاهزية تلقائيًا.",
-			Severity: "medium", ActionType: "auto_repair", Preset: readinessProblemMetaDescription,
-			Mode: "auto_apply", ModelStrategy: "balanced", Priority: 70,
-		},
-		readinessProblemShortTitle: {
-			Code: readinessProblemShortTitle, Label: "عنوان يحتاج مراجعة",
-			Description: "العنوان أقصر من الحد التحريري الداخلي ولا يوضح غرض الصفحة جيدًا.",
-			Severity: "medium", ActionType: "ai_preview", Preset: readinessProblemShortTitle,
-			Mode: "fix_preview", ModelStrategy: "balanced", Priority: 55,
-		},
-		readinessProblemUnpublished: {
-			Code: readinessProblemUnpublished, Label: "غير منشور أو غير فعال",
-			Description: "راجع حالة النشر يدويًا؛ المحتوى غير المنشور لا يدخل مسار الإعلانات.",
-			Severity: "low", ActionType: "manual", Priority: 10,
-		},
+	readinessProblemUnaudited: {
+		Code: readinessProblemUnaudited, Label: "محتوى لم يُفحص بعد",
+		Description: "تشغيل تدقيق الجودة أولًا؛ تظل الإعلانات متوقفة حتى وجود قرار محفوظ.",
+		Severity:    "high", ActionType: "analyze", Preset: readinessProblemUnaudited,
+		Mode: "analyze_only", ModelStrategy: "balanced", Priority: 90,
+	},
+	readinessProblemPolicyBlocked: {
+		Code: readinessProblemPolicyBlocked, Label: "حظر فهرسة أو سياسة",
+		Description: "محتوى يحتاج مراجعة نهائية لأنه مرفوض أو يحمل مخاطرة حرجة.",
+		Severity:    "critical", ActionType: "full_review", Preset: readinessProblemPolicyBlocked,
+		Mode: "full_review", ModelStrategy: "final_review", Priority: 100,
+	},
+	readinessProblemAdsNotEligible: {
+		Code: readinessProblemAdsNotEligible, Label: "مفهرس وغير مؤهل للإعلانات",
+		Description: "يوجد قرار تدقيق، لكن المحتوى لم يجتز بوابة أهلية الإعلانات بعد.",
+		Severity:    "high", ActionType: "ai_preview", Preset: readinessProblemAdsNotEligible,
+		Mode: "fix_preview", ModelStrategy: "quality", Priority: 85,
+	},
+	readinessProblemThinContent: {
+		Code: readinessProblemThinContent, Label: "محتوى قصير جدًا",
+		Description: "أقل من 120 كلمة ويحتاج إثراءً تحريريًا حقيقيًا ومعاينة بشرية.",
+		Severity:    "high", ActionType: "ai_preview", Preset: readinessProblemThinContent,
+		Mode: "fix_preview", ModelStrategy: "quality", Priority: 80,
+	},
+	readinessProblemUndocumentedAttachment: {
+		Code: readinessProblemUndocumentedAttachment, Label: "مرفقات دون شرح كافٍ",
+		Description: "الصفحة تحمل ملفات مرفقة لكن نصها أقل من الحد التحريري لصفحات الملفات؛ تبدو كزر تحميل مجرد بلا شرح، وهذا مرتبط بمخاطرة سياسة محتوى منخفض القيمة قرب الإعلانات وليس مجرد قصر عادي.",
+		// Preset intentionally reuses the existing "short_file_pages" batch
+		// preset (quality_batch_targets.go) instead of its own code, so the
+		// repair-center "fix" action routes into the already-working
+		// file-aware batch-selection logic rather than an unrecognized preset.
+		Severity: "high", ActionType: "ai_preview", Preset: "short_file_pages",
+		Mode: "fix_preview", ModelStrategy: "quality", Priority: 82,
+	},
+	readinessProblemNeedsEnrichment: {
+		Code: readinessProblemNeedsEnrichment, Label: "محتوى يحتاج إثراء",
+		Description: "بين 120 و299 كلمة؛ يحتاج بنية وشرحًا وقيمة تعليمية أعمق.",
+		Severity:    "medium", ActionType: "ai_preview", Preset: readinessProblemNeedsEnrichment,
+		Mode: "fix_preview", ModelStrategy: "quality", Priority: 65,
+	},
+	readinessProblemMetaDescription: {
+		Code: readinessProblemMetaDescription, Label: "وصف تعريفي ناقص أو قصير",
+		Description: "توليد وصف دقيق من مضمون الصفحة، تطبيقه على الحقل الوصفي فقط، ثم إعادة فحص الجاهزية تلقائيًا.",
+		Severity:    "medium", ActionType: "auto_repair", Preset: readinessProblemMetaDescription,
+		Mode: "auto_apply", ModelStrategy: "balanced", Priority: 70,
+	},
+	readinessProblemShortTitle: {
+		Code: readinessProblemShortTitle, Label: "عنوان يحتاج مراجعة",
+		Description: "العنوان أقصر من الحد التحريري الداخلي ولا يوضح غرض الصفحة جيدًا.",
+		Severity:    "medium", ActionType: "ai_preview", Preset: readinessProblemShortTitle,
+		Mode: "fix_preview", ModelStrategy: "balanced", Priority: 55,
+	},
+	readinessProblemUnpublished: {
+		Code: readinessProblemUnpublished, Label: "غير منشور أو غير فعال",
+		Description: "راجع حالة النشر يدويًا؛ المحتوى غير المنشور لا يدخل مسار الإعلانات.",
+		Severity:    "low", ActionType: "manual", Priority: 10,
+	},
 }
 
 func readinessProblemCatalog() map[string]readinessProblemDefinition { return readinessProblems }
@@ -149,7 +160,15 @@ func classifyReadinessProblems(title, meta string, diagnostics contentquality.Di
 		add(readinessProblemPolicyBlocked, "بوابة الجودة تمنع الفهرسة والإعلانات حتى معالجة سبب الرفض أو المخاطرة الحرجة.")
 	}
 
-	if diagnostics.WordCount < contentquality.DiagnosticReviewMinWords {
+	// Files attached (FilesCount > 0) get their own, wider threshold
+	// (DiagnosticShortFileMaxWords) instead of the generic thin_content bar —
+	// matching the existing short_file_pages batch preset in
+	// quality_batch_targets.go, which already treats file-bearing pages as a
+	// distinct category. Checked first so a 150-word file page is never
+	// mislabeled as generic "needs_enrichment".
+	if diagnostics.FilesCount > 0 && diagnostics.WordCount < contentquality.DiagnosticShortFileMaxWords {
+		add(readinessProblemUndocumentedAttachment, "الصفحة تحمل ملفات مرفقة لكن نصها أقل من الحد التحريري لصفحات الملفات؛ تحتاج شرحًا حقيقيًا لمحتوى الملف وليس مجرد زر تحميل.")
+	} else if diagnostics.WordCount < contentquality.DiagnosticReviewMinWords {
 		add(readinessProblemThinContent, "المحتوى يحتوي على أقل من 120 كلمة ويحتاج مراجعة وإثراءً حقيقيًا.")
 	} else if diagnostics.WordCount < contentquality.DiagnosticStrongMinWords {
 		add(readinessProblemNeedsEnrichment, "عمق المحتوى متوسط؛ راجع الشرح والبنية والفائدة التعليمية قبل الاعتماد.")
@@ -165,6 +184,7 @@ func classifyReadinessProblems(title, meta string, diagnostics contentquality.Di
 	}
 	if gate.Audited && gate.Indexable && !gate.AdsEligible &&
 		!hasProblemCode(codes, readinessProblemThinContent) &&
+		!hasProblemCode(codes, readinessProblemUndocumentedAttachment) &&
 		!hasProblemCode(codes, readinessProblemNeedsEnrichment) &&
 		!hasProblemCode(codes, readinessProblemMetaDescription) &&
 		!hasProblemCode(codes, readinessProblemShortTitle) {

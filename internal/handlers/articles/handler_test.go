@@ -7,11 +7,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gofiber/fiber/v2"
+	"github.com/imanjo/fiber-api/internal/contentquality"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/services"
 	"github.com/imanjo/fiber-api/internal/utils"
-	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -26,8 +27,8 @@ type MockArticleService struct {
 	GetFileBySignedTokenFunc   func(token string) (*models.File, string, error)
 	GetDashboardCreateDataFunc func(countryID database.CountryID) (*services.ArticleDashboardCreateData, error)
 	GetDashboardEditDataFunc   func(countryID database.CountryID, id uint64) (*services.ArticleDashboardEditData, error)
-	CreateArticleFunc          func(countryID database.CountryID, req *services.ArticleInput, authorID *uint) (*models.Article, error)
-	UpdateArticleFunc          func(countryID database.CountryID, id uint64, req *services.ArticleInput, authorID *uint) (*models.Article, error)
+	CreateArticleFunc          func(countryID database.CountryID, req *services.ArticleInput, authorID *uint) (*models.Article, contentquality.ContentQualitySignal, error)
+	UpdateArticleFunc          func(countryID database.CountryID, id uint64, req *services.ArticleInput, authorID *uint) (*models.Article, contentquality.ContentQualitySignal, error)
 	DeleteArticleFunc          func(countryID database.CountryID, id uint64, authorID *uint) error
 	SetArticleStatusFunc       func(countryID database.CountryID, id uint64, status int8) (*models.Article, error)
 	GetDashboardStatsFunc      func(countryID database.CountryID) (*services.ArticleDashboardStats, error)
@@ -72,17 +73,17 @@ func (m *MockArticleService) GetDashboardCreateData(countryID database.CountryID
 func (m *MockArticleService) GetDashboardEditData(countryID database.CountryID, id uint64) (*services.ArticleDashboardEditData, error) {
 	return nil, nil
 }
-func (m *MockArticleService) CreateArticle(countryID database.CountryID, req *services.ArticleInput, authorID *uint) (*models.Article, error) {
+func (m *MockArticleService) CreateArticle(countryID database.CountryID, req *services.ArticleInput, authorID *uint) (*models.Article, contentquality.ContentQualitySignal, error) {
 	if m.CreateArticleFunc != nil {
 		return m.CreateArticleFunc(countryID, req, authorID)
 	}
-	return nil, nil
+	return nil, contentquality.ContentQualitySignal{}, nil
 }
-func (m *MockArticleService) UpdateArticle(countryID database.CountryID, id uint64, req *services.ArticleInput, authorID *uint) (*models.Article, error) {
+func (m *MockArticleService) UpdateArticle(countryID database.CountryID, id uint64, req *services.ArticleInput, authorID *uint) (*models.Article, contentquality.ContentQualitySignal, error) {
 	if m.UpdateArticleFunc != nil {
 		return m.UpdateArticleFunc(countryID, id, req, authorID)
 	}
-	return nil, nil
+	return nil, contentquality.ContentQualitySignal{}, nil
 }
 func (m *MockArticleService) DeleteArticle(countryID database.CountryID, id uint64, authorID *uint) error {
 	if m.DeleteArticleFunc != nil {
@@ -122,9 +123,9 @@ func TestHandler_DashboardCreate(t *testing.T) {
 	app, mockSvc := setupApp()
 
 	t.Run("Success", func(t *testing.T) {
-		mockSvc.CreateArticleFunc = func(countryID database.CountryID, req *services.ArticleInput, authorID *uint) (*models.Article, error) {
+		mockSvc.CreateArticleFunc = func(countryID database.CountryID, req *services.ArticleInput, authorID *uint) (*models.Article, contentquality.ContentQualitySignal, error) {
 			assert.Equal(t, "Test Article", req.Title)
-			return &models.Article{ID: 1, Title: "Test Article"}, nil
+			return &models.Article{ID: 1, Title: "Test Article"}, contentquality.ContentQualitySignal{}, nil
 		}
 
 		reqBody := services.ArticleInput{
@@ -160,10 +161,10 @@ func TestHandler_DashboardUpdate(t *testing.T) {
 	app, mockSvc := setupApp()
 
 	t.Run("Success", func(t *testing.T) {
-		mockSvc.UpdateArticleFunc = func(countryID database.CountryID, id uint64, req *services.ArticleInput, authorID *uint) (*models.Article, error) {
+		mockSvc.UpdateArticleFunc = func(countryID database.CountryID, id uint64, req *services.ArticleInput, authorID *uint) (*models.Article, contentquality.ContentQualitySignal, error) {
 			assert.Equal(t, uint64(1), id)
 			assert.Equal(t, "Updated Article", req.Title)
-			return &models.Article{ID: 1, Title: "Updated Article"}, nil
+			return &models.Article{ID: 1, Title: "Updated Article"}, contentquality.ContentQualitySignal{}, nil
 		}
 
 		reqBody := services.ArticleInput{

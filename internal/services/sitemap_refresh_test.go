@@ -39,14 +39,14 @@ func TestArticleWritesScheduleSitemapRefresh(t *testing.T) {
 		article.ID = 7
 		return nil
 	}
-	_, err := service.CreateArticle(database.CountrySaudi, &ArticleInput{Title: "Article"}, nil)
+	_, _, err := service.CreateArticle(database.CountrySaudi, &ArticleInput{Title: "Article"}, nil)
 	require.NoError(t, err)
 
 	repo.FindByIDFunc = func(_ database.CountryID, _ uint64) (*models.Article, error) {
 		return &models.Article{ID: 7, Title: "Article"}, nil
 	}
 	repo.UpdateFunc = func(_ database.CountryID, _ *models.Article) error { return nil }
-	_, err = service.UpdateArticle(database.CountrySaudi, 7, &ArticleInput{Title: "Updated article"}, nil)
+	_, _, err = service.UpdateArticle(database.CountrySaudi, 7, &ArticleInput{Title: "Updated article"}, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"sa", "sa"}, spy.scheduledCodes())
@@ -62,14 +62,14 @@ func TestPostWritesScheduleSitemapRefresh(t *testing.T) {
 		post.ID = 9
 		return nil
 	}
-	_, err := service.Create(database.CountryEgypt, "eg", nil, &CreatePostRequest{Title: "Post", Content: "Content"}, "")
+	_, _, err := service.Create(database.CountryEgypt, "eg", nil, &CreatePostRequest{Title: "Post", Content: "Content"}, "")
 	require.NoError(t, err)
 
 	repo.FindByIDFunc = func(_ database.CountryID, _ uint64) (*models.Post, error) {
 		return &models.Post{ID: 9, Title: "Post"}, nil
 	}
 	repo.UpdateFunc = func(_ database.CountryID, _ *models.Post) error { return nil }
-	_, err = service.Update(database.CountryEgypt, 9, &UpdatePostRequest{Title: "Updated post"}, 1, true)
+	_, _, err = service.Update(database.CountryEgypt, 9, &UpdatePostRequest{Title: "Updated post"}, 1, true)
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"eg", "eg"}, spy.scheduledCodes())

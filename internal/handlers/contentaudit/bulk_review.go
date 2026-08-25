@@ -89,6 +89,8 @@ func bulkFixReviewFailureMessage(err error) string {
 		return "نوع المحتوى غير مدعوم"
 	case errors.Is(err, auditservice.ErrUngroundedFixPreview), errors.Is(err, auditservice.ErrGroundedValidationFailed):
 		return err.Error()
+	case errors.Is(err, auditservice.ErrGroundedSourceChanged):
+		return err.Error()
 	default:
 		return "تعذّر تنفيذ القرار على هذه المعاينة"
 	}

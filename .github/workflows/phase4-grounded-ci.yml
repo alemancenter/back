@@ -3,6 +3,8 @@ name: Phase 4 Grounded Content Repair CI
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -28,3 +30,9 @@ jobs:
         run: go test ./internal/routes
       - name: Server compile
         run: go test ./cmd/server
+      - name: Full repository tests
+        run: go test ./...
+      - name: Go vet
+        run: go vet ./...
+      - name: Production container build
+        run: docker build --tag imanjo-backend-ci:${{ github.sha }} .

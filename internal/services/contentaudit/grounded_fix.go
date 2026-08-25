@@ -25,6 +25,7 @@ var (
 	ErrGroundedValidationFailed   = errors.New("فشل التحقق من توثيق مسودة الإصلاح المقترحة")
 	ErrUngroundedFixPreview       = errors.New("هذه المعاينة أُنشئت بنظام إصلاح قديم لا يمكن التحقق من توثيقه، ويمكن رفضها لكن لا يمكن اعتمادها")
 	ErrGroundedAIUnavailable      = errors.New("تعذّر الوصول إلى مزوّد الذكاء الاصطناعي لإنشاء إصلاح موثّق")
+	ErrGroundedSourceChanged      = errors.New("تغيّر المحتوى بعد إنشاء المعاينة؛ أعد إنشاء معاينة جديدة قبل التطبيق")
 )
 
 const (
@@ -269,8 +270,11 @@ func (s *Service) ApplyGroundedFix(ctx context.Context, previewID uint64, userID
 		switch normalizeContentType(preview.ContentType) {
 		case "article":
 			var item models.Article
-			if err := tx.Preload("Subject").Preload("Subject.SchoolClass").Preload("Semester").Preload("Semester.SchoolClass").First(&item, id).Error; err != nil {
+			if err := tx.Preload("Subject").Preload("Subject.SchoolClass").Preload("Semester").Preload("Semester.SchoolClass").Preload("KeywordsRel").First(&item, id).Error; err != nil {
 				return err
+			}
+			if !groundedSourceMatches(item.Title, item.Content, item.MetaDescription, articleKeywordsString(item.KeywordsRel), preview) {
+				return ErrGroundedSourceChanged
 			}
 			item.Title = utils.SanitizeInput(preview.FixedTitle)
 			item.Content = utils.SanitizeHTML(preview.FixedContent)
@@ -295,6 +299,9 @@ func (s *Service) ApplyGroundedFix(ctx context.Context, previewID uint64, userID
 			var item models.Post
 			if err := tx.Preload("Category").First(&item, id).Error; err != nil {
 				return err
+			}
+			if !groundedSourceMatches(item.Title, item.Content, item.MetaDescription, item.Keywords, preview) {
+				return ErrGroundedSourceChanged
 			}
 			item.Title = utils.SanitizeInput(preview.FixedTitle)
 			item.Content = utils.StripBlockedLinks(utils.SanitizeHTML(preview.FixedContent))
@@ -468,6 +475,28 @@ func articleKeywordsString(keywords []models.Keyword) *string {
 	}
 	joined := strings.Join(names, "، ")
 	return &joined
+}
+
+func groundedSourceMatches(title, content string, metaDescription, keywords *string, preview *models.ContentAIFixPreview) bool {
+	if preview == nil {
+		return false
+	}
+	return title == preview.OriginalTitle &&
+		content == preview.OriginalContent &&
+		stringPointerValue(metaDescription) == stringPointerValue(preview.OriginalMetaDescription) &&
+		normalizedGroundedKeywords(keywords) == normalizedGroundedKeywords(preview.OriginalKeywords)
+}
+
+func normalizedGroundedKeywords(value *string) string {
+	if value == nil {
+		return ""
+	}
+	keywords := utils.SplitKeywords(*value)
+	for index := range keywords {
+		keywords[index] = strings.ToLower(strings.TrimSpace(keywords[index]))
+	}
+	sort.Strings(keywords)
+	return strings.Join(keywords, "\x00")
 }
 
 func buildGroundedSourcePack(content *groundedLoadedContent) groundedSourcePack {

@@ -23,12 +23,15 @@ func TestUnifiedReadinessUnauditedStrongTextStillBlocksAds(t *testing.T) {
 	}
 }
 
-func TestUnifiedReadinessDiagnosticsCannotOverrideApprovedGate(t *testing.T) {
+func TestUnifiedReadinessCurrentSourceCanRevokeAdsWithoutBlockingIndexing(t *testing.T) {
 	decision := &models.ContentAIDecision{ID: 7, Decision: models.AIDecisionApproved, AdSenseRisk: "low", Score: 95}
 	gate := auditservice.EvaluateQualityGate(decision)
 	item := buildUnifiedReadinessItem("قصير", "نص قصير", "", "", 0, true, "article", 11, "jo", gate, nil)
-	if !item.ShouldShowAds {
-		t.Fatal("editorial diagnostics must not override an approved central gate")
+	if item.ShouldShowAds {
+		t.Fatal("incomplete current source must revoke stale ad eligibility")
+	}
+	if !item.ShouldIndex {
+		t.Fatal("editorial ad guard must keep the page indexable")
 	}
 	if len(item.DiagnosticSignals) == 0 {
 		t.Fatal("expected diagnostics to remain visible for reviewers")

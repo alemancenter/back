@@ -155,7 +155,7 @@ func (r *contentAuditRepository) LatestAIDecision(ctx context.Context, contentTy
 	if countryCode != "" {
 		query = query.Where("country_code = ?", countryCode)
 	}
-	if err := query.Order("created_at DESC").First(&decision).Error; err != nil {
+	if err := query.Order("created_at DESC, id DESC").First(&decision).Error; err != nil {
 		return nil, err
 	}
 	return &decision, nil

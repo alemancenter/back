@@ -2,6 +2,7 @@ package contentaudit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -13,9 +14,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// Content quality batch processing is intentionally preview-first:
-// it may analyze and create fix previews, but it never applies generated text
-// automatically. A human reviewer must approve every fix preview.
+// Content quality batch processing is preview-first for title/body/policy work.
+// A narrowly guarded metadata repair may be applied automatically.
 func (h *Handler) StartQualityBatch(c *fiber.Ctx) error {
 	var req contentQualityBatchRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -185,6 +185,7 @@ func (h *Handler) processQualityBatchItem(jobID string, itemIndex int) {
 	var item contentQualityBatchItem
 	var mode string
 	var modelStrategy string
+	var preset string
 	var userID *uint
 	updateQualityBatch(jobID, func(job *contentQualityBatchJob) {
 		if itemIndex < 0 || itemIndex >= len(job.Items) || job.CancelRequested {
@@ -196,6 +197,7 @@ func (h *Handler) processQualityBatchItem(jobID string, itemIndex int) {
 		item = job.Items[itemIndex]
 		mode = job.Mode
 		modelStrategy = job.ModelStrategy
+		preset = job.Preset
 		userID = job.CreatedByUserID
 	})
 	if item.Status == "" || item.Status == models.ContentAIJobItemStatusCancelled {
@@ -221,6 +223,49 @@ func (h *Handler) processQualityBatchItem(jobID string, itemIndex int) {
 	decisionID := decision.ID
 	previewID := uint(0)
 	message := "تم إنشاء تحليل الجودة والسياسات"
+	if mode == "auto_apply" {
+		if preset != readinessProblemMetaDescription {
+			finishQualityBatchItem(jobID, itemIndex, models.ContentAIJobItemStatusFailed, "تم رفض الإصلاح التلقائي: هذا المسار مسموح للوصف التعريفي فقط", &decisionID, nil, decision.Score)
+			return
+		}
+		preview, repairErr := h.svc.AutoRepairMetaDescription(ctx, uint64(decision.ID), userID)
+		if repairErr != nil && !errors.Is(repairErr, auditservice.ErrMetadataNoRepairNeeded) {
+			finishQualityBatchItem(jobID, itemIndex, models.ContentAIJobItemStatusFailed, fmt.Sprintf("تم التحليل لكن فشل إصلاح الوصف التعريفي الآمن: %v", repairErr), &decisionID, nil, decision.Score)
+			return
+		}
+		if preview != nil {
+			previewID = preview.ID
+		}
+
+		rechecked, recheckErr := h.svc.AnalyzeWithAI(ctx, auditservice.AIAnalyzeRequest{
+			ModelStrategy: modelStrategy,
+			ContentType:   item.ContentType,
+			ContentID:     strconv.FormatUint(uint64(item.ContentID), 10),
+			CountryCode:   item.CountryCode,
+			Title:         item.Title,
+			URL:           item.URL,
+		}, userID)
+		if recheckErr != nil {
+			finishQualityBatchItem(jobID, itemIndex, models.ContentAIJobItemStatusFailed, fmt.Sprintf("تم إصلاح الوصف لكن تعذّرت إعادة فحص الجاهزية: %v", recheckErr), &decisionID, optionalUint(previewID), decision.Score)
+			return
+		}
+		decisionID = rechecked.ID
+		gate, gateErr := h.svc.QualityGate(ctx, item.ContentType, strconv.FormatUint(uint64(item.ContentID), 10), item.CountryCode)
+		if gateErr != nil {
+			finishQualityBatchItem(jobID, itemIndex, models.ContentAIJobItemStatusFailed, fmt.Sprintf("تم إصلاح الوصف وإعادة التحليل لكن تعذّر حساب بوابة الجاهزية: %v", gateErr), &decisionID, optionalUint(previewID), rechecked.Score)
+			return
+		}
+		switch {
+		case gate.AdsEligible:
+			message = "تم إصلاح الوصف التعريفي وإعادة الفحص؛ الصفحة مؤهلة داخليًا للإعلانات ومفهرسة"
+		case gate.Indexable:
+			message = "تم إصلاح الوصف التعريفي وإعادة الفحص؛ الصفحة مفهرسة لكن ما زالت لديها شروط أخرى قبل أهلية الإعلانات"
+		default:
+			message = "تم إصلاح الوصف التعريفي وإعادة الفحص؛ ما زال حظر الفهرسة/السياسة قائمًا ويحتاج مراجعة"
+		}
+		finishQualityBatchItem(jobID, itemIndex, models.ContentAIJobItemStatusCompleted, message, &decisionID, optionalUint(previewID), rechecked.Score)
+		return
+	}
 	if mode == "fix_preview" || mode == "full_review" {
 		preview, previewErr := h.svc.CreateGroundedFixPreview(ctx, uint64(decision.ID))
 		if previewErr != nil {

@@ -166,19 +166,21 @@ func readinessGate(decision *models.ContentAIDecision, title, content, meta, key
 	if len(editorial) > 0 && editorial[0] != nil {
 		gate = contentquality.ApplyEditorialDecision(gate, editorial[0].Decision)
 	}
+	gate = contentquality.ApplyAdReadinessRequirements(gate, title, readinessPlainText(content), meta)
 	return gate
 }
 
 func buildUnifiedReadinessItem(title, content, meta, keywords string, filesCount int, published bool, contentType string, id uint, countryCode string, gate auditservice.ContentQualityGate, baseline *models.ContentPolicyReadiness) unifiedReadinessItem {
-	diagnostics := contentquality.EvaluateDiagnostics(title, readinessPlainText(content), meta, filesCount, published)
+	plainText := readinessPlainText(content)
+	diagnostics := contentquality.EvaluateDiagnostics(title, plainText, meta, filesCount, published)
+	gate = contentquality.ApplyAdReadinessRequirements(gate, title, plainText, meta)
 	problems := classifyReadinessProblems(title, meta, diagnostics, published, gate)
 	shouldIndex := published && gate.Indexable
 	shouldShowAds := published && gate.AdsEligible
 
-	// Level/ShouldIndex/ShouldShowAds stay governed by gate alone, exactly as before — the
-	// deterministic baseline below only ever replaces the displayed score/reasons for content
-	// with no ContentAIDecision yet, so it can never grant AdsEligible or change real
-	// indexing/ad behavior (contentquality.Gate/Evaluate are never touched by it).
+	// Level/ShouldIndex/ShouldShowAds stay governed by the canonical gate plus its
+	// one-way current-source ads guard. The deterministic baseline below only
+	// replaces reviewer-facing score/reasons and can never grant eligibility.
 	level := "review"
 	if shouldShowAds {
 		level = "ready"

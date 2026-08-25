@@ -3,9 +3,9 @@ package contentquality
 import "strings"
 
 const (
-	// The values below are editorial diagnostics only. They help reviewers find
-	// thin or incomplete pages, but they MUST NOT decide indexing or ad eligibility.
-	// Enforcement belongs exclusively to Gate in gate.go.
+	// The values below power reviewer-facing diagnostics. The same minimums are
+	// also consumed by ApplyAdReadinessRequirements as a one-way ads safety guard;
+	// they never grant eligibility and never change search indexing.
 	DiagnosticTitleMinChars      = 20
 	DiagnosticReviewMinWords     = 120
 	DiagnosticShortFileMaxWords  = 180

@@ -73,6 +73,46 @@ func TestNormalizeQualityBatchRequestBoundsExplicitTargets(t *testing.T) {
 	}
 }
 
+func TestNormalizeQualityBatchRequestPreservesSafeMetadataPreset(t *testing.T) {
+	req := normalizeQualityBatchRequest(contentQualityBatchRequest{
+		Preset: readinessProblemMetaDescription,
+		Mode:   "auto_apply",
+		Targets: []contentQualityBatchTarget{
+			{ContentType: "article", ContentID: 12},
+			{ContentType: "post", ContentID: 9},
+		},
+	})
+	if req.Preset != readinessProblemMetaDescription || req.Mode != "auto_apply" || req.Limit != 2 {
+		t.Fatalf("safe metadata batch was not preserved: %#v", req)
+	}
+}
+
+func TestNormalizeQualityBatchRequestDowngradesUnsafeAutoApply(t *testing.T) {
+	req := normalizeQualityBatchRequest(contentQualityBatchRequest{Preset: readinessProblemThinContent, Mode: "auto_apply"})
+	if req.Mode != "fix_preview" {
+		t.Fatalf("unsafe auto-apply mode = %q, want fix_preview", req.Mode)
+	}
+}
+
+func TestIssueSpecificExplicitTargetsRequireMembershipAndProblem(t *testing.T) {
+	req := contentQualityBatchRequest{
+		Source: "adsense_readiness",
+		Preset: readinessProblemMetaDescription,
+		Targets: []contentQualityBatchTarget{{ContentType: "article", ContentID: 7}},
+	}
+	matching := unifiedReadinessItem{Type: "article", ID: 7, Problems: []readinessItemProblem{{Code: readinessProblemMetaDescription}}}
+	if !shouldIncludeQualityTarget(matching, req) {
+		t.Fatal("selected row with the requested metadata problem must be included")
+	}
+	if shouldIncludeQualityTarget(unifiedReadinessItem{Type: "article", ID: 7}, req) {
+		t.Fatal("selected row without the requested problem must be excluded")
+	}
+	other := unifiedReadinessItem{Type: "article", ID: 8, Problems: []readinessItemProblem{{Code: readinessProblemMetaDescription}}}
+	if shouldIncludeQualityTarget(other, req) {
+		t.Fatal("unselected row must be excluded even when it has the requested problem")
+	}
+}
+
 func TestSelectedQualityTargetsMatchTypeAndID(t *testing.T) {
 	req := contentQualityBatchRequest{
 		Preset: "selected_items",

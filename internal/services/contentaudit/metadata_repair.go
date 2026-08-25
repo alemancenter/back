@@ -288,5 +288,6 @@ func numericMetadataTokens(value string) map[string]struct{} {
 		if token != "" {
 			tokens[token] = struct{}{}
 		}
+	}
 	return tokens
 }

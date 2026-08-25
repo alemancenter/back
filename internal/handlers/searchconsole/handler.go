@@ -1,6 +1,7 @@
 package searchconsole
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"strings"
@@ -86,6 +87,38 @@ func (h *Handler) Status(c *fiber.Ctx) error {
 		return utils.NotFound(c, "لا توجد بيانات من Google لهذا الرابط بعد")
 	}
 	return utils.Success(c, "حالة الفهرسة في Google", status)
+}
+
+// TestConnection makes one live, synchronous URL Inspection call and returns
+// the raw result — lets an admin verify the service account + property are
+// wired correctly from the dashboard itself, without waiting on a background
+// sync or reading server logs.
+func (h *Handler) TestConnection(c *fiber.Ctx) error {
+	if h.svc == nil {
+		return utils.BadRequest(c, "لم يتم تفعيل ربط Google Search Console بعد (GSC_ENABLED أو مفتاح الحساب الخدمي غير مضبوطين على الخادم)")
+	}
+	countryCode := strings.TrimSpace(c.Query("country_code"))
+	url := strings.TrimSpace(c.Query("url"))
+	if countryCode == "" || url == "" {
+		return utils.BadRequest(c, "country_code وurl مطلوبان")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	result, err := h.svc.TestInspect(ctx, countryCode, url)
+	if err != nil {
+		if errors.Is(err, svc.ErrNotConfigured) {
+			return utils.BadRequest(c, "لم يتم تفعيل ربط Google Search Console بعد")
+		}
+		return utils.InternalError(c, "تعذّر الاتصال بـ Google: "+err.Error())
+	}
+
+	return utils.Success(c, "تم الاتصال بـ Google Search Console بنجاح", fiber.Map{
+		"index_status":     result.IndexStatus,
+		"coverage_state":   result.CoverageState,
+		"verdict":          result.Verdict,
+		"robots_txt_state": result.RobotsTxtState,
+	})
 }
 
 type syncTargetRequest struct {

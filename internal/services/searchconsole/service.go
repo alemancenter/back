@@ -243,6 +243,20 @@ func (s *Service) executeAnalyticsSync(run *models.GSCSyncRun, siteURL string, d
 	s.finishSyncRun(run, len(dbRows), nil)
 }
 
+// TestInspect makes one live, synchronous URL Inspection call and returns the
+// raw mapped result without persisting anything — for a "test my connection"
+// action in the dashboard, not for real syncing (see SyncBatch for that).
+func (s *Service) TestInspect(ctx context.Context, countryCode, url string) (*URLInspectionResult, error) {
+	if s.client == nil {
+		return nil, ErrNotConfigured
+	}
+	property, err := s.repo.GetProperty(ctx, countryCode)
+	if err != nil {
+		return nil, fmt.Errorf("no GSC property configured for country %q: %w", countryCode, err)
+	}
+	return s.client.InspectURL(ctx, property.SiteURL, url)
+}
+
 // SubmitSitemapForCountry pings the Sitemaps API for one property — call this
 // from the existing sitemap-generation publish hook, not on a schedule.
 func (s *Service) SubmitSitemapForCountry(ctx context.Context, countryCode, sitemapURL string) error {

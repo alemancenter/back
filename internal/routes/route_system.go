@@ -117,6 +117,7 @@ func registerSystemRoutes(api, _, dash fiber.Router, h *Handlers) {
 	dashGSC.Post("/analytics/sync", h.SearchConsole.SyncAnalytics)
 	dashGSC.Get("/analytics", h.SearchConsole.Analytics)
 	dashGSC.Get("/status/:content_type/:id", h.SearchConsole.Status)
+	dashGSC.Get("/test", h.SearchConsole.TestConnection)
 
 	// Deterministic corruption operations are intentionally stricter than the
 	// generic content-audit permission. Only Admin and Super Admin may scan,

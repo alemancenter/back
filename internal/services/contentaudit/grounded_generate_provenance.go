@@ -126,7 +126,8 @@ func hasFileGroundedFacts(facts groundedFactExtraction) bool {
 			if strings.HasPrefix(strings.TrimSpace(evidenceID), "file:") && strings.HasSuffix(strings.TrimSpace(evidenceID), ":text") {
 				return true
 			}
-	}	}
+		}
+	}
 	return false
 }
 
@@ -197,7 +198,7 @@ func runQualityLoopWithGrounding(write draftWriter, validate draftGroundingValid
 
 func normalizeGeneratedDraft(draft groundedDraft, fallbackTitle string, audience []string) groundedDraft {
 	draft.Title = strings.TrimSpace(draft.Title)
-	if draft.Title == "" {
+	if draft.Title == "" || groundedTitleLeaksInternalTerms(draft.Title) {
 		draft.Title = strings.TrimSpace(fallbackTitle)
 	}
 	draft.ContentHTML = normalizeFixedHTML(draft.ContentHTML)

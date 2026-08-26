@@ -13,9 +13,26 @@ import (
 // claims are surfaced to the admin for diagnosis.
 const groundedFixMaxRevisionPasses = 1
 
+// groundedTitleLeakTerms catches the model narrating its own source-processing
+// pipeline into a reader-facing title (e.g. "... (وفقًا للمرفق) - ملاحظات حول
+// قاعدة البيانات") instead of writing a natural title. The system prompt in
+// runGroundedWriter now instructs against this explicitly, but a prompt is not
+// a guarantee — this is the deterministic backstop, same pattern as
+// validateSafeMetaDescription's hard checks elsewhere in this package.
+var groundedTitleLeakTerms = []string{"المرفق", "الملف", "قاعدة البيانات", "الأدلة", "المصدر الموثوق", "حزمة المصدر"}
+
+func groundedTitleLeaksInternalTerms(title string) bool {
+	for _, term := range groundedTitleLeakTerms {
+		if strings.Contains(title, term) {
+			return true
+		}
+	}
+	return false
+}
+
 func normalizeGroundedFixDraft(draft groundedDraft, fallbackTitle string) groundedDraft {
 	draft.Title = strings.TrimSpace(draft.Title)
-	if draft.Title == "" {
+	if draft.Title == "" || groundedTitleLeaksInternalTerms(draft.Title) {
 		draft.Title = strings.TrimSpace(fallbackTitle)
 	}
 	draft.MetaDescription = strings.TrimSpace(draft.MetaDescription)

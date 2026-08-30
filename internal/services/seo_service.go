@@ -123,6 +123,7 @@ type SEOOverview struct {
 
 type SEOService interface {
 	Analyze(SEOAnalysisInput) SEOAnalysisResult
+	ContentPreview(context.Context, database.CountryID, string, uint) (string, string, error)
 	GetEffective(context.Context, database.CountryID, string, uint) (*EffectiveSEO, error)
 	GetMetadata(context.Context, database.CountryID, string, uint) (*models.SEOMetadata, error)
 	SaveMetadata(context.Context, database.CountryID, string, uint, SEOMetadataInput, uint) (*models.SEOMetadata, error)
@@ -164,6 +165,20 @@ func NewSEOService(repo repositories.SEORepository, settings SettingService, sit
 }
 
 func (s *seoService) Analyze(input SEOAnalysisInput) SEOAnalysisResult { return AnalyzeSEO(input) }
+
+// ContentPreview returns the title and raw body of an article/post — the input
+// the AI SEO optimizer needs when it is triggered from a list (the editor form
+// already has both in the DOM, but a drawer does not).
+func (s *seoService) ContentPreview(ctx context.Context, countryID database.CountryID, contentType string, contentID uint) (string, string, error) {
+	if !validSEOContentType(contentType) || contentID == 0 {
+		return "", "", ErrSEOInvalidContentType
+	}
+	content, err := s.repo.GetContent(ctx, countryID, contentType, contentID)
+	if err != nil {
+		return "", "", MapError(err)
+	}
+	return content.Title, content.Content, nil
+}
 
 func validSEOContentType(value string) bool {
 	return value == models.SEOContentTypeArticle || value == models.SEOContentTypePost
@@ -313,6 +328,7 @@ func (s *seoService) SaveMetadata(ctx context.Context, countryID database.Countr
 	if s.sitemap != nil {
 		s.sitemap.ScheduleGenerate(database.CountryCode(countryID))
 	}
+	InvalidateContentHealthCache(countryID)
 	if content.Published {
 		go s.submitIndexNowBackground(countryID, contentType, contentID)
 	}
@@ -447,6 +463,7 @@ func (s *seoService) RestoreRevision(ctx context.Context, countryID database.Cou
 	if s.sitemap != nil {
 		s.sitemap.ScheduleGenerate(database.CountryCode(countryID))
 	}
+	InvalidateContentHealthCache(countryID)
 	if content.Published {
 		go s.submitIndexNowBackground(countryID, contentType, contentID)
 	}

@@ -99,6 +99,7 @@ func registerSystemRoutes(api, public, dash fiber.Router, h *Handlers) {
 	dashSEOEditor := dash.Group("/seo")
 	dashSEOEditor.Post("/analyze", h.SEO.Analyze)
 	dashSEOEditor.Post("/optimize", h.SEO.Optimize)
+	dashSEOEditor.Post("/optimize-save/:content_type/:id", h.SEO.OptimizeAndSave)
 	dashSEOEditor.Get("/metadata/:content_type/:id", h.SEO.Metadata)
 	dashSEOEditor.Put("/metadata/:content_type/:id", h.SEO.SaveMetadata)
 	dashSEOEditor.Get("/metadata/:content_type/:id/revisions", h.SEO.Revisions)
@@ -122,6 +123,11 @@ func registerSystemRoutes(api, public, dash fiber.Router, h *Handlers) {
 	dashSEO.Get("/authors", h.SEO.Authors)
 	dashSEO.Put("/authors", h.SEO.SaveAuthor)
 	dashSEO.Post("/indexnow", h.SEO.IndexNow)
+
+	// Unified "Content Health" — one simple verdict per article/post (status +
+	// issues + fix action), replacing the ImanSEO + content-audit page sprawl.
+	// Cached per country; open to either the SEO or the content-audit permission.
+	dash.Get("/content-quality", middleware.CanAny("manage content audit", "manage seo"), h.ContentAudit.ContentHealth)
 
 	// Content policy audit
 	dashContentAudit := dash.Group("/content-audit", middleware.Can("manage content audit"))

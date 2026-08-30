@@ -67,6 +67,7 @@ func (s *postService) scheduleSitemapRefresh(countryID database.CountryID) {
 	if s.sitemap != nil {
 		s.sitemap.ScheduleGenerate(database.CountryCode(countryID))
 	}
+	InvalidateContentHealthCache(countryID)
 }
 
 func (s *postService) GetSignedDownloadToken(countryID database.CountryID, fileID uint64) (string, error) {

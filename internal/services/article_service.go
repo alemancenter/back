@@ -85,6 +85,9 @@ func (s *articleService) scheduleSitemapRefresh(countryID database.CountryID) {
 	if s.sitemap != nil {
 		s.sitemap.ScheduleGenerate(database.CountryCode(countryID))
 	}
+	// Same trigger set as the sitemap refresh: an article changed, so the cached
+	// content-quality scan for this country is now stale.
+	InvalidateContentHealthCache(countryID)
 }
 
 func applyPendingArticleViews(countryID database.CountryID, articles []models.Article) []models.Article {

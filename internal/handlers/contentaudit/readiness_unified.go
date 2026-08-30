@@ -69,6 +69,7 @@ type unifiedReadinessSummary struct {
 type unifiedReadinessRow struct {
 	Item      unifiedReadinessItem
 	CreatedAt time.Time
+	body      string // raw content, kept for ContentHealth's duplicate check — never serialized
 }
 
 type readinessFileCountRow struct {
@@ -295,6 +296,88 @@ func updateUnifiedReadinessSummary(summary *unifiedReadinessSummary, item unifie
 	}
 }
 
+// collectReadinessItems builds the unified readiness item for every article and
+// post (optionally narrowed by type + title search), running the per-item gate +
+// diagnostics once. Shared by AdsenseReadinessUnified and ContentHealth so the
+// heavy scan is written in one place.
+func collectReadinessItems(ctx context.Context, db *gorm.DB, countryCode, contentType, search string) ([]unifiedReadinessRow, error) {
+	articleFileCounts, postFileCounts := readinessFileCountMaps(ctx, db)
+	out := make([]unifiedReadinessRow, 0, 256)
+
+	if contentType == "all" || contentType == "article" {
+		decisions, err := latestReadinessDecisions(ctx, "article", countryCode)
+		if err != nil {
+			return nil, err
+		}
+		editorial, err := latestReadinessEditorialDecisions(ctx, "article", countryCode)
+		if err != nil {
+			return nil, err
+		}
+		policyBaselines, err := latestPolicyReadinessBaselines(ctx, "article", countryCode)
+		if err != nil {
+			return nil, err
+		}
+		var articles []models.Article
+		q := db.WithContext(ctx).
+			Select("id", "title", "content", "meta_description", "status", "created_at").
+			Order("created_at DESC")
+		if search != "" {
+			q = q.Where("title LIKE ?", "%"+search+"%")
+		}
+		if err := q.Find(&articles).Error; err != nil {
+			return nil, err
+		}
+		for _, article := range articles {
+			meta := ""
+			if article.MetaDescription != nil {
+				meta = *article.MetaDescription
+			}
+			gate := readinessGate(decisions[article.ID], article.Title, article.Content, meta, "", editorial[article.ID])
+			item := buildUnifiedReadinessItem(article.Title, article.Content, meta, "", articleFileCounts[article.ID], article.Status == 1, "article", article.ID, countryCode, gate, policyBaselines[article.ID])
+			out = append(out, unifiedReadinessRow{Item: item, CreatedAt: article.CreatedAt, body: article.Content})
+		}
+	}
+
+	if contentType == "all" || contentType == "post" {
+		decisions, err := latestReadinessDecisions(ctx, "post", countryCode)
+		if err != nil {
+			return nil, err
+		}
+		editorial, err := latestReadinessEditorialDecisions(ctx, "post", countryCode)
+		if err != nil {
+			return nil, err
+		}
+		policyBaselines, err := latestPolicyReadinessBaselines(ctx, "post", countryCode)
+		if err != nil {
+			return nil, err
+		}
+		var posts []models.Post
+		q := db.WithContext(ctx).
+			Select("id", "title", "content", "meta_description", "keywords", "is_active", "created_at").
+			Order("created_at DESC")
+		if search != "" {
+			q = q.Where("title LIKE ?", "%"+search+"%")
+		}
+		if err := q.Find(&posts).Error; err != nil {
+			return nil, err
+		}
+		for _, post := range posts {
+			meta := ""
+			if post.MetaDescription != nil {
+				meta = *post.MetaDescription
+			}
+			keywords := ""
+			if post.Keywords != nil {
+				keywords = *post.Keywords
+			}
+			gate := readinessGate(decisions[post.ID], post.Title, post.Content, meta, keywords, editorial[post.ID])
+			item := buildUnifiedReadinessItem(post.Title, post.Content, meta, keywords, postFileCounts[post.ID], post.IsActive, "post", post.ID, countryCode, gate, policyBaselines[post.ID])
+			out = append(out, unifiedReadinessRow{Item: item, CreatedAt: post.CreatedAt, body: post.Content})
+		}
+	}
+	return out, nil
+}
+
 // AdsenseReadinessUnified is the dashboard report backed by the same Content
 // Quality Gate used by public ad-status, SEO noindex, and sitemap generation.
 // Word count, title/meta length, and attachment presence are reviewer diagnostics
@@ -324,88 +407,19 @@ func (h *Handler) AdsenseReadinessUnified(c *fiber.Ctx) error {
 		problemFilter = ""
 	}
 
-	articleFileCounts, postFileCounts := readinessFileCountMaps(ctx, db)
-	rows := make([]unifiedReadinessRow, 0, 256)
-	globalSummary := unifiedReadinessSummary{}
-	repairCollector := newReadinessRepairCollector()
-
-	if contentType == "all" || contentType == "article" {
-		decisions, err := latestReadinessDecisions(ctx, "article", countryCode)
-		if err != nil {
-			return utils.InternalError(c, "تعذر تحميل قرارات جودة المقالات")
-		}
-		editorial, err := latestReadinessEditorialDecisions(ctx, "article", countryCode)
-		if err != nil {
-			return utils.InternalError(c, "تعذر تحميل قرارات المراجعة التحريرية للمقالات")
-		}
-		policyBaselines, err := latestPolicyReadinessBaselines(ctx, "article", countryCode)
-		if err != nil {
-			return utils.InternalError(c, "تعذر تحميل خط أساس الفحص الحتمي للمقالات")
-		}
-		var articles []models.Article
-		q := db.WithContext(ctx).
-			Select("id", "title", "content", "meta_description", "status", "created_at").
-			Order("created_at DESC")
-		if search != "" {
-			q = q.Where("title LIKE ?", "%"+search+"%")
-		}
-		if err := q.Find(&articles).Error; err != nil {
-			return utils.InternalError(c, "تعذر تحميل المقالات لفحص جاهزية المحتوى")
-		}
-		for _, article := range articles {
-			meta := ""
-			if article.MetaDescription != nil {
-				meta = *article.MetaDescription
-			}
-			gate := readinessGate(decisions[article.ID], article.Title, article.Content, meta, "", editorial[article.ID])
-			item := buildUnifiedReadinessItem(article.Title, article.Content, meta, "", articleFileCounts[article.ID], article.Status == 1, "article", article.ID, countryCode, gate, policyBaselines[article.ID])
-			updateUnifiedReadinessSummary(&globalSummary, item)
-			repairCollector.Add(item)
-			if (levelFilter == "" || item.Level == levelFilter) && hasReadinessProblem(item, problemFilter) {
-				rows = append(rows, unifiedReadinessRow{Item: item, CreatedAt: article.CreatedAt})
-			}
-		}
+	collected, err := collectReadinessItems(ctx, db, countryCode, contentType, search)
+	if err != nil {
+		return utils.InternalError(c, "تعذر تحميل المحتوى لفحص جاهزية المحتوى")
 	}
 
-	if contentType == "all" || contentType == "post" {
-		decisions, err := latestReadinessDecisions(ctx, "post", countryCode)
-		if err != nil {
-			return utils.InternalError(c, "تعذر تحميل قرارات جودة المنشورات")
-		}
-		editorial, err := latestReadinessEditorialDecisions(ctx, "post", countryCode)
-		if err != nil {
-			return utils.InternalError(c, "تعذر تحميل قرارات المراجعة التحريرية للمنشورات")
-		}
-		policyBaselines, err := latestPolicyReadinessBaselines(ctx, "post", countryCode)
-		if err != nil {
-			return utils.InternalError(c, "تعذر تحميل خط أساس الفحص الحتمي للمنشورات")
-		}
-		var posts []models.Post
-		q := db.WithContext(ctx).
-			Select("id", "title", "content", "meta_description", "keywords", "is_active", "created_at").
-			Order("created_at DESC")
-		if search != "" {
-			q = q.Where("title LIKE ?", "%"+search+"%")
-		}
-		if err := q.Find(&posts).Error; err != nil {
-			return utils.InternalError(c, "تعذر تحميل المنشورات لفحص جاهزية المحتوى")
-		}
-		for _, post := range posts {
-			meta := ""
-			if post.MetaDescription != nil {
-				meta = *post.MetaDescription
-			}
-			keywords := ""
-			if post.Keywords != nil {
-				keywords = *post.Keywords
-			}
-			gate := readinessGate(decisions[post.ID], post.Title, post.Content, meta, keywords, editorial[post.ID])
-			item := buildUnifiedReadinessItem(post.Title, post.Content, meta, keywords, postFileCounts[post.ID], post.IsActive, "post", post.ID, countryCode, gate, policyBaselines[post.ID])
-			updateUnifiedReadinessSummary(&globalSummary, item)
-			repairCollector.Add(item)
-			if (levelFilter == "" || item.Level == levelFilter) && hasReadinessProblem(item, problemFilter) {
-				rows = append(rows, unifiedReadinessRow{Item: item, CreatedAt: post.CreatedAt})
-			}
+	rows := make([]unifiedReadinessRow, 0, len(collected))
+	globalSummary := unifiedReadinessSummary{}
+	repairCollector := newReadinessRepairCollector()
+	for _, row := range collected {
+		updateUnifiedReadinessSummary(&globalSummary, row.Item)
+		repairCollector.Add(row.Item)
+		if (levelFilter == "" || row.Item.Level == levelFilter) && hasReadinessProblem(row.Item, problemFilter) {
+			rows = append(rows, row)
 		}
 	}
 

@@ -306,6 +306,85 @@ func firstSEOOptimizeValue(values ...string) string {
 	return ""
 }
 
+// OptimizeAndSave runs the AI SEO optimizer for one article/post and persists
+// the result to its SEO metadata in one call — the "إصلاح بالذكاء" action in the
+// content-quality drawer, which has no editor form to fill. Robots/canonical/
+// image/cornerstone settings are read from the current row and preserved; only
+// the AI-generated text fields + schema type are overwritten.
+func (h *Handler) OptimizeAndSave(c *fiber.Ctx) error {
+	contentType := c.Params("content_type")
+	if !canManageSEOContent(c, contentType) {
+		return utils.Forbidden(c)
+	}
+	id, err := paramID(c, "id")
+	if err != nil {
+		return utils.BadRequest(c, "معرف المحتوى غير صالح")
+	}
+	cid := countryID(c)
+	ctx, cancel := context.WithTimeout(c.Context(), 90*time.Second)
+	defer cancel()
+
+	title, body, err := h.svc.ContentPreview(ctx, cid, contentType, id)
+	if err != nil {
+		return handleError(c, err)
+	}
+
+	current, err := h.svc.GetMetadata(ctx, cid, contentType, id)
+	if err != nil {
+		return handleError(c, err)
+	}
+
+	bundle, provider, aiErr, err := contentaudit.GenerateDraftSEOBundle(ctx, h.ai, contentaudit.SEOOptimizeInput{
+		Title:        title,
+		ContentHTML:  body,
+		FocusKeyword: current.FocusKeyword,
+		ContentType:  contentType,
+		CountryCode:  database.CountryCode(cid),
+	})
+	if err != nil {
+		return utils.BadRequest(c, "تعذّر توليد تحسين SEO لهذا المحتوى حاليًا")
+	}
+
+	input := services.SEOMetadataInput{
+		SEOTitle:           bundle.SEOTitle,
+		MetaDescription:    bundle.MetaDescription,
+		FocusKeyword:       bundle.FocusKeyword,
+		AdditionalKeywords: bundle.AdditionalKeywords,
+		OGTitle:            bundle.OGTitle,
+		OGDescription:      bundle.OGDescription,
+		TwitterTitle:       bundle.TwitterTitle,
+		TwitterDescription: bundle.TwitterDescription,
+		SchemaType:         bundle.SchemaType,
+		SchemaJSON:         current.SchemaJSON,
+		// preserved from the current row — never silently changed by an SEO-text pass
+		CanonicalURL:    current.CanonicalURL,
+		OGImage:         current.OGImage,
+		TwitterImage:    current.TwitterImage,
+		RobotsIndex:     current.RobotsIndex,
+		RobotsFollow:    current.RobotsFollow,
+		RobotsNoArchive: current.RobotsNoArchive,
+		RobotsNoSnippet: current.RobotsNoSnippet,
+		MaxSnippet:      current.MaxSnippet,
+		MaxImagePreview: current.MaxImagePreview,
+		MaxVideoPreview: current.MaxVideoPreview,
+		Cornerstone:     current.Cornerstone,
+		ChangeNote:      "تحسين تلقائي بالذكاء من صحة المحتوى",
+	}
+	saved, err := h.svc.SaveMetadata(ctx, cid, contentType, id, input, userID(c))
+	if err != nil {
+		return handleError(c, err)
+	}
+
+	payload := fiber.Map{"metadata": saved, "score": saved.Score, "provider": provider}
+	if aiErr != "" {
+		if len([]rune(aiErr)) > 300 {
+			aiErr = string([]rune(aiErr)[:300])
+		}
+		payload["ai_error"] = aiErr
+	}
+	return utils.Success(c, "تم تحسين SEO وحفظه", payload)
+}
+
 func (h *Handler) Revisions(c *fiber.Ctx) error {
 	if !canManageSEOContent(c, c.Params("content_type")) {
 		return utils.Forbidden(c)

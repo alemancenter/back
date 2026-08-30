@@ -182,6 +182,12 @@ func GenerateDraftSEOBundle(ctx context.Context, ai coreai.AIService, in SEOOpti
 			fk = leadingSignificantWords(title, 3)
 		}
 	}
+	// A too-generic keyword stuffs itself in a short article (analyzer flags
+	// density > 3.5% as an error). If the pick is over-dense, promote a longer
+	// title-anchored phrase or an AI synonym that still reads naturally.
+	if keywordDensityPct(fk, plain) > 3.5 {
+		fk = pickLessDenseKeyword(fk, plain, title, aiAddKw)
+	}
 	bundle.FocusKeyword = fk
 
 	// Meta description: same validator as the automated repair path; on failure
@@ -304,6 +310,46 @@ func normalizeArabicLite(value string) string {
 		b.WriteRune(r)
 	}
 	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+// keywordDensityPct mirrors the analyzer's keyword-density metric (whole-phrase,
+// space-delimited count × phrase-word-count ÷ total words × 100) on lightly
+// normalized Arabic so the guard sees roughly the same number the analyzer will.
+func keywordDensityPct(phrase, plainText string) float64 {
+	np := normalizeArabicLite(plainText)
+	nk := normalizeArabicLite(phrase)
+	words := strings.Fields(np)
+	kwWords := strings.Fields(nk)
+	if len(words) == 0 || len(kwWords) == 0 {
+		return 0
+	}
+	count := strings.Count(" "+np+" ", " "+nk+" ")
+	return float64(count) * float64(len(kwWords)) / float64(len(words)) * 100
+}
+
+// pickLessDenseKeyword returns a phrase that is present in the body, ideally also
+// in the title, at a healthy density (≤2.5%). It tries progressively longer
+// title prefixes, then AI-suggested synonyms. Falls back to the original.
+func pickLessDenseKeyword(current, plain, title, synonyms string) string {
+	candidates := []string{
+		leadingSignificantWords(title, 5),
+		leadingSignificantWords(title, 4),
+		leadingSignificantWords(title, 3),
+	}
+	for _, syn := range strings.FieldsFunc(synonyms, func(r rune) bool { return r == ',' || r == '،' || r == ';' }) {
+		candidates = append(candidates, strings.Join(strings.Fields(syn), " "))
+	}
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" || candidate == current || strings.ContainsAny(candidate, "<>") {
+			continue
+		}
+		density := keywordDensityPct(candidate, plain)
+		if seoPhraseInText(candidate, plain) && density >= 0.4 && density <= 2.5 {
+			return candidate
+		}
+	}
+	return current
 }
 
 func leadingSignificantWords(title string, n int) string {

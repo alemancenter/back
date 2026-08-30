@@ -767,17 +767,22 @@ func buildContentIntelligencePrompts(req ContentIntelligenceRequest) (string, st
 		if req.ContentType == "post" {
 			schemaHint = "BlogPosting"
 		}
+		wordCount := len(strings.Fields(req.PlainText))
 		user := fmt.Sprintf(`العنوان الحالي: %s
 السياق التعليمي: %s
-العبارة المفتاحية المقترحة من المحرر (استعملها إن كانت مناسبة وموجودة في النص، وإلا اختر أفضل منها): %s
+عدد كلمات النص: %d
+العبارة المفتاحية المقترحة من المحرر (استعملها إن كانت مناسبة وموجودة في النص وليست مفرطة التكرار، وإلا اختر أفضل منها): %s
 
 النص الحالي (لا تعدّله، هو مرجعك الوحيد):
 %s
 
-اختر seo_focus_keyword كعبارة من كلمتين إلى أربع كلمات موجودة حرفيًا في النص وتعبّر عن جوهر الصفحة ونية الباحث. ثم اكتب بقية الحقول بحيث تحتوي العبارة نفسها طبيعيًا.
+اختر seo_focus_keyword كعبارة موجودة حرفيًا في النص وتعبّر عن جوهر الصفحة ونية الباحث، بشرط:
+- لا تختر الكلمة أو العبارة الأكثر تكرارًا؛ اختر عبارة تظهر بين مرتين و5 مرات فقط لتفادي الكثافة العالية (الحشو).
+- إذا كان النص أقل من 400 كلمة فاختر عبارة من 3 إلى 4 كلمات (كلما زادت كلمات العبارة انخفضت كثافتها).
+ثم اكتب بقية الحقول بحيث تحتوي العبارة نفسها مرة واحدة بصورة طبيعية.
 
 أعد هذا JSON فقط:
-{"seo_focus_keyword":"...","seo_title":"عنوان 45–60 حرفًا يحوي العبارة","fixed_meta_description":"وصف 120–158 حرفًا يحوي العبارة ويصف قيمة الصفحة","seo_additional_keywords":"مرادف1, مرادف2, مرادف3","og_title":"عنوان مشاركة ≤ 65 حرفًا","og_description":"وصف مشاركة ≤ 180 حرفًا","twitter_title":"≤ 65 حرفًا","twitter_description":"≤ 180 حرفًا","schema_type":"%s"}`, req.Title, curriculumSummary(req), strings.TrimSpace(req.FocusKeyword), truncate(req.PlainText, 6000), schemaHint)
+{"seo_focus_keyword":"...","seo_title":"عنوان 45–60 حرفًا يحوي العبارة","fixed_meta_description":"وصف 120–158 حرفًا يحوي العبارة ويصف قيمة الصفحة","seo_additional_keywords":"مرادف1, مرادف2, مرادف3","og_title":"عنوان مشاركة ≤ 65 حرفًا","og_description":"وصف مشاركة ≤ 180 حرفًا","twitter_title":"≤ 65 حرفًا","twitter_description":"≤ 180 حرفًا","schema_type":"%s"}`, req.Title, curriculumSummary(req), wordCount, strings.TrimSpace(req.FocusKeyword), truncate(req.PlainText, 6000), schemaHint)
 		return system, user
 	}
 

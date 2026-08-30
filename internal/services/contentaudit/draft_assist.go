@@ -124,12 +124,13 @@ var seoOptimizeSchemaTypes = map[string]bool{"Article": true, "NewsArticle": tru
 // the deterministic AnalyzeSEO rubric. It reuses the same validators as the
 // post-publish metadata repair path so a draft suggestion and a later automated
 // repair can never disagree. When the AI is unavailable or fails it degrades to a
-// deterministic bundle rather than erroring — the editor still gets a fill.
-func GenerateDraftSEOBundle(ctx context.Context, ai coreai.AIService, in SEOOptimizeInput) (SEOOptimizeBundle, string, error) {
+// deterministic bundle rather than erroring — the editor still gets a fill. The
+// third return value is the AI failure reason (empty when the model was used).
+func GenerateDraftSEOBundle(ctx context.Context, ai coreai.AIService, in SEOOptimizeInput) (SEOOptimizeBundle, string, string, error) {
 	title := strings.TrimSpace(in.Title)
 	plain := normalizePlainText(in.ContentHTML)
 	if strings.TrimSpace(title+plain) == "" {
-		return SEOOptimizeBundle{}, "", ErrDraftAssistEmptySource
+		return SEOOptimizeBundle{}, "", "", ErrDraftAssistEmptySource
 	}
 
 	defaultSchema := "Article"
@@ -141,9 +142,10 @@ func GenerateDraftSEOBundle(ctx context.Context, ai coreai.AIService, in SEOOpti
 		aiTitle, aiFocus, aiMeta, aiAddKw, aiSchema string
 		aiOGTitle, aiOGDesc, aiTwTitle, aiTwDesc    string
 		provider                                    = "extractive_fallback"
+		aiErr                                       string
 	)
 	if ai != nil {
-		if resp, err := ai.RunContentIntelligence(ctx, coreai.ContentIntelligenceRequest{
+		resp, err := ai.RunContentIntelligence(ctx, coreai.ContentIntelligenceRequest{
 			Task:          "optimize_seo",
 			ModelStrategy: "balanced",
 			ContentType:   in.ContentType,
@@ -155,7 +157,11 @@ func GenerateDraftSEOBundle(ctx context.Context, ai coreai.AIService, in SEOOpti
 			PlainText:     plain,
 			FocusKeyword:  in.FocusKeyword,
 			Language:      "ar",
-		}); err == nil && resp != nil {
+		})
+		switch {
+		case err != nil:
+			aiErr = err.Error()
+		case resp != nil:
 			aiTitle, aiFocus, aiMeta = resp.SEOTitle, resp.SEOFocusKeyword, resp.FixedMetaDescription
 			aiAddKw, aiSchema = resp.SEOAdditionalKeywords, strings.TrimSpace(resp.SEOSchemaType)
 			aiOGTitle, aiOGDesc = resp.SEOOGTitle, resp.SEOOGDescription
@@ -207,7 +213,7 @@ func GenerateDraftSEOBundle(ctx context.Context, ai coreai.AIService, in SEOOpti
 	}
 	bundle.SchemaType = aiSchema
 
-	return bundle, provider, nil
+	return bundle, provider, aiErr, nil
 }
 
 // sanitizeSEOPhrase cleans a short keyword phrase: no HTML, no URLs, single

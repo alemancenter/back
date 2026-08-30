@@ -35,7 +35,7 @@ func TestGenerateDraftSEOBundleWhitelistsSchemaAndGroundsKeyword(t *testing.T) {
 		SEOAdditionalKeywords: "التعلم التفاعلي, الأنشطة الصفية, مشاركة الطلاب",
 		SEOSchemaType:         "FAQPage", // not in the analyzer-safe subset
 	}}
-	bundle, provider, err := GenerateDraftSEOBundle(context.Background(), ai, SEOOptimizeInput{
+	bundle, provider, _, err := GenerateDraftSEOBundle(context.Background(), ai, SEOOptimizeInput{
 		Title:        "التعلم النشط",
 		ContentHTML:  seoBundleContent,
 		FocusKeyword: "التعلم النشط",
@@ -65,7 +65,7 @@ func TestGenerateDraftSEOBundleWhitelistsSchemaAndGroundsKeyword(t *testing.T) {
 }
 
 func TestGenerateDraftSEOBundleDegradesWithoutAI(t *testing.T) {
-	bundle, provider, err := GenerateDraftSEOBundle(context.Background(), nil, SEOOptimizeInput{
+	bundle, provider, _, err := GenerateDraftSEOBundle(context.Background(), nil, SEOOptimizeInput{
 		Title:       "توزيع علامات مبحث الرياضيات",
 		ContentHTML: strings.Repeat("<p>يشرح هذا الدرس توزيع العلامات على المهارات والأسئلة التعليمية وفق محتوى الصفحة.</p>", 6),
 		ContentType: "post",
@@ -85,7 +85,7 @@ func TestGenerateDraftSEOBundleDegradesWithoutAI(t *testing.T) {
 }
 
 func TestGenerateDraftSEOBundleRejectsEmptySource(t *testing.T) {
-	if _, _, err := GenerateDraftSEOBundle(context.Background(), nil, SEOOptimizeInput{}); err != ErrDraftAssistEmptySource {
+	if _, _, _, err := GenerateDraftSEOBundle(context.Background(), nil, SEOOptimizeInput{}); err != ErrDraftAssistEmptySource {
 		t.Fatalf("expected ErrDraftAssistEmptySource, got %v", err)
 	}
 }

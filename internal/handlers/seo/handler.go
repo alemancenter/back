@@ -259,7 +259,7 @@ func (h *Handler) Optimize(c *fiber.Ctx) error {
 
 	ctx, cancel := context.WithTimeout(c.Context(), 90*time.Second)
 	defer cancel()
-	bundle, provider, err := contentaudit.GenerateDraftSEOBundle(ctx, h.ai, contentaudit.SEOOptimizeInput{
+	bundle, provider, aiErr, err := contentaudit.GenerateDraftSEOBundle(ctx, h.ai, contentaudit.SEOOptimizeInput{
 		Title:        req.Title,
 		ContentHTML:  req.Content,
 		FocusKeyword: req.FocusKeyword,
@@ -280,12 +280,21 @@ func (h *Handler) Optimize(c *fiber.Ctx) error {
 		FocusKeyword:    bundle.FocusKeyword,
 		SchemaType:      bundle.SchemaType,
 	})
-	return utils.Success(c, "تم توليد تحسين SEO", fiber.Map{
+	payload := fiber.Map{
 		"fields":   bundle,
 		"analysis": projected,
 		"score":    projected.Score,
 		"provider": provider,
-	})
+	}
+	if aiErr != "" {
+		// Surfaced to the editor so a silent fall back to the deterministic
+		// bundle is visible ("model not found", "401", timeout, …).
+		if len([]rune(aiErr)) > 300 {
+			aiErr = string([]rune(aiErr)[:300])
+		}
+		payload["ai_error"] = aiErr
+	}
+	return utils.Success(c, "تم توليد تحسين SEO", payload)
 }
 
 func firstSEOOptimizeValue(values ...string) string {

@@ -30,6 +30,7 @@ import (
 	"github.com/imanjo/fiber-api/internal/handlers/roles"
 	searchconsoleHandler "github.com/imanjo/fiber-api/internal/handlers/searchconsole"
 	"github.com/imanjo/fiber-api/internal/handlers/security"
+	seoHandler "github.com/imanjo/fiber-api/internal/handlers/seo"
 	"github.com/imanjo/fiber-api/internal/handlers/settings"
 	"github.com/imanjo/fiber-api/internal/handlers/sitemap"
 	"github.com/imanjo/fiber-api/internal/handlers/teacher_subscription"
@@ -71,6 +72,7 @@ type Handlers struct {
 	AI                  *ai.Handler
 	ContentAudit        *contentauditHandler.Handler
 	SearchConsole       *searchconsoleHandler.Handler
+	SEO                 *seoHandler.Handler
 	EmailVerify         *emailverification.Handler
 	EmailBounce         *emailbounce.Handler
 	TeacherSubscription *teacher_subscription.Handler
@@ -154,6 +156,8 @@ func NewDependencies() *Handlers {
 
 	settingRepo := repositories.NewSettingRepository()
 	settingSvc := services.NewSettingService(settingRepo)
+	seoRepo := repositories.NewSEORepository()
+	seoSvc := services.NewSEOService(seoRepo, settingSvc, sitemapSvc)
 
 	analyticsRepo := repositories.NewAnalyticsRepository()
 	analyticsSvc := services.NewAnalyticsService(analyticsRepo)
@@ -219,6 +223,7 @@ func NewDependencies() *Handlers {
 		AI:                  ai.New(aiSvc, contentAuditSvc),
 		ContentAudit:        contentauditHandler.New(contentAuditSvc),
 		SearchConsole:       searchconsoleHandler.New(gscRepo, gscSvc),
+		SEO:                 seoHandler.New(seoSvc),
 		EmailVerify:         emailverification.New(emailVerifySvc),
 		EmailBounce:         emailbounce.New(bounceReader),
 		TeacherSubscription: teacher_subscription.New(teacherSubSvc),

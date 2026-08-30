@@ -83,6 +83,27 @@ type GSCSearchAnalyticsDaily struct {
 
 func (GSCSearchAnalyticsDaily) TableName() string { return "gsc_search_analytics_daily" }
 
+// GSCSearchQueryDaily keeps query/page/date rows for the native keyword and
+// ranking report. Hashes keep the utf8mb4 uniqueness key safely below MySQL's
+// index-size limit while preserving the original Arabic query and URL.
+type GSCSearchQueryDaily struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	CountryCode string    `gorm:"type:varchar(10);not null;uniqueIndex:idx_gsc_query_row" json:"country_code"`
+	Query       string    `gorm:"type:varchar(1000);not null" json:"query"`
+	QueryHash   string    `gorm:"type:char(64);not null;uniqueIndex:idx_gsc_query_row" json:"-"`
+	URL         string    `gorm:"type:varchar(1500);not null" json:"url"`
+	URLHash     string    `gorm:"type:char(64);not null;uniqueIndex:idx_gsc_query_row" json:"-"`
+	Date        time.Time `gorm:"type:date;not null;uniqueIndex:idx_gsc_query_row;index" json:"date"`
+	Clicks      int       `gorm:"not null;default:0" json:"clicks"`
+	Impressions int       `gorm:"not null;default:0" json:"impressions"`
+	CTR         float64   `json:"ctr"`
+	Position    float64   `json:"position"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (GSCSearchQueryDaily) TableName() string { return "gsc_search_query_daily" }
+
 // GSCSyncRun records one background sync attempt against the Search Console
 // APIs, mirroring the existing PolicyAuditRun status-row pattern
 // (models/content_audit.go) instead of introducing a new job abstraction.

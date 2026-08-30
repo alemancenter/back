@@ -3,10 +3,10 @@ package routes
 import (
 	"time"
 
-	"github.com/imanjo/fiber-api/internal/middleware"
 	"github.com/gofiber/fiber/v2"
 	fiberCompress "github.com/gofiber/fiber/v2/middleware/compress"
 	"github.com/gofiber/fiber/v2/middleware/etag"
+	"github.com/imanjo/fiber-api/internal/middleware"
 )
 
 // Setup registers all API routes on the given Fiber app and returns the
@@ -43,6 +43,9 @@ func Setup(app *fiber.App) *Handlers {
 		middleware.RateLimitRule{Prefix: "/backend-api/chatbot/message", Methods: []string{fiber.MethodPost}, Max: 30, Window: 10 * time.Minute},
 		middleware.RateLimitRule{Prefix: "/api/chatbot/feedback", Methods: []string{fiber.MethodPost}, Max: 60, Window: 10 * time.Minute},
 		middleware.RateLimitRule{Prefix: "/backend-api/chatbot/feedback", Methods: []string{fiber.MethodPost}, Max: 60, Window: 10 * time.Minute},
+		middleware.RateLimitRule{Prefix: "/api/seo/404", Methods: []string{fiber.MethodPost}, Max: 30, Window: 10 * time.Minute},
+		middleware.RateLimitRule{Prefix: "/backend-api/seo/404", Methods: []string{fiber.MethodPost}, Max: 30, Window: 10 * time.Minute},
+		middleware.RateLimitRule{Prefix: "/api/dashboard/seo/audits", Methods: []string{fiber.MethodPost}, Max: 4, Window: 10 * time.Minute},
 		middleware.RateLimitRule{Prefix: "/api/dashboard/files", Max: 60, Window: time.Minute},
 		middleware.RateLimitRule{Prefix: "/backend-api/dashboard/files", Max: 60, Window: time.Minute},
 	))

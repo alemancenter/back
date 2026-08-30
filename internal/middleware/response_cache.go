@@ -42,6 +42,11 @@ var pathTTLRules = []struct {
 	{"/api/categories", 2 * time.Minute},
 	{"/api/keywords", 2 * time.Minute},
 
+	// ImanSEO effective metadata + public author profiles. Rebuilt only on
+	// dashboard SEO saves; hit on every article/post render. /api/seo/redirect is
+	// excluded via neverCachedPaths so newly created redirects take effect at once.
+	{"/api/seo", 2 * time.Minute},
+
 	// Comments are the highest-traffic public endpoint.
 	// 60 s cache cuts repeated identical requests to near zero while staying fresh.
 	{"/api/comments", 60 * time.Second},
@@ -54,6 +59,9 @@ var neverCachedPaths = []string{
 	"/api/user",
 	"/api/notifications",
 	"/api/messages",
+	// Redirect resolution must reflect dashboard changes immediately, and its
+	// response varies by the ?path/?query pair rather than by content id.
+	"/api/seo/redirect",
 }
 
 func cacheTTLForPath(path string) time.Duration {

@@ -46,6 +46,7 @@ func Setup(app *fiber.App) *Handlers {
 		middleware.RateLimitRule{Prefix: "/api/seo/404", Methods: []string{fiber.MethodPost}, Max: 30, Window: 10 * time.Minute},
 		middleware.RateLimitRule{Prefix: "/backend-api/seo/404", Methods: []string{fiber.MethodPost}, Max: 30, Window: 10 * time.Minute},
 		middleware.RateLimitRule{Prefix: "/api/dashboard/seo/audits", Methods: []string{fiber.MethodPost}, Max: 4, Window: 10 * time.Minute},
+		middleware.RateLimitRule{Prefix: "/backend-api/dashboard/seo/audits", Methods: []string{fiber.MethodPost}, Max: 4, Window: 10 * time.Minute},
 		middleware.RateLimitRule{Prefix: "/api/dashboard/files", Max: 60, Window: time.Minute},
 		middleware.RateLimitRule{Prefix: "/backend-api/dashboard/files", Max: 60, Window: time.Minute},
 	))

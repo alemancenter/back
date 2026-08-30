@@ -151,11 +151,12 @@ type SEOService interface {
 }
 
 type seoService struct {
-	repo     repositories.SEORepository
-	settings SettingService
-	sitemap  SitemapService
-	http     *http.Client
-	auditMu  sync.Mutex
+	repo       repositories.SEORepository
+	settings   SettingService
+	sitemap    SitemapService
+	http       *http.Client
+	auditMu    sync.Mutex
+	redirectRE sync.Map // regex source string -> *regexp.Regexp, hot-path 404 resolver cache
 }
 
 func NewSEOService(repo repositories.SEORepository, settings SettingService, sitemap SitemapService) SEOService {
@@ -213,27 +214,63 @@ func (s *seoService) getEffective(ctx context.Context, countryID database.Countr
 		return nil, MapError(err)
 	}
 	settings, _ := s.settings.GetPublic(ctx, countryID)
-	siteName := firstSEOValue(settings["site_name"], "موقع الإيمان")
-	title := firstSEOValue(metadata.SEOTitle, content.Title)
-	if template := strings.TrimSpace(settings["seo_title_template"]); metadata.SEOTitle == "" && template != "" {
-		title = strings.NewReplacer("%title%", content.Title, "%site_name%", siteName, "%country%", database.CountryCode(countryID)).Replace(template)
-	}
-	description := firstSEOValue(metadata.MetaDescription, content.Description, seoExcerpt(content.Content, 160))
-	canonical := strings.TrimSpace(metadata.CanonicalURL)
-	if canonical == "" {
-		base := strings.TrimRight(firstSEOValue(settings["canonical_url"], settings["site_url"]), "/")
-		if base != "" {
-			canonical = base + seoContentPath(database.CountryCode(countryID), contentType, contentID)
-		}
-	}
-	image := firstSEOValue(metadata.OGImage, content.ImageURL, settings["site_logo"])
-	analysis := AnalyzeSEO(SEOAnalysisInput{Title: title, Content: content.Content, MetaDescription: description, FocusKeyword: metadata.FocusKeyword, CanonicalURL: canonical, ImageURL: image, SchemaType: metadata.SchemaType, SchemaJSON: metadata.SchemaJSON})
+	fields := resolveSEOFields(countryID, contentType, contentID, content, metadata, settings)
+	analysis := s.effectiveAnalysis(content, metadata, fields, customized)
 	robots := buildSEORobots(metadata)
 	var schema json.RawMessage
 	if strings.TrimSpace(metadata.SchemaJSON) != "" && json.Valid([]byte(metadata.SchemaJSON)) {
 		schema = json.RawMessage(metadata.SchemaJSON)
 	}
-	return &EffectiveSEO{ContentType: contentType, ContentID: contentID, Title: title, Description: description, Keywords: firstSEOValue(metadata.AdditionalKeywords, content.Keywords), CanonicalURL: canonical, Robots: robots, RobotsIndex: metadata.RobotsIndex, RobotsFollow: metadata.RobotsFollow, OGTitle: firstSEOValue(metadata.OGTitle, title), OGDescription: firstSEOValue(metadata.OGDescription, description), OGImage: image, TwitterTitle: firstSEOValue(metadata.TwitterTitle, metadata.OGTitle, title), TwitterDescription: firstSEOValue(metadata.TwitterDescription, metadata.OGDescription, description), TwitterImage: firstSEOValue(metadata.TwitterImage, image), SchemaType: firstSEOValue(metadata.SchemaType, "Article"), SchemaJSON: schema, Cornerstone: metadata.Cornerstone, Score: analysis.Score, Analysis: analysis, Customized: customized}, nil
+	return &EffectiveSEO{ContentType: contentType, ContentID: contentID, Title: fields.title, Description: fields.description, Keywords: firstSEOValue(metadata.AdditionalKeywords, content.Keywords), CanonicalURL: fields.canonical, Robots: robots, RobotsIndex: metadata.RobotsIndex, RobotsFollow: metadata.RobotsFollow, OGTitle: firstSEOValue(metadata.OGTitle, fields.title), OGDescription: firstSEOValue(metadata.OGDescription, fields.description), OGImage: fields.image, TwitterTitle: firstSEOValue(metadata.TwitterTitle, metadata.OGTitle, fields.title), TwitterDescription: firstSEOValue(metadata.TwitterDescription, metadata.OGDescription, fields.description), TwitterImage: firstSEOValue(metadata.TwitterImage, fields.image), SchemaType: firstSEOValue(metadata.SchemaType, "Article"), SchemaJSON: schema, Cornerstone: metadata.Cornerstone, Score: analysis.Score, Analysis: analysis, Customized: customized}, nil
+}
+
+// resolvedSEOFields holds the merged presentation values shared by the public
+// EffectiveSEO payload, the on-page analyzer input, and the stored analysis
+// written on save. Keeping one resolver keeps all three consistent.
+type resolvedSEOFields struct {
+	title       string
+	description string
+	canonical   string
+	image       string
+}
+
+func resolveSEOFields(countryID database.CountryID, contentType string, contentID uint, content *repositories.SEOContent, metadata *models.SEOMetadata, settings map[string]string) resolvedSEOFields {
+	title := firstSEOValue(metadata.SEOTitle, content.Title)
+	if template := strings.TrimSpace(settings["seo_title_template"]); metadata.SEOTitle == "" && template != "" {
+		siteName := firstSEOValue(settings["site_name"], "موقع الإيمان")
+		title = strings.NewReplacer("%title%", content.Title, "%site_name%", siteName, "%country%", database.CountryCode(countryID)).Replace(template)
+	}
+	description := firstSEOValue(metadata.MetaDescription, content.Description, seoExcerpt(content.Content, 160))
+	canonical := strings.TrimSpace(metadata.CanonicalURL)
+	if canonical == "" {
+		if base := strings.TrimRight(firstSEOValue(settings["canonical_url"], settings["site_url"]), "/"); base != "" {
+			canonical = base + seoContentPath(database.CountryCode(countryID), contentType, contentID)
+		}
+	}
+	// site_logo is deliberately not a fallback: it is a brand mark, not a per-page
+	// share image. Leaving this empty lets the frontend fall back to the first real
+	// in-content image, which articles need because they carry no image column.
+	image := firstSEOValue(metadata.OGImage, content.ImageURL)
+	return resolvedSEOFields{title: title, description: description, canonical: canonical, image: image}
+}
+
+func seoAnalysisInput(content *repositories.SEOContent, metadata *models.SEOMetadata, fields resolvedSEOFields) SEOAnalysisInput {
+	return SEOAnalysisInput{Title: fields.title, Content: content.Content, MetaDescription: fields.description, FocusKeyword: metadata.FocusKeyword, CanonicalURL: fields.canonical, ImageURL: fields.image, SchemaType: metadata.SchemaType, SchemaJSON: metadata.SchemaJSON}
+}
+
+// effectiveAnalysis serves the stored analysis for content that already has a
+// saved SEO row (SaveMetadata / RestoreRevision recompute and persist it with the
+// same resolver), and only runs a live analysis for content that was never
+// configured. This keeps the public /api/seo/:type/:id endpoint — hit on every
+// article/post render — off the regex pipeline on the hot path.
+func (s *seoService) effectiveAnalysis(content *repositories.SEOContent, metadata *models.SEOMetadata, fields resolvedSEOFields, customized bool) SEOAnalysisResult {
+	if customized && strings.TrimSpace(metadata.AnalysisJSON) != "" {
+		var stored SEOAnalysisResult
+		if json.Unmarshal([]byte(metadata.AnalysisJSON), &stored) == nil && len(stored.Checks) > 0 {
+			return stored
+		}
+	}
+	return AnalyzeSEO(seoAnalysisInput(content, metadata, fields))
 }
 
 func (s *seoService) SaveMetadata(ctx context.Context, countryID database.CountryID, contentType string, contentID uint, input SEOMetadataInput, userID uint) (*models.SEOMetadata, error) {
@@ -262,7 +299,9 @@ func (s *seoService) SaveMetadata(ctx context.Context, countryID database.Countr
 	}
 	applySEOMetadataInput(item, input)
 	item.UpdatedBy = optionalSEOUser(userID)
-	analysis := AnalyzeSEO(SEOAnalysisInput{Title: firstSEOValue(item.SEOTitle, content.Title), Content: content.Content, MetaDescription: firstSEOValue(item.MetaDescription, content.Description), FocusKeyword: item.FocusKeyword, CanonicalURL: item.CanonicalURL, ImageURL: firstSEOValue(item.OGImage, content.ImageURL), SchemaType: item.SchemaType, SchemaJSON: item.SchemaJSON})
+	settings, _ := s.settings.GetPublic(ctx, countryID)
+	fields := resolveSEOFields(countryID, contentType, contentID, content, item, settings)
+	analysis := AnalyzeSEO(seoAnalysisInput(content, item, fields))
 	encoded, _ := json.Marshal(analysis)
 	item.Score, item.AnalysisJSON = analysis.Score, string(encoded)
 	if err := s.repo.SaveMetadata(ctx, countryID, item); err != nil {
@@ -394,7 +433,9 @@ func (s *seoService) RestoreRevision(ctx context.Context, countryID database.Cou
 	}
 	snapshot.ID, snapshot.ContentType, snapshot.ContentID, snapshot.CountryCode = item.ID, item.ContentType, item.ContentID, item.CountryCode
 	snapshot.CreatedAt, snapshot.CreatedBy, snapshot.UpdatedBy = item.CreatedAt, item.CreatedBy, optionalSEOUser(userID)
-	analysis := AnalyzeSEO(SEOAnalysisInput{Title: firstSEOValue(snapshot.SEOTitle, content.Title), Content: content.Content, MetaDescription: firstSEOValue(snapshot.MetaDescription, content.Description), FocusKeyword: snapshot.FocusKeyword, CanonicalURL: snapshot.CanonicalURL, ImageURL: firstSEOValue(snapshot.OGImage, content.ImageURL), SchemaType: snapshot.SchemaType, SchemaJSON: snapshot.SchemaJSON})
+	settings, _ := s.settings.GetPublic(ctx, countryID)
+	fields := resolveSEOFields(countryID, contentType, contentID, content, &snapshot, settings)
+	analysis := AnalyzeSEO(seoAnalysisInput(content, &snapshot, fields))
 	encoded, _ := json.Marshal(analysis)
 	snapshot.Score, snapshot.AnalysisJSON = analysis.Score, string(encoded)
 	if err := s.repo.SaveMetadata(ctx, countryID, &snapshot); err != nil {
@@ -630,7 +671,7 @@ func (s *seoService) resolveRedirectOnce(ctx context.Context, countryID database
 					candidate.TargetURL = strings.Replace(candidate.TargetURL, "{path}", strings.TrimPrefix(path, candidate.SourcePath), 1)
 				}
 			case models.SEORedirectMatchRegex:
-				re, compileErr := regexp.Compile(candidate.SourcePath)
+				re, compileErr := s.cachedRedirectRegex(candidate.SourcePath)
 				if compileErr == nil && re.MatchString(path) {
 					candidate.TargetURL = re.ReplaceAllString(path, candidate.TargetURL)
 					item = candidate
@@ -657,6 +698,22 @@ func (s *seoService) resolveRedirectOnce(ctx context.Context, countryID database
 		_ = s.repo.RecordRedirectHit(ctx, countryID, item.ID)
 	}
 	return &SEORedirectMatch{ID: item.ID, TargetURL: target, StatusCode: item.StatusCode, PreserveQuery: item.PreserveQuery}, nil
+}
+
+// cachedRedirectRegex compiles a regex-redirect source once and reuses it. The
+// 404 resolver runs on every site miss and previously recompiled every regex
+// candidate (up to 500) on each request. Sources are validated at write time, so
+// a compile failure here means corrupt data — it is simply skipped, not cached.
+func (s *seoService) cachedRedirectRegex(pattern string) (*regexp.Regexp, error) {
+	if cached, ok := s.redirectRE.Load(pattern); ok {
+		return cached.(*regexp.Regexp), nil
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+	s.redirectRE.Store(pattern, re)
+	return re, nil
 }
 
 func (s *seoService) ListRedirects(ctx context.Context, countryID database.CountryID, search string, limit, offset int) ([]models.SEORedirect, int64, error) {
@@ -792,11 +849,12 @@ func (s *seoService) runAudit(countryID database.CountryID, runID uint) {
 	run.TotalURLs = len(contents)
 	_ = s.repo.UpdateAuditRun(ctx, countryID, run)
 	issues := make([]models.SEOIssue, 0)
+	// Fetch settings once for the whole run instead of once per audited URL
+	// (getEffective used to re-fetch them on every iteration).
+	settings, _ := s.settings.GetPublic(ctx, countryID)
 	localHost := ""
-	if settings, settingsErr := s.settings.GetPublic(ctx, countryID); settingsErr == nil {
-		if site, parseErr := url.Parse(firstSEOValue(settings["canonical_url"], settings["site_url"])); parseErr == nil {
-			localHost = site.Hostname()
-		}
+	if site, parseErr := url.Parse(firstSEOValue(settings["canonical_url"], settings["site_url"])); parseErr == nil {
+		localHost = site.Hostname()
 	}
 	linkAvailability := make(map[string]*bool)
 	for _, summary := range contents {
@@ -804,12 +862,19 @@ func (s *seoService) runAudit(countryID database.CountryID, runID uint) {
 		if getErr != nil {
 			continue
 		}
-		effective, effectiveErr := s.getEffective(ctx, countryID, summary.ContentType, summary.ContentID, false)
-		if effectiveErr != nil {
+		metadata, metaErr := s.repo.FindMetadata(ctx, countryID, summary.ContentType, summary.ContentID)
+		if errors.Is(metaErr, gorm.ErrRecordNotFound) {
+			metadata = defaultSEOMetadata(database.CountryCode(countryID), summary.ContentType, summary.ContentID)
+		} else if metaErr != nil {
 			continue
 		}
+		// The audit intentionally re-analyzes against current content rather than
+		// trusting the stored analysis, so a content edit that lowered quality
+		// without a SEO re-save still surfaces here.
+		fields := resolveSEOFields(countryID, summary.ContentType, summary.ContentID, content, metadata, settings)
+		analysis := AnalyzeSEO(seoAnalysisInput(content, metadata, fields))
 		urlPath := seoContentPath(database.CountryCode(countryID), summary.ContentType, summary.ContentID)
-		for _, check := range effective.Analysis.Checks {
+		for _, check := range analysis.Checks {
 			if check.Status == "good" {
 				continue
 			}

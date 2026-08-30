@@ -3,6 +3,8 @@ package searchconsole
 import (
 	"context"
 	"errors"
+	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -42,12 +44,22 @@ type upsertPropertyRequest struct {
 	Active  *bool  `json:"active"`
 }
 
+var gscDomainPropertyPattern = regexp.MustCompile(`^sc-domain:[A-Za-z0-9.-]+$`)
+
+func validGSCProperty(value string) bool {
+	if gscDomainPropertyPattern.MatchString(value) {
+		return true
+	}
+	parsed, err := url.ParseRequestURI(value)
+	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != ""
+}
+
 // UpsertProperty sets the site_url Search Console property for one country.
 // The one-time step of adding the service account as a user on that property
 // in the Search Console UI still has to happen outside this app — see plan §4.1.
 func (h *Handler) UpsertProperty(c *fiber.Ctx) error {
 	countryCode := strings.TrimSpace(c.Params("country_code"))
-	if countryCode == "" {
+	if countryCode != "jo" && countryCode != "sa" && countryCode != "eg" && countryCode != "ps" {
 		return utils.BadRequest(c, "رمز الدولة مطلوب")
 	}
 	var req upsertPropertyRequest
@@ -55,8 +67,8 @@ func (h *Handler) UpsertProperty(c *fiber.Ctx) error {
 		return utils.BadRequest(c, "بيانات غير صحيحة")
 	}
 	siteURL := strings.TrimSpace(req.SiteURL)
-	if siteURL == "" {
-		return utils.BadRequest(c, "site_url مطلوب")
+	if !validGSCProperty(siteURL) {
+		return utils.BadRequest(c, "خاصية Search Console غير صالحة")
 	}
 	active := true
 	if req.Active != nil {
@@ -173,8 +185,8 @@ func (h *Handler) Sync(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusAccepted).JSON(utils.APIResponse{Success: true, Message: "بدأت مزامنة حالة الفهرسة", Data: run})
 }
 
-// SyncAnalytics starts a background Search Analytics sync for the trailing 30
-// days for one country's property.
+// SyncAnalytics starts a bounded background Search Analytics sync. The
+// dashboard defaults to 90 days so its ranking views are useful immediately.
 func (h *Handler) SyncAnalytics(c *fiber.Ctx) error {
 	if h.svc == nil {
 		return utils.BadRequest(c, "لم يتم تفعيل ربط Google Search Console بعد")
@@ -183,7 +195,11 @@ func (h *Handler) SyncAnalytics(c *fiber.Ctx) error {
 	if countryCode == "" {
 		return utils.BadRequest(c, "country_code مطلوب")
 	}
-	run, err := h.svc.SyncSearchAnalytics(c.Context(), countryCode, 30)
+	days := c.QueryInt("days", 90)
+	if days <= 0 || days > 400 {
+		days = 90
+	}
+	run, err := h.svc.SyncSearchAnalytics(c.Context(), countryCode, days)
 	if err != nil {
 		return h.syncStartError(c, err)
 	}
@@ -219,4 +235,25 @@ func (h *Handler) Analytics(c *fiber.Ctx) error {
 		return utils.InternalError(c)
 	}
 	return utils.Success(c, "بيانات الأداء في بحث Google", rows)
+}
+
+// Keywords returns aggregated real Search Console queries and average
+// positions. It is a report over stored data, not a synthetic rank estimate.
+func (h *Handler) Keywords(c *fiber.Ctx) error {
+	countryCode := strings.TrimSpace(c.Query("country_code"))
+	if countryCode == "" {
+		return utils.BadRequest(c, "country_code مطلوب")
+	}
+	days := c.QueryInt("days", 30)
+	if days <= 0 || days > 400 {
+		days = 30
+	}
+	pag := utils.GetPagination(c)
+	since := time.Now().UTC().AddDate(0, 0, -days)
+	since = time.Date(since.Year(), since.Month(), since.Day(), 0, 0, 0, 0, time.UTC)
+	rows, total, err := h.repo.ListKeywordAnalytics(c.Context(), countryCode, strings.TrimSpace(c.Query("q")), since, pag.PerPage, pag.Offset)
+	if err != nil {
+		return utils.InternalError(c)
+	}
+	return utils.Paginated(c, "عبارات البحث والترتيب", rows, pag.BuildMeta(total))
 }

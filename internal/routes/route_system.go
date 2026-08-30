@@ -8,7 +8,7 @@ import (
 
 // registerSystemRoutes handles configuration, security settings,
 // robots/sitemap, redis management, legal pages, and localization.
-func registerSystemRoutes(api, _, dash fiber.Router, h *Handlers) {
+func registerSystemRoutes(api, public, dash fiber.Router, h *Handlers) {
 	// =====================
 	// PUBLIC ROUTES
 	// =====================
@@ -51,6 +51,14 @@ func registerSystemRoutes(api, _, dash fiber.Router, h *Handlers) {
 		return utils.Success(c, "success", lang)
 	})
 
+	// ImanSEO public presentation and 404 recovery. Specific routes precede the
+	// dynamic content route so "authors" can never be parsed as a content type.
+	publicSEO := public.Group("/seo")
+	publicSEO.Get("/redirect", h.SEO.ResolveRedirect)
+	publicSEO.Post("/404", h.SEO.Record404)
+	publicSEO.Get("/authors/:id", h.SEO.PublicAuthor)
+	publicSEO.Get("/:content_type/:id", h.SEO.Effective)
+
 	// =====================
 	// ADMIN DASHBOARD ROUTES
 	// =====================
@@ -82,6 +90,38 @@ func registerSystemRoutes(api, _, dash fiber.Router, h *Handlers) {
 	dashSitemap.Post("/generate", h.Sitemap.GenerateAll)
 	dashSitemap.Delete("/delete/:type/:database", h.Sitemap.Delete)
 
+	// Native SEO platform. Content-policy auditing and sitemap generation keep
+	// their existing, stricter modules; this group coordinates presentation,
+	// analysis, redirects, internal links, authorship and indexing signals.
+	// Per-content editor tools authorize against the matching article/post
+	// permission inside the handler, while platform-wide controls remain under
+	// the dedicated manage-seo permission below.
+	dashSEOEditor := dash.Group("/seo")
+	dashSEOEditor.Post("/analyze", h.SEO.Analyze)
+	dashSEOEditor.Get("/metadata/:content_type/:id", h.SEO.Metadata)
+	dashSEOEditor.Put("/metadata/:content_type/:id", h.SEO.SaveMetadata)
+	dashSEOEditor.Get("/metadata/:content_type/:id/revisions", h.SEO.Revisions)
+	dashSEOEditor.Post("/metadata/:content_type/:id/revisions/:revision_id/restore", h.SEO.RestoreRevision)
+	dashSEOEditor.Get("/links/:content_type/:id", h.SEO.LinkSuggestions)
+
+	dashSEO := dash.Group("/seo", middleware.Can("manage seo"))
+	dashSEO.Get("/overview", h.SEO.Overview)
+	dashSEO.Get("/content", h.SEO.Content)
+	dashSEO.Get("/redirects", h.SEO.Redirects)
+	dashSEO.Post("/redirects", h.SEO.CreateRedirect)
+	dashSEO.Put("/redirects/:id", h.SEO.UpdateRedirect)
+	dashSEO.Delete("/redirects/:id", h.SEO.DeleteRedirect)
+	dashSEO.Get("/404", h.SEO.NotFoundLogs)
+	dashSEO.Post("/404/:id/resolve", h.SEO.Resolve404Log)
+	dashSEO.Delete("/404", h.SEO.Clear404)
+	dashSEO.Get("/audits", h.SEO.Audits)
+	dashSEO.Post("/audits", h.SEO.StartAudit)
+	dashSEO.Get("/audits/:id", h.SEO.Audit)
+	dashSEO.Get("/audits/:id/issues", h.SEO.AuditIssues)
+	dashSEO.Get("/authors", h.SEO.Authors)
+	dashSEO.Put("/authors", h.SEO.SaveAuthor)
+	dashSEO.Post("/indexnow", h.SEO.IndexNow)
+
 	// Content policy audit
 	dashContentAudit := dash.Group("/content-audit", middleware.Can("manage content audit"))
 	dashContentAudit.Post("/run", h.ContentAudit.Start)
@@ -110,12 +150,13 @@ func registerSystemRoutes(api, _, dash fiber.Router, h *Handlers) {
 	// above by design: this reports what Google actually shows (index status,
 	// clicks/impressions), never what internal readiness thinks it should show.
 	// See CONTENT_QUALITY_GOVERNANCE_CENTER_PLAN.md §4.
-	dashGSC := dash.Group("/gsc", middleware.Can("manage content audit"))
+	dashGSC := dash.Group("/gsc", middleware.CanAny("manage content audit", "manage seo"))
 	dashGSC.Get("/properties", h.SearchConsole.ListProperties)
 	dashGSC.Post("/properties/:country_code", h.SearchConsole.UpsertProperty)
 	dashGSC.Post("/sync", h.SearchConsole.Sync)
 	dashGSC.Post("/analytics/sync", h.SearchConsole.SyncAnalytics)
 	dashGSC.Get("/analytics", h.SearchConsole.Analytics)
+	dashGSC.Get("/keywords", h.SearchConsole.Keywords)
 	dashGSC.Get("/status/:content_type/:id", h.SearchConsole.Status)
 	dashGSC.Get("/test", h.SearchConsole.TestConnection)
 

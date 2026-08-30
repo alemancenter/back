@@ -69,7 +69,7 @@ func (h *Handler) Delete(c *fiber.Ctx) error {
 	sitemapType := c.Params("type")
 	dbCode := c.Params("database")
 
-	allowed := map[string]bool{"articles": true, "post": true, "static": true, "download": true, "index": true}
+	allowed := map[string]bool{"articles": true, "post": true, "static": true, "images": true, "videos": true, "news": true, "download": true, "index": true}
 	if !allowed[sitemapType] {
 		return utils.BadRequest(c, "نوع خريطة موقع غير صحيح")
 	}

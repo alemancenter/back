@@ -151,8 +151,9 @@ func (c *Client) InspectURL(ctx context.Context, siteURL, inspectionURL string) 
 	return result, nil
 }
 
-// SearchAnalyticsRow is one (page, date) row from the Search Analytics API.
+// SearchAnalyticsRow is one (query, page, date) row from Search Analytics.
 type SearchAnalyticsRow struct {
+	Query       string
 	URL         string
 	Date        time.Time
 	Clicks      int
@@ -166,6 +167,7 @@ type searchAnalyticsRequest struct {
 	EndDate    string   `json:"endDate"`
 	Dimensions []string `json:"dimensions"`
 	RowLimit   int      `json:"rowLimit"`
+	StartRow   int      `json:"startRow,omitempty"`
 }
 
 type searchAnalyticsResponse struct {
@@ -178,57 +180,58 @@ type searchAnalyticsResponse struct {
 	} `json:"rows"`
 }
 
-// QuerySearchAnalytics fetches per-page, per-day clicks/impressions/position
+// QuerySearchAnalytics fetches per-query, per-page, per-day metrics
 // for [startDate, endDate]. Data typically lags 2-3 days behind real time and
 // covers at most the trailing 16 months — callers should not query further
 // back than that.
 func (c *Client) QuerySearchAnalytics(ctx context.Context, siteURL string, startDate, endDate time.Time) ([]SearchAnalyticsRow, error) {
-	payload, err := json.Marshal(searchAnalyticsRequest{
-		StartDate:  startDate.Format("2006-01-02"),
-		EndDate:    endDate.Format("2006-01-02"),
-		Dimensions: []string{"page", "date"},
-		RowLimit:   25000,
-	})
-	if err != nil {
-		return nil, err
-	}
 	endpoint := fmt.Sprintf("https://www.googleapis.com/webmasters/v3/sites/%s/searchAnalytics/query", url.PathEscape(siteURL))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, raw, err := c.doWithBackoff(req, payload)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("search analytics query failed: status %d: %s", resp.StatusCode, truncateForError(raw))
-	}
-
-	var parsed searchAnalyticsResponse
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, fmt.Errorf("search analytics: decode response: %w", err)
-	}
-
-	rows := make([]SearchAnalyticsRow, 0, len(parsed.Rows))
-	for _, row := range parsed.Rows {
-		if len(row.Keys) < 2 {
-			continue
-		}
-		date, err := time.Parse("2006-01-02", row.Keys[1])
-		if err != nil {
-			continue
-		}
-		rows = append(rows, SearchAnalyticsRow{
-			URL:         row.Keys[0],
-			Date:        date,
-			Clicks:      int(row.Clicks),
-			Impressions: int(row.Impressions),
-			CTR:         row.CTR,
-			Position:    row.Position,
+	const pageSize = 25000
+	const maxPages = 20 // bounded safety cap: at most 500k stored rows per sync
+	rows := make([]SearchAnalyticsRow, 0, pageSize)
+	for page := 0; page < maxPages; page++ {
+		payload, err := json.Marshal(searchAnalyticsRequest{
+			StartDate:  startDate.Format("2006-01-02"),
+			EndDate:    endDate.Format("2006-01-02"),
+			Dimensions: []string{"query", "page", "date"},
+			RowLimit:   pageSize,
+			StartRow:   page * pageSize,
 		})
+		if err != nil {
+			return nil, err
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, raw, err := c.doWithBackoff(req, payload)
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return nil, fmt.Errorf("search analytics query failed: status %d: %s", resp.StatusCode, truncateForError(raw))
+		}
+		var parsed searchAnalyticsResponse
+		if err := json.Unmarshal(raw, &parsed); err != nil {
+			return nil, fmt.Errorf("search analytics: decode response: %w", err)
+		}
+		for _, row := range parsed.Rows {
+			if len(row.Keys) < 3 {
+				continue
+			}
+			date, parseErr := time.Parse("2006-01-02", row.Keys[2])
+			if parseErr != nil {
+				continue
+			}
+			rows = append(rows, SearchAnalyticsRow{
+				Query: row.Keys[0], URL: row.Keys[1], Date: date,
+				Clicks: int(row.Clicks), Impressions: int(row.Impressions), CTR: row.CTR, Position: row.Position,
+			})
+		}
+		if len(parsed.Rows) < pageSize {
+			break
+		}
 	}
 	return rows, nil
 }

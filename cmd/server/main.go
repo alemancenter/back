@@ -123,7 +123,15 @@ func main() {
 		&models.GSCProperty{},
 		&models.GSCURLStatus{},
 		&models.GSCSearchAnalyticsDaily{},
+		&models.GSCSearchQueryDaily{},
 		&models.GSCSyncRun{},
+		&models.SEOMetadata{},
+		&models.SEORevision{},
+		&models.SEORedirect{},
+		&models.SEO404Log{},
+		&models.SEOAuditRun{},
+		&models.SEOIssue{},
+		&models.SEOIndexNowSubmission{},
 		&models.SubscriptionPlan{},
 		&models.TeacherProfile{},
 		&models.TeacherSubscription{},
@@ -156,6 +164,7 @@ func main() {
 		}
 	}
 	ensurePermission("manage content audit")
+	ensurePermission("manage seo")
 	ensurePermission("manage teacher subscriptions")
 	ensurePermission("teacher.subscription.plans.view")
 	ensurePermission("teacher.subscription.orders.review")
@@ -172,6 +181,11 @@ func main() {
 
 	if err := services.EnsureTeacherSubscriptionDatabase(database.DB()); err != nil {
 		logger.Warn("teacher subscription main database bootstrap failed", zap.Error(err))
+	}
+	// Author identities are global and belong only to the Jordan primary user
+	// database. Never add this model to the per-country migration loop above.
+	if err := primaryDB.AutoMigrate(&models.SEOAuthorProfile{}); err != nil {
+		logger.Warn("SEO author profile migration failed", zap.Error(err))
 	}
 
 	// Initialize Redis

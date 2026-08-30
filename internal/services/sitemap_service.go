@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,6 +75,58 @@ type sitemapIndex struct {
 	Sitemaps []sitemapIndexEntry `xml:"sitemap"`
 }
 
+type imageSitemapItem struct {
+	Loc   string `xml:"image:loc"`
+	Title string `xml:"image:title,omitempty"`
+}
+type imageSitemapEntry struct {
+	Loc    string             `xml:"loc"`
+	Images []imageSitemapItem `xml:"image:image"`
+}
+type imageURLSet struct {
+	XMLName    xml.Name            `xml:"urlset"`
+	Xmlns      string              `xml:"xmlns,attr"`
+	XmlnsImage string              `xml:"xmlns:image,attr"`
+	URLs       []imageSitemapEntry `xml:"url"`
+}
+
+type videoSitemapItem struct {
+	ThumbnailLoc string `xml:"video:thumbnail_loc"`
+	ContentLoc   string `xml:"video:content_loc"`
+	Title        string `xml:"video:title"`
+	Description  string `xml:"video:description"`
+}
+type videoSitemapEntry struct {
+	Loc    string             `xml:"loc"`
+	Videos []videoSitemapItem `xml:"video:video"`
+}
+type videoURLSet struct {
+	XMLName    xml.Name            `xml:"urlset"`
+	Xmlns      string              `xml:"xmlns,attr"`
+	XmlnsVideo string              `xml:"xmlns:video,attr"`
+	URLs       []videoSitemapEntry `xml:"url"`
+}
+
+type newsPublication struct {
+	Name     string `xml:"news:name"`
+	Language string `xml:"news:language"`
+}
+type newsSitemapItem struct {
+	Publication     newsPublication `xml:"news:publication"`
+	PublicationDate string          `xml:"news:publication_date"`
+	Title           string          `xml:"news:title"`
+}
+type newsSitemapEntry struct {
+	Loc  string          `xml:"loc"`
+	News newsSitemapItem `xml:"news:news"`
+}
+type newsURLSet struct {
+	XMLName   xml.Name           `xml:"urlset"`
+	Xmlns     string             `xml:"xmlns,attr"`
+	XmlnsNews string             `xml:"xmlns:news,attr"`
+	URLs      []newsSitemapEntry `xml:"url"`
+}
+
 // --- helpers ---
 func (s *sitemapService) sitemapDir() string {
 	return filepath.Join(config.Get().Storage.Path, "sitemaps")
@@ -135,7 +188,7 @@ func qualityDecisionForSitemap(decisions map[uint]models.ContentAIDecision, id u
 }
 
 func (s *sitemapService) GetStatus(dbCode string) map[string]SitemapInfo {
-	types := []string{"articles", "post", "static", "index"}
+	types := []string{"articles", "post", "static", "images", "videos", "news", "index"}
 	baseURL := s.siteURL()
 	result := make(map[string]SitemapInfo, len(types))
 
@@ -162,9 +215,13 @@ func (s *sitemapService) GenerateAll(dbCode string) []error {
 
 	base := s.siteURL()
 	cc := dbCode // country code used in frontend URL segments
+	features, featureErr := s.repo.GetSitemapFeatures(dbCode)
+	if featureErr != nil {
+		return []error{featureErr}
+	}
 
 	var wg sync.WaitGroup
-	errs := make([]error, 4)
+	errs := make([]error, 7)
 
 	// Articles
 	wg.Add(1)
@@ -282,22 +339,156 @@ func (s *sitemapService) GenerateAll(dbCode string) []error {
 		errs[2] = s.writeXML(s.sitemapFilename("static", dbCode), set)
 	}()
 
+	// Images linked to indexable articles and posts.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if !features["images"] {
+			err := os.Remove(s.sitemapFilename("images", dbCode))
+			if err != nil && !os.IsNotExist(err) {
+				errs[3] = MapError(err)
+			}
+			return
+		}
+		rows, err := s.repo.GetSitemapImages(dbCode)
+		if err != nil {
+			errs[3] = err
+			return
+		}
+		allowed, err := s.indexableContentIDs(dbCode)
+		if err != nil {
+			errs[3] = err
+			return
+		}
+		grouped := make(map[string]*imageSitemapEntry)
+		order := make([]string, 0)
+		for _, row := range rows {
+			key := fmt.Sprintf("%s:%d", row.ContentType, row.ContentID)
+			if !allowed[key] {
+				continue
+			}
+			entry := grouped[key]
+			if entry == nil {
+				entry = &imageSitemapEntry{Loc: base + seoSitemapContentPath(cc, row.ContentType, row.ContentID)}
+				grouped[key] = entry
+				order = append(order, key)
+			}
+			entry.Images = append(entry.Images, imageSitemapItem{Loc: sitemapImageURL(base, row.Path), Title: row.Title})
+		}
+		set := imageURLSet{Xmlns: "http://www.sitemaps.org/schemas/sitemap/0.9", XmlnsImage: "http://www.google.com/schemas/sitemap-image/1.1"}
+		for _, key := range order {
+			set.URLs = append(set.URLs, *grouped[key])
+		}
+		errs[3] = s.writeXML(s.sitemapFilename("images", dbCode), set)
+	}()
+
+	// Uploaded video attachments. An empty map is still valid and makes feature
+	// availability explicit without inventing video metadata.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if !features["videos"] {
+			err := os.Remove(s.sitemapFilename("videos", dbCode))
+			if err != nil && !os.IsNotExist(err) {
+				errs[4] = MapError(err)
+			}
+			return
+		}
+		rows, err := s.repo.GetSitemapVideos(dbCode)
+		if err != nil {
+			errs[4] = err
+			return
+		}
+		allowed, err := s.indexableContentIDs(dbCode)
+		if err != nil {
+			errs[4] = err
+			return
+		}
+		grouped := make(map[string]*videoSitemapEntry)
+		order := make([]string, 0)
+		for _, row := range rows {
+			if strings.TrimSpace(row.Thumbnail) == "" {
+				// thumbnail_loc is mandatory in Google's video sitemap format;
+				// omit videos that do not have a real thumbnail instead of
+				// publishing structurally invalid or fabricated metadata.
+				continue
+			}
+			key := fmt.Sprintf("%s:%d", row.ContentType, row.ContentID)
+			if !allowed[key] {
+				continue
+			}
+			entry := grouped[key]
+			if entry == nil {
+				entry = &videoSitemapEntry{Loc: base + seoSitemapContentPath(cc, row.ContentType, row.ContentID)}
+				grouped[key] = entry
+				order = append(order, key)
+			}
+			description := strings.TrimSpace(row.Description)
+			if description == "" {
+				description = row.Title
+			}
+			entry.Videos = append(entry.Videos, videoSitemapItem{ThumbnailLoc: sitemapImageURL(base, row.Thumbnail), ContentLoc: sitemapFileURL(base, row.Path), Title: row.Title, Description: description})
+		}
+		set := videoURLSet{Xmlns: "http://www.sitemaps.org/schemas/sitemap/0.9", XmlnsVideo: "http://www.google.com/schemas/sitemap-video/1.1"}
+		for _, key := range order {
+			set.URLs = append(set.URLs, *grouped[key])
+		}
+		errs[4] = s.writeXML(s.sitemapFilename("videos", dbCode), set)
+	}()
+
+	// Google News accepts URLs published in the trailing 48 hours.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if !features["news"] {
+			err := os.Remove(s.sitemapFilename("news", dbCode))
+			if err != nil && !os.IsNotExist(err) {
+				errs[5] = MapError(err)
+			}
+			return
+		}
+		rows, err := s.repo.GetRecentNews(dbCode, time.Now().Add(-48*time.Hour))
+		if err != nil {
+			errs[5] = err
+			return
+		}
+		allowed, err := s.indexableContentIDs(dbCode)
+		if err != nil {
+			errs[5] = err
+			return
+		}
+		set := newsURLSet{Xmlns: "http://www.sitemaps.org/schemas/sitemap/0.9", XmlnsNews: "http://www.google.com/schemas/sitemap-news/0.9"}
+		for _, row := range rows {
+			if !allowed[fmt.Sprintf("post:%d", row.ID)] {
+				continue
+			}
+			set.URLs = append(set.URLs, newsSitemapEntry{
+				Loc:  fmt.Sprintf("%s/%s/posts/%d", base, cc, row.ID),
+				News: newsSitemapItem{Publication: newsPublication{Name: "موقع الإيمان", Language: "ar"}, PublicationDate: row.PublishedAt.UTC().Format(time.RFC3339), Title: row.Title},
+			})
+		}
+		errs[5] = s.writeXML(s.sitemapFilename("news", dbCode), set)
+	}()
+
 	wg.Wait()
 
 	// Download landing pages are utility pages and are intentionally noindex.
 	// Remove any sitemap generated by older releases so it cannot remain discoverable.
 	if err := os.Remove(s.sitemapFilename("download", dbCode)); err != nil && !os.IsNotExist(err) {
-		errs[3] = MapError(err)
+		errs[6] = MapError(err)
 	}
 
-	if errs[0] == nil &&
-		errs[1] == nil &&
-		errs[2] == nil &&
-		errs[3] == nil {
-		errs[3] = s.writeSitemapIndex(
+	if errs[0] == nil && errs[1] == nil && errs[2] == nil && errs[3] == nil && errs[4] == nil && errs[5] == nil && errs[6] == nil {
+		sitemapTypes := []string{"articles", "post", "static"}
+		for _, sitemapType := range []string{"images", "videos", "news"} {
+			if features[sitemapType] {
+				sitemapTypes = append(sitemapTypes, sitemapType)
+			}
+		}
+		errs[6] = s.writeSitemapIndex(
 			dbCode,
 			base,
-			[]string{"articles", "post", "static"},
+			sitemapTypes,
 		)
 	}
 
@@ -309,6 +500,73 @@ func (s *sitemapService) GenerateAll(dbCode string) []error {
 	}
 
 	return actualErrors
+}
+
+func (s *sitemapService) indexableContentIDs(dbCode string) (map[string]bool, error) {
+	allowed := make(map[string]bool)
+	for _, contentType := range []string{"article", "post"} {
+		decisions, err := s.repo.GetLatestQualityDecisions(dbCode, contentType)
+		if err != nil {
+			return nil, err
+		}
+		corrupted, err := s.repo.GetCorruptedContentIDs(dbCode, contentType)
+		if err != nil {
+			return nil, err
+		}
+		if contentType == "article" {
+			rows, err := s.repo.GetActiveArticles(dbCode)
+			if err != nil {
+				return nil, err
+			}
+			for _, row := range rows {
+				if sitemapQualityIndexable(qualityDecisionForSitemap(decisions, row.ID)) {
+					if _, blocked := corrupted[row.ID]; !blocked {
+						allowed[fmt.Sprintf("article:%d", row.ID)] = true
+					}
+				}
+			}
+		} else {
+			rows, err := s.repo.GetActivePosts(dbCode)
+			if err != nil {
+				return nil, err
+			}
+			for _, row := range rows {
+				if sitemapQualityIndexable(qualityDecisionForSitemap(decisions, row.ID)) {
+					if _, blocked := corrupted[row.ID]; !blocked {
+						allowed[fmt.Sprintf("post:%d", row.ID)] = true
+					}
+				}
+			}
+		}
+	}
+	return allowed, nil
+}
+
+func seoSitemapContentPath(country, contentType string, id uint) string {
+	if contentType == "article" {
+		return fmt.Sprintf("/%s/lesson/articles/%d", country, id)
+	}
+	return fmt.Sprintf("/%s/posts/%d", country, id)
+}
+
+func sitemapImageURL(base, path string) string {
+	path = strings.TrimSpace(strings.ReplaceAll(path, "\\", "/"))
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		return path
+	}
+	relative := strings.TrimPrefix(strings.TrimPrefix(path, "/"), "storage/")
+	if relative == "" {
+		return ""
+	}
+	return base + "/api/img?src=" + url.QueryEscape(relative) + "&w=1600"
+}
+
+func sitemapFileURL(base, path string) string {
+	path = strings.TrimSpace(strings.ReplaceAll(path, "\\", "/"))
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		return path
+	}
+	return base + "/storage/" + strings.TrimPrefix(strings.TrimPrefix(path, "/"), "storage/")
 }
 
 // ScheduleGenerate coalesces rapid content changes into one background refresh.

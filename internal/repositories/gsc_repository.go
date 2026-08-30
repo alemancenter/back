@@ -25,10 +25,22 @@ type GSCRepository interface {
 
 	UpsertAnalyticsRows(ctx context.Context, rows []models.GSCSearchAnalyticsDaily) error
 	ListAnalytics(ctx context.Context, countryCode, url string, since time.Time) ([]models.GSCSearchAnalyticsDaily, error)
+	UpsertQueryRows(ctx context.Context, rows []models.GSCSearchQueryDaily) error
+	ListKeywordAnalytics(ctx context.Context, countryCode, search string, since time.Time, limit, offset int) ([]GSCKeywordSummary, int64, error)
 
 	CreateSyncRun(ctx context.Context, run *models.GSCSyncRun) error
 	UpdateSyncRun(ctx context.Context, run *models.GSCSyncRun) error
 	LatestSyncRun(ctx context.Context, countryCode, kind string) (*models.GSCSyncRun, error)
+}
+
+type GSCKeywordSummary struct {
+	Query       string    `json:"query"`
+	Clicks      int64     `json:"clicks"`
+	Impressions int64     `json:"impressions"`
+	CTR         float64   `json:"ctr"`
+	Position    float64   `json:"position"`
+	Pages       int64     `json:"pages"`
+	LastDate    time.Time `json:"last_date"`
 }
 
 type gscRepository struct{}
@@ -47,7 +59,7 @@ func (r *gscRepository) ListProperties(ctx context.Context) ([]models.GSCPropert
 
 func (r *gscRepository) GetProperty(ctx context.Context, countryCode string) (*models.GSCProperty, error) {
 	var property models.GSCProperty
-	if err := database.DB().WithContext(ctx).Where("country_code = ?", countryCode).First(&property).Error; err != nil {
+	if err := database.DB().WithContext(ctx).Where("country_code = ? AND active = 1", countryCode).First(&property).Error; err != nil {
 		return nil, err
 	}
 	return &property, nil
@@ -121,6 +133,35 @@ func (r *gscRepository) ListAnalytics(ctx context.Context, countryCode, url stri
 		return nil, err
 	}
 	return rows, nil
+}
+
+func (r *gscRepository) UpsertQueryRows(ctx context.Context, rows []models.GSCSearchQueryDaily) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	return database.DB().WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "country_code"}, {Name: "query_hash"}, {Name: "url_hash"}, {Name: "date"}},
+		DoUpdates: clause.AssignmentColumns([]string{"query", "url", "clicks", "impressions", "ctr", "position", "updated_at"}),
+	}).CreateInBatches(&rows, 200).Error
+}
+
+func (r *gscRepository) ListKeywordAnalytics(ctx context.Context, countryCode, search string, since time.Time, limit, offset int) ([]GSCKeywordSummary, int64, error) {
+	db := database.DB().WithContext(ctx)
+	base := db.Model(&models.GSCSearchQueryDaily{}).Where("country_code = ? AND date >= ?", countryCode, since)
+	if search != "" {
+		base = base.Where("query LIKE ?", "%"+search+"%")
+	}
+	var total int64
+	if err := base.Distinct("query_hash").Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var rows []GSCKeywordSummary
+	err := base.Select(`query, SUM(clicks) clicks, SUM(impressions) impressions,
+		CASE WHEN SUM(impressions) > 0 THEN SUM(clicks) / SUM(impressions) ELSE 0 END ctr,
+		CASE WHEN SUM(impressions) > 0 THEN SUM(position * impressions) / SUM(impressions) ELSE AVG(position) END position,
+		COUNT(DISTINCT url_hash) pages, MAX(date) last_date`).
+		Group("query_hash, query").Order("impressions DESC, clicks DESC").Limit(limit).Offset(offset).Scan(&rows).Error
+	return rows, total, err
 }
 
 func (r *gscRepository) CreateSyncRun(ctx context.Context, run *models.GSCSyncRun) error {

@@ -30,6 +30,32 @@ type SitemapRepository interface {
 	}, error)
 	GetActiveCategories(dbCode string) ([]models.Category, error)
 	GetActiveSchoolClasses(dbCode string) ([]models.SchoolClass, error)
+	GetSitemapImages(dbCode string) ([]SitemapImage, error)
+	GetSitemapVideos(dbCode string) ([]SitemapVideo, error)
+	GetRecentNews(dbCode string, since time.Time) ([]SitemapNews, error)
+	GetSitemapFeatures(dbCode string) (map[string]bool, error)
+}
+
+type SitemapImage struct {
+	ContentType string `gorm:"column:content_type"`
+	ContentID   uint   `gorm:"column:content_id"`
+	Path        string `gorm:"column:path"`
+	Title       string `gorm:"column:title"`
+}
+
+type SitemapVideo struct {
+	ContentType string `gorm:"column:content_type"`
+	ContentID   uint   `gorm:"column:content_id"`
+	Path        string `gorm:"column:path"`
+	Thumbnail   string `gorm:"column:thumbnail"`
+	Title       string `gorm:"column:title"`
+	Description string `gorm:"column:description"`
+}
+
+type SitemapNews struct {
+	ID          uint      `gorm:"column:id"`
+	Title       string    `gorm:"column:title"`
+	PublishedAt time.Time `gorm:"column:published_at"`
 }
 
 type sitemapRepository struct{}
@@ -59,7 +85,9 @@ func (r *sitemapRepository) GetActiveArticles(dbCode string) ([]struct {
 		ID        uint      `gorm:"column:id"`
 		UpdatedAt time.Time `gorm:"column:updated_at"`
 	}
-	if err := db.Raw("SELECT id, updated_at FROM articles WHERE status = 1").Scan(&rows).Error; err != nil {
+	if err := db.Raw(`SELECT a.id, a.updated_at FROM articles a
+		LEFT JOIN seo_metadata sm ON sm.content_type = 'article' AND sm.content_id = a.id
+		WHERE a.status = 1 AND (sm.id IS NULL OR sm.robots_index = 1)`).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 	manualNoindex, err := editorialNoindexIDs(dbCode, "article")
@@ -89,7 +117,9 @@ func (r *sitemapRepository) GetActivePosts(dbCode string) ([]struct {
 		Slug      string    `gorm:"column:slug"`
 		UpdatedAt time.Time `gorm:"column:updated_at"`
 	}
-	if err := db.Raw("SELECT id, slug, updated_at FROM posts WHERE is_active = 1").Scan(&rows).Error; err != nil {
+	if err := db.Raw(`SELECT p.id, p.slug, p.updated_at FROM posts p
+		LEFT JOIN seo_metadata sm ON sm.content_type = 'post' AND sm.content_id = p.id
+		WHERE p.is_active = 1 AND (sm.id IS NULL OR sm.robots_index = 1)`).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 	manualNoindex, err := editorialNoindexIDs(dbCode, "post")
@@ -257,4 +287,84 @@ func (r *sitemapRepository) GetActiveSchoolClasses(dbCode string) ([]models.Scho
 	var classes []models.SchoolClass
 	err := db.Select("grade_level, updated_at").Find(&classes).Error
 	return classes, err
+}
+
+func (r *sitemapRepository) GetSitemapImages(dbCode string) ([]SitemapImage, error) {
+	db := database.GetManager().GetByCode(dbCode)
+	var rows []SitemapImage
+	err := db.Raw(`
+		SELECT 'post' content_type, p.id content_id, p.image path, COALESCE(NULLIF(p.alt, ''), p.title) title
+		FROM posts p
+		LEFT JOIN seo_metadata sm ON sm.content_type = 'post' AND sm.content_id = p.id
+		WHERE p.is_active = 1 AND p.image IS NOT NULL AND p.image <> '' AND (sm.id IS NULL OR sm.robots_index = 1)
+		UNION ALL
+		SELECT CASE WHEN f.article_id IS NOT NULL THEN 'article' ELSE 'post' END content_type,
+			COALESCE(f.article_id, f.post_id) content_id, f.file_path path, COALESCE(NULLIF(f.file_name, ''), 'صورة المحتوى') title
+		FROM files f
+		LEFT JOIN articles a ON a.id = f.article_id
+		LEFT JOIN posts p ON p.id = f.post_id
+		LEFT JOIN seo_metadata sm ON sm.content_type = CASE WHEN f.article_id IS NOT NULL THEN 'article' ELSE 'post' END
+			AND sm.content_id = COALESCE(f.article_id, f.post_id)
+		WHERE f.mime_type LIKE 'image/%'
+			AND ((f.article_id IS NOT NULL AND a.status = 1) OR (f.article_id IS NULL AND f.post_id IS NOT NULL AND p.is_active = 1))
+			AND (sm.id IS NULL OR sm.robots_index = 1)
+	`).Scan(&rows).Error
+	return rows, err
+}
+
+func (r *sitemapRepository) GetSitemapVideos(dbCode string) ([]SitemapVideo, error) {
+	db := database.GetManager().GetByCode(dbCode)
+	var rows []SitemapVideo
+	err := db.Raw(`
+		SELECT CASE WHEN f.article_id IS NOT NULL THEN 'article' ELSE 'post' END content_type,
+			COALESCE(f.article_id, f.post_id) content_id, f.file_path path,
+			COALESCE(
+				NULLIF(CASE WHEN f.post_id IS NOT NULL THEN p.image ELSE '' END, ''),
+				(SELECT fi.file_path FROM files fi
+				 WHERE fi.mime_type LIKE 'image/%'
+				   AND ((f.article_id IS NOT NULL AND fi.article_id = f.article_id) OR (f.post_id IS NOT NULL AND fi.post_id = f.post_id))
+				 ORDER BY fi.id LIMIT 1), ''
+			) thumbnail,
+			COALESCE(NULLIF(f.file_name, ''), CASE WHEN f.article_id IS NOT NULL THEN a.title ELSE p.title END) title,
+			COALESCE(CASE WHEN f.article_id IS NOT NULL THEN a.meta_description ELSE p.meta_description END, '') description
+		FROM files f
+		LEFT JOIN articles a ON a.id = f.article_id
+		LEFT JOIN posts p ON p.id = f.post_id
+		LEFT JOIN seo_metadata sm ON sm.content_type = CASE WHEN f.article_id IS NOT NULL THEN 'article' ELSE 'post' END
+			AND sm.content_id = COALESCE(f.article_id, f.post_id)
+		WHERE f.mime_type LIKE 'video/%'
+			AND ((f.article_id IS NOT NULL AND a.status = 1) OR (f.article_id IS NULL AND f.post_id IS NOT NULL AND p.is_active = 1))
+			AND (sm.id IS NULL OR sm.robots_index = 1)
+	`).Scan(&rows).Error
+	return rows, err
+}
+
+func (r *sitemapRepository) GetRecentNews(dbCode string, since time.Time) ([]SitemapNews, error) {
+	db := database.GetManager().GetByCode(dbCode)
+	var rows []SitemapNews
+	err := db.Raw(`SELECT p.id, p.title, p.created_at published_at
+		FROM posts p
+		LEFT JOIN seo_metadata sm ON sm.content_type = 'post' AND sm.content_id = p.id
+		WHERE p.is_active = 1 AND p.created_at >= ? AND (sm.id IS NULL OR sm.robots_index = 1)
+		ORDER BY p.created_at DESC`, since.UTC()).Scan(&rows).Error
+	return rows, err
+}
+
+func (r *sitemapRepository) GetSitemapFeatures(dbCode string) (map[string]bool, error) {
+	db := database.GetManager().GetByCode(dbCode)
+	var rows []models.Setting
+	err := db.Where("`key` IN ?", []string{"image_sitemap_enabled", "video_sitemap_enabled", "news_sitemap_enabled"}).Find(&rows).Error
+	features := map[string]bool{"images": true, "videos": true, "news": false}
+	for _, row := range rows {
+		value := row.Value != nil && (*row.Value == "1" || strings.EqualFold(*row.Value, "true") || strings.EqualFold(*row.Value, "on"))
+		switch row.Key {
+		case "image_sitemap_enabled":
+			features["images"] = value
+		case "video_sitemap_enabled":
+			features["videos"] = value
+		case "news_sitemap_enabled":
+			features["news"] = value
+		}
+	}
+	return features, err
 }

@@ -660,10 +660,29 @@ func (s *aiService) runContentIntelligenceWithFallback(ctx context.Context, req 
 	return &out, nil
 }
 
+// curriculumNameForCountryCode maps the internal two-letter country code to the
+// Arabic curriculum name the AI prompts should actually see — a raw code like
+// "jo" must never reach a prompt or generated text as-is; it always meant a
+// specific named curriculum.
+func curriculumNameForCountryCode(code string) string {
+	switch strings.ToLower(strings.TrimSpace(code)) {
+	case "jo":
+		return "المنهاج الأردني"
+	case "sa":
+		return "المنهاج السعودي"
+	case "eg":
+		return "المنهاج المصري"
+	case "ps":
+		return "المنهاج الفلسطيني"
+	default:
+		return strings.TrimSpace(code)
+	}
+}
+
 func curriculumSummary(req ContentIntelligenceRequest) string {
 	parts := []string{}
 	if strings.TrimSpace(req.CountryCode) != "" {
-		parts = append(parts, "الدولة/المنهاج: "+strings.TrimSpace(req.CountryCode))
+		parts = append(parts, curriculumNameForCountryCode(req.CountryCode))
 	}
 	if strings.TrimSpace(req.GradeName) != "" {
 		parts = append(parts, "الصف/المرحلة: "+strings.TrimSpace(req.GradeName))

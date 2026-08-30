@@ -2,6 +2,8 @@ package searchconsole
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -181,6 +183,9 @@ func (s *Service) SyncSearchAnalytics(ctx context.Context, countryCode string, d
 	if s.client == nil {
 		return nil, ErrNotConfigured
 	}
+	if days <= 0 || days > 400 {
+		days = 90
+	}
 	lockKey := countryCode + ":" + models.GSCSyncKindSearchAnalytics
 	if !s.tryLock(lockKey) {
 		return nil, ErrAlreadyRunning
@@ -211,12 +216,13 @@ func (s *Service) SyncSearchAnalytics(ctx context.Context, countryCode string, d
 
 func (s *Service) executeAnalyticsSync(run *models.GSCSyncRun, siteURL string, days int, lockKey string) {
 	defer s.unlock(lockKey)
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
 
 	// Search Analytics data lags 2-3 days behind real time (see client.go), so
 	// the window ends 3 days ago rather than today.
 	end := time.Now().AddDate(0, 0, -3)
-	start := end.AddDate(0, 0, -days)
+	start := end.AddDate(0, 0, -(days - 1))
 
 	rows, err := s.client.QuerySearchAnalytics(ctx, siteURL, start, end)
 	if err != nil {
@@ -224,23 +230,47 @@ func (s *Service) executeAnalyticsSync(run *models.GSCSyncRun, siteURL string, d
 		return
 	}
 
-	dbRows := make([]models.GSCSearchAnalyticsDaily, 0, len(rows))
+	type aggregate struct {
+		URL              string
+		Date             time.Time
+		Clicks           int
+		Impressions      int
+		WeightedPosition float64
+	}
+	aggregates := make(map[string]*aggregate)
+	queryRows := make([]models.GSCSearchQueryDaily, 0, len(rows))
 	for _, row := range rows {
-		dbRows = append(dbRows, models.GSCSearchAnalyticsDaily{
-			CountryCode: run.CountryCode,
-			URL:         row.URL,
-			Date:        row.Date,
-			Clicks:      row.Clicks,
-			Impressions: row.Impressions,
-			CTR:         row.CTR,
-			Position:    row.Position,
-		})
+		queryHash := sha256.Sum256([]byte(row.Query))
+		urlHash := sha256.Sum256([]byte(row.URL))
+		queryRows = append(queryRows, models.GSCSearchQueryDaily{CountryCode: run.CountryCode, Query: row.Query, QueryHash: hex.EncodeToString(queryHash[:]), URL: row.URL, URLHash: hex.EncodeToString(urlHash[:]), Date: row.Date, Clicks: row.Clicks, Impressions: row.Impressions, CTR: row.CTR, Position: row.Position})
+		key := row.URL + "\x00" + row.Date.Format("2006-01-02")
+		item := aggregates[key]
+		if item == nil {
+			item = &aggregate{URL: row.URL, Date: row.Date}
+			aggregates[key] = item
+		}
+		item.Clicks += row.Clicks
+		item.Impressions += row.Impressions
+		item.WeightedPosition += row.Position * float64(row.Impressions)
+	}
+	if err := s.repo.UpsertQueryRows(ctx, queryRows); err != nil {
+		s.finishSyncRun(run, 0, err)
+		return
+	}
+	dbRows := make([]models.GSCSearchAnalyticsDaily, 0, len(aggregates))
+	for _, item := range aggregates {
+		ctr, position := 0.0, 0.0
+		if item.Impressions > 0 {
+			ctr = float64(item.Clicks) / float64(item.Impressions)
+			position = item.WeightedPosition / float64(item.Impressions)
+		}
+		dbRows = append(dbRows, models.GSCSearchAnalyticsDaily{CountryCode: run.CountryCode, URL: item.URL, Date: item.Date, Clicks: item.Clicks, Impressions: item.Impressions, CTR: ctr, Position: position})
 	}
 	if err := s.repo.UpsertAnalyticsRows(ctx, dbRows); err != nil {
 		s.finishSyncRun(run, 0, err)
 		return
 	}
-	s.finishSyncRun(run, len(dbRows), nil)
+	s.finishSyncRun(run, len(queryRows), nil)
 }
 
 // TestInspect makes one live, synchronous URL Inspection call and returns the

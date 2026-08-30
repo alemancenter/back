@@ -553,10 +553,31 @@ func articleEducationContext(item models.Article) (string, string, string) {
 	return gradeName, subjectName, semesterName
 }
 
+// curriculumNameForCountryCode maps the internal two-letter country code to the
+// Arabic curriculum name the AI prompts should actually see — a raw code like
+// "jo" must never reach a prompt or generated text as-is; it always meant a
+// specific named curriculum. Kept in sync with services.curriculumNameForCountryCode
+// (different package, same mapping — content-audit's AI pipeline and the legacy
+// AI service must never disagree on this).
+func curriculumNameForCountryCode(code string) string {
+	switch strings.ToLower(strings.TrimSpace(code)) {
+	case "jo":
+		return "المنهاج الأردني"
+	case "sa":
+		return "المنهاج السعودي"
+	case "eg":
+		return "المنهاج المصري"
+	case "ps":
+		return "المنهاج الفلسطيني"
+	default:
+		return strings.TrimSpace(code)
+	}
+}
+
 func buildCurriculumContext(countryCode, gradeName, subjectName, semesterName, categoryName string) string {
 	parts := []string{}
 	if strings.TrimSpace(countryCode) != "" {
-		parts = append(parts, "منهاج الدولة: "+strings.TrimSpace(countryCode))
+		parts = append(parts, curriculumNameForCountryCode(countryCode))
 	}
 	if strings.TrimSpace(gradeName) != "" {
 		parts = append(parts, "الصف/المرحلة: "+strings.TrimSpace(gradeName))

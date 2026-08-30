@@ -53,12 +53,27 @@ var publicSettingKeys = map[string]bool{
 	"require_login_for_download": true,
 	// Public page-rendering data: SEO defaults, brand colors, analytics IDs — all
 	// meant to be embedded directly in page HTML, none of them secrets.
-	"meta_title":          true,
-	"meta_description":    true,
-	"meta_keywords":       true,
-	"primary_color":       true,
-	"secondary_color":     true,
-	"google_analytics_id": true,
+	"meta_title":               true,
+	"meta_description":         true,
+	"meta_keywords":            true,
+	"primary_color":            true,
+	"secondary_color":          true,
+	"google_analytics_id":      true,
+	"robots_txt":               true,
+	"sitemap_url":              true,
+	"seo_title_template":       true,
+	"indexnow_key":             true,
+	"llms_txt_enabled":         true,
+	"rss_enabled":              true,
+	"rss_items":                true,
+	"rss_before_content":       true,
+	"rss_after_content":        true,
+	"llms_full_txt_enabled":    true,
+	"google_site_verification": true,
+	"bing_site_verification":   true,
+	"yandex_verification":      true,
+	"pinterest_verification":   true,
+	"baidu_site_verification":  true,
 }
 
 var privateSettingMarkers = []string{

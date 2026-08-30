@@ -1,21 +1,27 @@
 package seo
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/services"
+	"github.com/imanjo/fiber-api/internal/services/contentaudit"
 	"github.com/imanjo/fiber-api/internal/utils"
 	"gorm.io/gorm"
 )
 
-type Handler struct{ svc services.SEOService }
+type Handler struct {
+	svc services.SEOService
+	ai  services.AIService
+}
 
-func New(svc services.SEOService) *Handler { return &Handler{svc: svc} }
+func New(svc services.SEOService, ai services.AIService) *Handler { return &Handler{svc: svc, ai: ai} }
 
 func countryID(c *fiber.Ctx) database.CountryID {
 	if id, ok := c.Locals("country_id").(database.CountryID); ok && id != 0 {
@@ -222,6 +228,73 @@ func (h *Handler) Analyze(c *fiber.Ctx) error {
 		return utils.BadRequest(c, "بيانات غير صحيحة")
 	}
 	return utils.Success(c, "نتيجة تحليل SEO", h.svc.Analyze(req))
+}
+
+type optimizeRequest struct {
+	Title        string `json:"title"`
+	Content      string `json:"content"`
+	FocusKeyword string `json:"focus_keyword"`
+	ContentType  string `json:"content_type"`
+	CountryCode  string `json:"country_code"`
+	GradeName    string `json:"grade_name"`
+	SubjectName  string `json:"subject_name"`
+	CategoryName string `json:"category_name"`
+}
+
+// Optimize fills the whole SEO metadata bundle from the current title + content,
+// tuned to the AnalyzeSEO rubric, and returns the projected analysis so the
+// editor can show the new score immediately.
+func (h *Handler) Optimize(c *fiber.Ctx) error {
+	if !canAnalyzeSEO(c) {
+		return utils.Forbidden(c)
+	}
+	var req optimizeRequest
+	if err := c.BodyParser(&req); err != nil {
+		return utils.BadRequest(c, "بيانات غير صحيحة")
+	}
+	req.Title = strings.TrimSpace(req.Title)
+	if req.Title == "" && strings.TrimSpace(req.Content) == "" {
+		return utils.BadRequest(c, "أضف عنوانًا ومحتوى أولًا")
+	}
+
+	ctx, cancel := context.WithTimeout(c.Context(), 90*time.Second)
+	defer cancel()
+	bundle, provider, err := contentaudit.GenerateDraftSEOBundle(ctx, h.ai, contentaudit.SEOOptimizeInput{
+		Title:        req.Title,
+		ContentHTML:  req.Content,
+		FocusKeyword: req.FocusKeyword,
+		ContentType:  req.ContentType,
+		CountryCode:  firstSEOOptimizeValue(req.CountryCode, database.CountryCode(countryID(c))),
+		GradeName:    req.GradeName,
+		SubjectName:  req.SubjectName,
+		CategoryName: req.CategoryName,
+	})
+	if err != nil {
+		return utils.BadRequest(c, "تعذّر توليد تحسين SEO لهذا المحتوى حاليًا")
+	}
+
+	projected := h.svc.Analyze(services.SEOAnalysisInput{
+		Title:           bundle.SEOTitle,
+		Content:         req.Content,
+		MetaDescription: bundle.MetaDescription,
+		FocusKeyword:    bundle.FocusKeyword,
+		SchemaType:      bundle.SchemaType,
+	})
+	return utils.Success(c, "تم توليد تحسين SEO", fiber.Map{
+		"fields":   bundle,
+		"analysis": projected,
+		"score":    projected.Score,
+		"provider": provider,
+	})
+}
+
+func firstSEOOptimizeValue(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func (h *Handler) Revisions(c *fiber.Ctx) error {

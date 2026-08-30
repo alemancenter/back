@@ -220,6 +220,7 @@ type ContentIntelligenceRequest struct {
 	Content           string `json:"content"`
 	PlainText         string `json:"plain_text"`
 	MetaDescription   string `json:"meta_description,omitempty"`
+	FocusKeyword      string `json:"focus_keyword,omitempty"`
 	URL               string `json:"url"`
 	Language          string `json:"language"`
 	JobID             string `json:"job_id,omitempty"`
@@ -257,13 +258,22 @@ type ContentIntelligenceResponse struct {
 	FixedMetaDescription string                          `json:"fixed_meta_description,omitempty"`
 	FixedKeywords        string                          `json:"fixed_keywords,omitempty"`
 	FixSummary           string                          `json:"fix_summary,omitempty"`
-	Provider             string                          `json:"provider"`
-	Model                string                          `json:"model"`
-	PromptVersion        string                          `json:"prompt_version"`
-	Tokens               int                             `json:"tokens"`
-	ProcessingTimeMS     int64                           `json:"processing_time_ms"`
-	ModelStrategy        string                          `json:"model_strategy,omitempty"`
-	ModelRole            string                          `json:"model_role,omitempty"`
+	// optimize_seo task: a full metadata bundle tuned to the AnalyzeSEO rubric.
+	SEOTitle              string `json:"seo_title,omitempty"`
+	SEOFocusKeyword       string `json:"seo_focus_keyword,omitempty"`
+	SEOAdditionalKeywords string `json:"seo_additional_keywords,omitempty"`
+	SEOOGTitle            string `json:"og_title,omitempty"`
+	SEOOGDescription      string `json:"og_description,omitempty"`
+	SEOTwitterTitle       string `json:"twitter_title,omitempty"`
+	SEOTwitterDescription string `json:"twitter_description,omitempty"`
+	SEOSchemaType         string `json:"schema_type,omitempty"`
+	Provider              string `json:"provider"`
+	Model                 string `json:"model"`
+	PromptVersion         string `json:"prompt_version"`
+	Tokens                int    `json:"tokens"`
+	ProcessingTimeMS      int64  `json:"processing_time_ms"`
+	ModelStrategy         string `json:"model_strategy,omitempty"`
+	ModelRole             string `json:"model_role,omitempty"`
 }
 
 type aiService struct {
@@ -529,6 +539,9 @@ func (s *aiService) runContentIntelligenceWithFallback(ctx context.Context, req 
 	if req.Task == "repair_meta_description" || req.Task == "suggest_keywords" {
 		maxTokens = 500
 	}
+	if req.Task == "optimize_seo" {
+		maxTokens = 900
+	}
 	payload := map[string]interface{}{
 		"model": currentModel,
 		"messages": []map[string]string{
@@ -548,23 +561,31 @@ func (s *aiService) runContentIntelligenceWithFallback(ctx context.Context, req 
 				"schema": map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"decision":               map[string]interface{}{"type": "string"},
-						"adsense_risk":           map[string]interface{}{"type": "string"},
-						"score":                  map[string]interface{}{"type": "integer"},
-						"policy_score":           map[string]interface{}{"type": "integer"},
-						"seo_score":              map[string]interface{}{"type": "integer"},
-						"language_score":         map[string]interface{}{"type": "integer"},
-						"safety_links_score":     map[string]interface{}{"type": "integer"},
-						"structure_score":        map[string]interface{}{"type": "integer"},
-						"can_auto_fix":           map[string]interface{}{"type": "boolean"},
-						"summary":                map[string]interface{}{"type": "string"},
-						"issues":                 map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "object"}},
-						"suggestions":            map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "object"}},
-						"fixed_title":            map[string]interface{}{"type": "string"},
-						"fixed_content":          map[string]interface{}{"type": "string"},
-						"fixed_meta_description": map[string]interface{}{"type": "string"},
-						"fixed_keywords":         map[string]interface{}{"type": "string"},
-						"fix_summary":            map[string]interface{}{"type": "string"},
+						"decision":                map[string]interface{}{"type": "string"},
+						"adsense_risk":            map[string]interface{}{"type": "string"},
+						"score":                   map[string]interface{}{"type": "integer"},
+						"policy_score":            map[string]interface{}{"type": "integer"},
+						"seo_score":               map[string]interface{}{"type": "integer"},
+						"language_score":          map[string]interface{}{"type": "integer"},
+						"safety_links_score":      map[string]interface{}{"type": "integer"},
+						"structure_score":         map[string]interface{}{"type": "integer"},
+						"can_auto_fix":            map[string]interface{}{"type": "boolean"},
+						"summary":                 map[string]interface{}{"type": "string"},
+						"issues":                  map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "object"}},
+						"suggestions":             map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "object"}},
+						"fixed_title":             map[string]interface{}{"type": "string"},
+						"fixed_content":           map[string]interface{}{"type": "string"},
+						"fixed_meta_description":  map[string]interface{}{"type": "string"},
+						"fixed_keywords":          map[string]interface{}{"type": "string"},
+						"fix_summary":             map[string]interface{}{"type": "string"},
+						"seo_title":               map[string]interface{}{"type": "string"},
+						"seo_focus_keyword":       map[string]interface{}{"type": "string"},
+						"seo_additional_keywords": map[string]interface{}{"type": "string"},
+						"og_title":                map[string]interface{}{"type": "string"},
+						"og_description":          map[string]interface{}{"type": "string"},
+						"twitter_title":           map[string]interface{}{"type": "string"},
+						"twitter_description":     map[string]interface{}{"type": "string"},
+						"schema_type":             map[string]interface{}{"type": "string"},
 					},
 				},
 			},
@@ -735,6 +756,31 @@ func buildContentIntelligencePrompts(req ContentIntelligenceRequest) (string, st
 		return system, user
 	}
 
+	if req.Task == "optimize_seo" {
+		system := `أنت خبير SEO عربي محترف. مهمتك ملء حقول تحسين محركات البحث لصفحة تعليمية اعتمادًا حصريًا على عنوانها ونصها الحاليين، بحيث تحقق أعلى درجة في محلّل SEO داخلي قواعده:
+- طول عنوان SEO المثالي 35–65 حرفًا، ويجب أن يحتوي العبارة المفتاحية.
+- طول الوصف التعريفي المثالي 110–165 حرفًا، ويجب أن يحتوي العبارة المفتاحية مرة واحدة.
+- العبارة المفتاحية يجب أن تظهر في العنوان وفي الوصف وفي أول 350 حرفًا من النص، وبكثافة 0.4%–2.5% (لا حشو).
+- نوع Schema من {Article, NewsArticle, BlogPosting} فقط.
+قواعد صارمة: عربية فصيحة فقط، بلا HTML أو روابط أو رموز أو مبالغة تسويقية، ولا تختلق أرقامًا أو تواريخ أو جهات غير موجودة في النص. أعد Strict JSON فقط بالمفاتيح المطلوبة ولا شيء خارجه.`
+		schemaHint := "Article"
+		if req.ContentType == "post" {
+			schemaHint = "BlogPosting"
+		}
+		user := fmt.Sprintf(`العنوان الحالي: %s
+السياق التعليمي: %s
+العبارة المفتاحية المقترحة من المحرر (استعملها إن كانت مناسبة وموجودة في النص، وإلا اختر أفضل منها): %s
+
+النص الحالي (لا تعدّله، هو مرجعك الوحيد):
+%s
+
+اختر seo_focus_keyword كعبارة من كلمتين إلى أربع كلمات موجودة حرفيًا في النص وتعبّر عن جوهر الصفحة ونية الباحث. ثم اكتب بقية الحقول بحيث تحتوي العبارة نفسها طبيعيًا.
+
+أعد هذا JSON فقط:
+{"seo_focus_keyword":"...","seo_title":"عنوان 45–60 حرفًا يحوي العبارة","fixed_meta_description":"وصف 120–158 حرفًا يحوي العبارة ويصف قيمة الصفحة","seo_additional_keywords":"مرادف1, مرادف2, مرادف3","og_title":"عنوان مشاركة ≤ 65 حرفًا","og_description":"وصف مشاركة ≤ 180 حرفًا","twitter_title":"≤ 65 حرفًا","twitter_description":"≤ 180 حرفًا","schema_type":"%s"}`, req.Title, curriculumSummary(req), strings.TrimSpace(req.FocusKeyword), truncate(req.PlainText, 6000), schemaHint)
+		return system, user
+	}
+
 	kind := "مقال طويل SEO"
 	if req.ContentType == "post" {
 		kind = "بوست تعليمي"
@@ -819,6 +865,10 @@ func newAIModelRouter(defaultModel string, fallbackModels []string) aiModelRoute
 			"repair_meta_description:balanced":     modelRouteFromEnv("AI_MODELS_META_BALANCED", append(parseModelList("openai/gpt-oss-20b,pearl-ai/gemma-4-31b-it,google/gemma-4-31B-it"), base...)),
 			"repair_meta_description:quality":      modelRouteFromEnv("AI_MODELS_META_QUALITY", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,openai/gpt-oss-120b"), base...)),
 			"repair_meta_description:final_review": modelRouteFromEnv("AI_MODELS_META_FINAL", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,zai-org/GLM-5.1"), base...)),
+			"optimize_seo:economy":                 modelRouteFromEnv("AI_MODELS_SEO_ECONOMY", append(parseModelList("google/gemma-3n-E4B-it,openai/gpt-oss-20b"), base...)),
+			"optimize_seo:balanced":                modelRouteFromEnv("AI_MODELS_SEO_BALANCED", append(parseModelList("openai/gpt-oss-20b,pearl-ai/gemma-4-31b-it,google/gemma-4-31B-it"), base...)),
+			"optimize_seo:quality":                 modelRouteFromEnv("AI_MODELS_SEO_QUALITY", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,openai/gpt-oss-120b"), base...)),
+			"optimize_seo:final_review":            modelRouteFromEnv("AI_MODELS_SEO_FINAL", append(parseModelList("Qwen/Qwen3-235B-A22B-Instruct-2507-tput,zai-org/GLM-5.1"), base...)),
 		},
 	}
 }

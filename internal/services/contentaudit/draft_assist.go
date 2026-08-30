@@ -91,6 +91,229 @@ func GenerateDraftKeywords(ctx context.Context, ai coreai.AIService, title, cont
 	return candidate, firstNonEmptyLocal(response.Model, response.Provider, "ai"), nil
 }
 
+// SEOOptimizeInput is the draft-time source for a full SEO metadata bundle.
+type SEOOptimizeInput struct {
+	Title        string
+	ContentHTML  string
+	FocusKeyword string
+	ContentType  string
+	CountryCode  string
+	GradeName    string
+	SubjectName  string
+	CategoryName string
+}
+
+// SEOOptimizeBundle is the validated, clamped set of SEO fields the editor fills.
+type SEOOptimizeBundle struct {
+	SEOTitle           string `json:"seo_title"`
+	MetaDescription    string `json:"meta_description"`
+	FocusKeyword       string `json:"focus_keyword"`
+	AdditionalKeywords string `json:"additional_keywords"`
+	OGTitle            string `json:"og_title"`
+	OGDescription      string `json:"og_description"`
+	TwitterTitle       string `json:"twitter_title"`
+	TwitterDescription string `json:"twitter_description"`
+	SchemaType         string `json:"schema_type"`
+}
+
+// seoOptimizeSchemaTypes is the analyzer-safe subset: these score 4/4 with no
+// custom JSON-LD, unlike HowTo/FAQPage/… which need a full graph.
+var seoOptimizeSchemaTypes = map[string]bool{"Article": true, "NewsArticle": true, "BlogPosting": true}
+
+// GenerateDraftSEOBundle fills every SEO field from unsaved editor text, tuned to
+// the deterministic AnalyzeSEO rubric. It reuses the same validators as the
+// post-publish metadata repair path so a draft suggestion and a later automated
+// repair can never disagree. When the AI is unavailable or fails it degrades to a
+// deterministic bundle rather than erroring — the editor still gets a fill.
+func GenerateDraftSEOBundle(ctx context.Context, ai coreai.AIService, in SEOOptimizeInput) (SEOOptimizeBundle, string, error) {
+	title := strings.TrimSpace(in.Title)
+	plain := normalizePlainText(in.ContentHTML)
+	if strings.TrimSpace(title+plain) == "" {
+		return SEOOptimizeBundle{}, "", ErrDraftAssistEmptySource
+	}
+
+	defaultSchema := "Article"
+	if strings.EqualFold(strings.TrimSpace(in.ContentType), "post") {
+		defaultSchema = "BlogPosting"
+	}
+
+	var (
+		aiTitle, aiFocus, aiMeta, aiAddKw, aiSchema string
+		aiOGTitle, aiOGDesc, aiTwTitle, aiTwDesc    string
+		provider                                    = "extractive_fallback"
+	)
+	if ai != nil {
+		if resp, err := ai.RunContentIntelligence(ctx, coreai.ContentIntelligenceRequest{
+			Task:          "optimize_seo",
+			ModelStrategy: "balanced",
+			ContentType:   in.ContentType,
+			CountryCode:   in.CountryCode,
+			GradeName:     in.GradeName,
+			SubjectName:   in.SubjectName,
+			CategoryName:  in.CategoryName,
+			Title:         title,
+			PlainText:     plain,
+			FocusKeyword:  in.FocusKeyword,
+			Language:      "ar",
+		}); err == nil && resp != nil {
+			aiTitle, aiFocus, aiMeta = resp.SEOTitle, resp.SEOFocusKeyword, resp.FixedMetaDescription
+			aiAddKw, aiSchema = resp.SEOAdditionalKeywords, strings.TrimSpace(resp.SEOSchemaType)
+			aiOGTitle, aiOGDesc = resp.SEOOGTitle, resp.SEOOGDescription
+			aiTwTitle, aiTwDesc = resp.SEOTwitterTitle, resp.SEOTwitterDescription
+			provider = firstNonEmptyLocal(resp.Model, resp.Provider, "ai")
+		}
+	}
+
+	bundle := SEOOptimizeBundle{}
+
+	// Focus keyword must actually appear in the page text so the analyzer's
+	// intro/density checks can pass: model pick → editor's pick → leading title words.
+	fk := sanitizeSEOPhrase(aiFocus, 60)
+	if fk == "" || !seoPhraseInText(fk, plain, title) {
+		if editor := sanitizeSEOPhrase(in.FocusKeyword, 60); editor != "" && seoPhraseInText(editor, plain, title) {
+			fk = editor
+		} else {
+			fk = leadingSignificantWords(title, 3)
+		}
+	}
+	bundle.FocusKeyword = fk
+
+	// Meta description: same validator as the automated repair path; on failure
+	// fall back to a deterministic extractive summary.
+	if candidate, err := validateSafeMetaDescription(aiMeta, title, plain); err == nil {
+		bundle.MetaDescription = candidate
+	} else {
+		derived := deriveSafeMetaDescription(title, plain)
+		if candidate, err := validateSafeMetaDescription(derived, title, plain); err == nil {
+			bundle.MetaDescription = candidate
+		} else {
+			bundle.MetaDescription = strings.TrimSpace(derived)
+		}
+	}
+
+	bundle.SEOTitle = clampSEOTitle(aiTitle, title)
+
+	if kw, err := validateDraftKeywords(aiAddKw); err == nil {
+		bundle.AdditionalKeywords = kw
+	}
+
+	bundle.OGTitle = firstNonEmptyLocal(sanitizeSEOLine(aiOGTitle, 90), bundle.SEOTitle)
+	bundle.TwitterTitle = firstNonEmptyLocal(sanitizeSEOLine(aiTwTitle, 90), bundle.SEOTitle)
+	bundle.OGDescription = firstNonEmptyLocal(sanitizeSEOLine(aiOGDesc, 300), bundle.MetaDescription)
+	bundle.TwitterDescription = firstNonEmptyLocal(sanitizeSEOLine(aiTwDesc, 300), bundle.MetaDescription)
+
+	if !seoOptimizeSchemaTypes[aiSchema] {
+		aiSchema = defaultSchema
+	}
+	bundle.SchemaType = aiSchema
+
+	return bundle, provider, nil
+}
+
+// sanitizeSEOPhrase cleans a short keyword phrase: no HTML, no URLs, single
+// spaces, rune-clamped. Returns "" if unusable.
+func sanitizeSEOPhrase(raw string, maxRunes int) string {
+	v := strings.Join(strings.Fields(utils.SanitizeInput(raw)), " ")
+	if v == "" || strings.ContainsAny(v, "<>{}") || safeMetadataURLPattern.MatchString(v) {
+		return ""
+	}
+	if utf8.RuneCountInString(v) > maxRunes {
+		return ""
+	}
+	return v
+}
+
+// sanitizeSEOLine cleans a title/description line, trimming to a word boundary
+// at or below maxRunes. Returns "" if unusable.
+func sanitizeSEOLine(raw string, maxRunes int) string {
+	v := strings.Join(strings.Fields(utils.SanitizeInput(raw)), " ")
+	if v == "" || strings.ContainsAny(v, "<>") || safeMetadataURLPattern.MatchString(v) {
+		return ""
+	}
+	return trimToWordBoundary(v, maxRunes)
+}
+
+// clampSEOTitle keeps the model's title unless it is unusably short or much
+// longer than the analyzer's 65-rune "good" ceiling, in which case it trims to a
+// word boundary; a too-short/empty result falls back to the page title.
+func clampSEOTitle(aiTitle, fallback string) string {
+	v := strings.Join(strings.Fields(utils.SanitizeInput(aiTitle)), " ")
+	if utf8.RuneCountInString(v) < 12 || strings.ContainsAny(v, "<>") || safeMetadataURLPattern.MatchString(v) {
+		return strings.Join(strings.Fields(fallback), " ")
+	}
+	if utf8.RuneCountInString(v) > 70 {
+		trimmed := trimToWordBoundary(v, 65)
+		if utf8.RuneCountInString(trimmed) >= 25 {
+			return trimmed
+		}
+	}
+	return v
+}
+
+func trimToWordBoundary(v string, maxRunes int) string {
+	runes := []rune(v)
+	if len(runes) <= maxRunes {
+		return v
+	}
+	cut := runes[:maxRunes]
+	for i := len(cut) - 1; i >= 0; i-- {
+		if cut[i] == ' ' {
+			return strings.TrimRight(strings.TrimSpace(string(cut[:i])), "،؛:.-—")
+		}
+	}
+	return strings.TrimSpace(string(cut))
+}
+
+// seoPhraseInText reports whether phrase appears in any of texts after light
+// Arabic normalization (diacritics/tatweel removed, lowercased).
+func seoPhraseInText(phrase string, texts ...string) bool {
+	needle := normalizeArabicLite(phrase)
+	if needle == "" {
+		return false
+	}
+	for _, text := range texts {
+		if strings.Contains(normalizeArabicLite(text), needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeArabicLite(value string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(value) {
+		switch {
+		case r == 'ـ', // tatweel
+			r >= 'ً' && r <= 'ٟ', // harakat
+			r == 'ٰ',             // superscript alef
+			r >= 'ۖ' && r <= 'ۭ': // quranic annotation marks
+			continue
+		case r == 'أ' || r == 'إ' || r == 'آ' || r == 'ٱ': // أ إ آ ٱ
+			r = 'ا' // ا
+		case r == 'ى': // ى
+			r = 'ي' // ي
+		case r == 'ة': // ة
+			r = 'ه' // ه
+		}
+		b.WriteRune(r)
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+func leadingSignificantWords(title string, n int) string {
+	out := make([]string, 0, n)
+	for _, word := range strings.Fields(title) {
+		if utf8.RuneCountInString(word) < 2 {
+			continue
+		}
+		out = append(out, word)
+		if len(out) >= n {
+			break
+		}
+	}
+	return strings.Join(out, " ")
+}
+
 func validateDraftKeywords(raw string) (string, error) {
 	items := utils.SplitKeywords(raw)
 	cleaned := make([]string, 0, len(items))

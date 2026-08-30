@@ -98,6 +98,7 @@ func registerSystemRoutes(api, public, dash fiber.Router, h *Handlers) {
 	// the dedicated manage-seo permission below.
 	dashSEOEditor := dash.Group("/seo")
 	dashSEOEditor.Post("/analyze", h.SEO.Analyze)
+	dashSEOEditor.Post("/optimize", h.SEO.Optimize)
 	dashSEOEditor.Get("/metadata/:content_type/:id", h.SEO.Metadata)
 	dashSEOEditor.Put("/metadata/:content_type/:id", h.SEO.SaveMetadata)
 	dashSEOEditor.Get("/metadata/:content_type/:id/revisions", h.SEO.Revisions)

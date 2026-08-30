@@ -223,7 +223,7 @@ func NewDependencies() *Handlers {
 		AI:                  ai.New(aiSvc, contentAuditSvc),
 		ContentAudit:        contentauditHandler.New(contentAuditSvc),
 		SearchConsole:       searchconsoleHandler.New(gscRepo, gscSvc),
-		SEO:                 seoHandler.New(seoSvc),
+		SEO:                 seoHandler.New(seoSvc, aiSvc),
 		EmailVerify:         emailverification.New(emailVerifySvc),
 		EmailBounce:         emailbounce.New(bounceReader),
 		TeacherSubscription: teacher_subscription.New(teacherSubSvc),

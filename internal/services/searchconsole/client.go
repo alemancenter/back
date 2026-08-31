@@ -10,11 +10,13 @@ package searchconsole
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -34,11 +36,22 @@ type Client struct {
 	httpClient *http.Client
 }
 
-// NewClient builds a client from the raw service-account JSON key content
-// (never a file path — see config.SearchConsoleConfig.ServiceAccountJSON).
+// NewClient builds a client from a service-account credential. The value may be:
+//   - the raw JSON key content (starts with "{")
+//   - an absolute path to a JSON key file (avoids all env-file escaping issues
+//     with the "\n"s inside private_key)
+//   - base64-encoded JSON (also env-file safe)
 func NewClient(ctx context.Context, serviceAccountJSON string) (*Client, error) {
+	serviceAccountJSON = strings.TrimSpace(serviceAccountJSON)
 	if serviceAccountJSON == "" {
 		return nil, ErrNotConfigured
+	}
+	if !strings.HasPrefix(serviceAccountJSON, "{") {
+		if data, readErr := os.ReadFile(serviceAccountJSON); readErr == nil && bytes.HasPrefix(bytes.TrimSpace(data), []byte("{")) {
+			serviceAccountJSON = string(data)
+		} else if decoded, decErr := base64.StdEncoding.DecodeString(serviceAccountJSON); decErr == nil && bytes.HasPrefix(bytes.TrimSpace(decoded), []byte("{")) {
+			serviceAccountJSON = string(decoded)
+		}
 	}
 	creds, err := google.CredentialsFromJSON(ctx, []byte(serviceAccountJSON), scopes...)
 	if err != nil {

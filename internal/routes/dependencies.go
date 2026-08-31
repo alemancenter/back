@@ -182,12 +182,17 @@ func NewDependencies() *Handlers {
 	gscRepo := repositories.NewGSCRepository()
 	gscCfg := config.Load().SearchConsole
 	var gscClient *searchconsoleService.Client
-	if gscCfg.Enabled && gscCfg.ServiceAccountJSON != "" {
+	if !gscCfg.Enabled {
+		logger.Info("google search console disabled (GSC_ENABLED is not true)")
+	} else if gscCfg.ServiceAccountJSON == "" {
+		logger.Warn("google search console enabled but GSC_SERVICE_ACCOUNT_JSON is empty; endpoints will report not-configured")
+	} else {
 		client, err := searchconsoleService.NewClient(context.Background(), gscCfg.ServiceAccountJSON)
 		if err != nil {
 			logger.Warn("google search console client init failed; GSC endpoints will report not-configured", zap.Error(err))
 		} else {
 			gscClient = client
+			logger.Info("google search console client ready")
 		}
 	}
 	gscSvc := searchconsoleService.NewService(gscRepo, gscClient)

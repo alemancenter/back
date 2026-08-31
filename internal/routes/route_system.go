@@ -128,6 +128,7 @@ func registerSystemRoutes(api, public, dash fiber.Router, h *Handlers) {
 	// issues + fix action), replacing the ImanSEO + content-audit page sprawl.
 	// Cached per country; open to either the SEO or the content-audit permission.
 	dash.Get("/content-quality", middleware.CanAny("manage content audit", "manage seo"), h.ContentAudit.ContentHealth)
+	dash.Post("/content-quality/audit/:content_type/:id", middleware.CanAny("manage content audit", "manage seo"), h.ContentAudit.ContentHealthAudit)
 
 	// Content policy audit
 	dashContentAudit := dash.Group("/content-audit", middleware.Can("manage content audit"))

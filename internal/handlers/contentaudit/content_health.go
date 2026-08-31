@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,7 +15,9 @@ import (
 	"github.com/imanjo/fiber-api/internal/contentquality"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
+	auditservice "github.com/imanjo/fiber-api/internal/services/contentaudit"
 	"github.com/imanjo/fiber-api/internal/utils"
+	"gorm.io/gorm"
 )
 
 // contentHealthIssue is one human-readable problem plus the single action that
@@ -76,6 +79,8 @@ var seoCheckFix = map[string]string{
 
 func readinessFixBucket(actionType string) string {
 	switch actionType {
+	case "analyze":
+		return "audit" // never AI-quality-checked yet → run the audit first
 	case "manual", "full_review":
 		return "manual"
 	default:
@@ -300,6 +305,70 @@ func (h *Handler) contentHealthComputed(ctx context.Context, countryCode string)
 	computed := contentHealthComputed{Summary: summary, Items: items, Generated: time.Now().UTC()}
 	_ = rdb.SetJSON(ctx, cacheKey, computed, contentHealthCacheTTL)
 	return computed, nil
+}
+
+// ContentHealthAudit runs the AI content-quality audit for one article/post —
+// the "بدء تدقيق الجودة" action for items whose only blocker is "never audited".
+// It self-loads the title/content so the drawer needs to send only the id.
+func (h *Handler) ContentHealthAudit(c *fiber.Ctx) error {
+	contentType := "article"
+	if strings.ToLower(strings.TrimSpace(c.Params("content_type"))) == "post" {
+		contentType = "post"
+	}
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil || id == 0 {
+		return utils.BadRequest(c, "معرف المحتوى غير صالح")
+	}
+	countryID, _ := c.Locals("country_id").(database.CountryID)
+	countryCode := database.CountryCode(countryID)
+	if countryCode == "" {
+		countryCode = "jo"
+	}
+	db := database.GetManager().GetByCode(countryCode)
+
+	var title, content, meta string
+	if contentType == "article" {
+		var a models.Article
+		if err := db.Select("title", "content", "meta_description").First(&a, id).Error; err != nil {
+			return utils.NotFound(c)
+		}
+		title, content = a.Title, a.Content
+		if a.MetaDescription != nil {
+			meta = *a.MetaDescription
+		}
+	} else {
+		var p models.Post
+		if err := db.Select("title", "content", "meta_description").First(&p, id).Error; err != nil {
+			return utils.NotFound(c)
+		}
+		title, content = p.Title, p.Content
+		if p.MetaDescription != nil {
+			meta = *p.MetaDescription
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+	defer cancel()
+	decision, err := h.svc.AnalyzeWithAI(ctx, auditservice.AIAnalyzeRequest{
+		ContentType:     contentType,
+		ContentID:       strconv.FormatUint(id, 10),
+		CountryCode:     countryCode,
+		Title:           title,
+		Content:         content,
+		MetaDescription: meta,
+	}, currentUserID(c))
+	if err != nil {
+		if errors.Is(err, auditservice.ErrAIAnalysisInProgress) {
+			return c.Status(fiber.StatusConflict).JSON(utils.APIResponse{Success: false, Message: "التدقيق جارٍ بالفعل لهذا المحتوى"})
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return utils.NotFound(c)
+		}
+		return utils.InternalError(c, "تعذّر تدقيق المحتوى بالذكاء")
+	}
+
+	_ = database.Redis().Del(context.Background(), database.Redis().Key("content_health", "v1", countryCode))
+	return utils.Success(c, "تم تدقيق المحتوى", fiber.Map{"decision": decision})
 }
 
 func contentHealthStatus(h contentHealthItem, published, shouldIndex bool) string {

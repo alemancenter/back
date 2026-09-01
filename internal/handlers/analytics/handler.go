@@ -94,6 +94,10 @@ func (h *Handler) PruneAnalytics(c *fiber.Ctx) error {
 	countryID, _ := c.Locals("country_id").(database.CountryID)
 	deleted := h.svc.PruneAnalytics(countryID, req.Days)
 
+	// Drop the cached visitor payloads for this country so the next view reflects the prune.
+	rdb := database.Redis()
+	_, _ = rdb.DeleteByPattern(c.UserContext(), rdb.Key("analytics", "visitor", database.CountryCode(countryID))+":*")
+
 	return utils.Success(c, "تم حذف البيانات القديمة", services.PruneAnalyticsResponse{
 		Deleted: deleted,
 	})

@@ -30,14 +30,18 @@ type contentHealthIssue struct {
 }
 
 type contentHealthItem struct {
-	ID          uint                 `json:"id"`
-	Type        string               `json:"type"`
-	Title       string               `json:"title"`
-	Published   bool                 `json:"published"`
-	Status      string               `json:"status"` // good | needs_work | problem
-	Score       int                  `json:"score"`
-	Indexable   bool                 `json:"indexable"`
-	AdsEligible bool                 `json:"ads_eligible"`
+	ID          uint   `json:"id"`
+	Type        string `json:"type"`
+	Title       string `json:"title"`
+	Published   bool   `json:"published"`
+	Status      string `json:"status"` // good | needs_work | problem
+	Score       int    `json:"score"`
+	Indexable   bool   `json:"indexable"`
+	AdsEligible bool   `json:"ads_eligible"`
+	// GoogleIndex is Google's actual index status (from GSC URL Inspection),
+	// empty when GSC is unconfigured or that URL was never synced. Separate from
+	// Indexable (our own robots decision) by design.
+	GoogleIndex string               `json:"google_index,omitempty"`
 	Issues      []contentHealthIssue `json:"issues"`
 }
 
@@ -226,6 +230,17 @@ func (h *Handler) contentHealthComputed(ctx context.Context, countryCode string)
 		}
 	}
 
+	// Google's actual index status (empty unless GSC is configured + synced).
+	gscIndex := make(map[string]string)
+	var gscRows []models.GSCURLStatus
+	_ = db.WithContext(ctx).
+		Select("content_type", "content_id", "index_status").
+		Where("country_code = ? AND content_type IN ?", countryCode, []string{"article", "post"}).
+		Find(&gscRows).Error
+	for _, row := range gscRows {
+		gscIndex[row.ContentType+":"+strconv.FormatUint(uint64(row.ContentID), 10)] = row.IndexStatus
+	}
+
 	items := make([]contentHealthItem, 0, len(collected))
 	summary := contentHealthSummary{}
 	for _, row := range collected {
@@ -279,6 +294,13 @@ func (h *Handler) contentHealthComputed(ctx context.Context, countryCode string)
 		}
 		if other := dupOf[key]; other != "" {
 			addIssue("محتوى مطابق لـ: "+other, "high", "manual")
+		}
+		health.GoogleIndex = gscIndex[key]
+		if published && !seoNoindex[key] {
+			switch health.GoogleIndex {
+			case "not_indexed", "crawled_not_indexed", "discovered_not_crawled":
+				addIssue("لم تفهرسه Google بعد", "medium", "manual")
+			}
 		}
 
 		health.Status = contentHealthStatus(health, published, it.ShouldIndex)

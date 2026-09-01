@@ -986,6 +986,30 @@ func (s *authService) GetGoogleOAuthConfig() *oauth2.Config {
 	}
 }
 
+// oauthPhotoIsReplaceable reports whether a stored profile photo came from an
+// OAuth provider (so it is safe to refresh on the next login) rather than being
+// a file the user uploaded themselves.
+func oauthPhotoIsReplaceable(current *string) bool {
+	if current == nil || strings.TrimSpace(*current) == "" {
+		return true
+	}
+	p := strings.ToLower(*current)
+	return strings.Contains(p, "googleusercontent.com") ||
+		strings.Contains(p, "fbsbx.com") ||
+		strings.Contains(p, "graph.facebook.com")
+}
+
+// facebookAvatarURL returns the stable, non-expiring Graph redirect for a user's
+// picture. The picture.data.url from the Graph API is a signed lookaside URL that
+// expires within weeks, which is why FB avatars stopped rendering.
+func facebookAvatarURL(facebookID string) string {
+	facebookID = strings.TrimSpace(facebookID)
+	if facebookID == "" {
+		return ""
+	}
+	return "https://graph.facebook.com/" + facebookID + "/picture?type=large"
+}
+
 func (s *authService) LoginOrRegisterGoogleUser(info *GoogleUserInfo) (*models.User, string, error) {
 	user, err := s.repo.FindByEmailOrGoogleID(info.Email, info.ID)
 
@@ -1015,8 +1039,10 @@ func (s *authService) LoginOrRegisterGoogleUser(info *GoogleUserInfo) (*models.U
 			user.GoogleID = &info.ID
 			needsUpdate = true
 		}
-		// Sync Google photo if user has no local photo
-		if info.Picture != "" && (user.ProfilePhotoPath == nil || *user.ProfilePhotoPath == "") {
+		// Refresh the Google photo unless the user uploaded their own — Google
+		// rotates these URLs, so a stored one can go stale.
+		if info.Picture != "" && oauthPhotoIsReplaceable(user.ProfilePhotoPath) &&
+			(user.ProfilePhotoPath == nil || *user.ProfilePhotoPath != info.Picture) {
 			user.ProfilePhotoPath = &info.Picture
 			needsUpdate = true
 		}
@@ -1056,8 +1082,8 @@ func (s *authService) LoginOrRegisterFacebookUser(info *FacebookUserInfo) (*mode
 			EmailVerifiedAt: &now,
 			Status:          "active",
 		}
-		if info.Picture.Data.URL != "" {
-			user.ProfilePhotoPath = &info.Picture.Data.URL
+		if avatar := facebookAvatarURL(info.ID); avatar != "" {
+			user.ProfilePhotoPath = &avatar
 		}
 		_ = user.HashPassword(s.jwtSvc.GenerateRandomString(32))
 		if err := s.repo.Create(user); err != nil {
@@ -1072,8 +1098,9 @@ func (s *authService) LoginOrRegisterFacebookUser(info *FacebookUserInfo) (*mode
 			user.FacebookID = &info.ID
 			needsUpdate = true
 		}
-		if info.Picture.Data.URL != "" && (user.ProfilePhotoPath == nil || *user.ProfilePhotoPath == "") {
-			user.ProfilePhotoPath = &info.Picture.Data.URL
+		if avatar := facebookAvatarURL(info.ID); avatar != "" && oauthPhotoIsReplaceable(user.ProfilePhotoPath) &&
+			(user.ProfilePhotoPath == nil || *user.ProfilePhotoPath != avatar) {
+			user.ProfilePhotoPath = &avatar
 			needsUpdate = true
 		}
 		if needsUpdate {

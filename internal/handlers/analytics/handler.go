@@ -1,7 +1,10 @@
 package analytics
 
 import (
+	"encoding/json"
 	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/imanjo/fiber-api/internal/database"
@@ -18,6 +21,24 @@ type Handler struct {
 // New creates a new analytics Handler
 func New(svc services.AnalyticsService) *Handler {
 	return &Handler{svc: svc}
+}
+
+// servedCached returns a Redis-cached JSON payload for a read-only analytics endpoint,
+// falling back to build() on a miss and caching the result for ttl. Safe here because
+// these handlers run *after* auth (the HTTP-layer response cache deliberately skips
+// /api/dashboard/*), the payload is per-country admin-shared data, and a few seconds of
+// staleness on an analytics view is acceptable — it removes repeated heavy aggregation
+// while the dashboard is open or being navigated tab-to-tab.
+func servedCached[T any](c *fiber.Ctx, key string, ttl time.Duration, build func() T) error {
+	rdb := database.Redis()
+	ctx := c.UserContext()
+	var cached json.RawMessage
+	if rdb.GetJSON(ctx, key, &cached) && len(cached) > 0 {
+		return utils.Success(c, "success", cached)
+	}
+	data := build()
+	_ = rdb.SetJSON(ctx, key, data, ttl)
+	return utils.Success(c, "success", data)
 }
 
 // VisitorAnalytics returns the full analytics payload expected by the frontend.
@@ -40,8 +61,10 @@ func (h *Handler) VisitorAnalytics(c *fiber.Ctx) error {
 		days = 30
 	}
 
-	data := h.svc.GetVisitorAnalytics(countryID, days)
-	return utils.Success(c, "success", data)
+	key := database.Redis().Key("analytics", "visitor", database.CountryCode(countryID), strconv.Itoa(days))
+	return servedCached(c, key, 30*time.Second, func() *services.VisitorAnalyticsResponse {
+		return h.svc.GetVisitorAnalytics(countryID, days)
+	})
 }
 
 type PruneRequest struct {
@@ -90,8 +113,10 @@ func (h *Handler) PruneAnalytics(c *fiber.Ctx) error {
 func (h *Handler) DashboardSummary(c *fiber.Ctx) error {
 	countryID, _ := c.Locals("country_id").(database.CountryID)
 
-	data := h.svc.GetDashboardSummary(countryID)
-	return utils.Success(c, "success", data)
+	key := database.Redis().Key("analytics", "summary", database.CountryCode(countryID))
+	return servedCached(c, key, 2*time.Minute, func() *services.DashboardSummaryResponse {
+		return h.svc.GetDashboardSummary(countryID)
+	})
 }
 
 // ContentAnalytics returns content performance
@@ -108,8 +133,10 @@ func (h *Handler) DashboardSummary(c *fiber.Ctx) error {
 func (h *Handler) ContentAnalytics(c *fiber.Ctx) error {
 	countryID, _ := c.Locals("country_id").(database.CountryID)
 
-	data := h.svc.GetContentAnalytics(countryID)
-	return utils.Success(c, "success", data)
+	key := database.Redis().Key("analytics", "content", database.CountryCode(countryID))
+	return servedCached(c, key, 2*time.Minute, func() *services.ContentAnalyticsResponse {
+		return h.svc.GetContentAnalytics(countryID)
+	})
 }
 
 // PerformanceSummary returns app performance metrics

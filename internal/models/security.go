@@ -169,12 +169,16 @@ type VisitorTracking struct {
 	Longitude    *float64  `gorm:"type:decimal(11,8)" json:"longitude,omitempty"`
 	UserID       *uint     `gorm:"index" json:"user_id,omitempty"`
 	StatusCode   *int      `json:"status_code,omitempty"`
-	LastActivity time.Time `gorm:"not null" json:"last_activity"`
+	LastActivity time.Time `gorm:"not null;index" json:"last_activity"`
 	ResponseTime *float64  `gorm:"type:decimal(8,2)" json:"response_time,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
+	CreatedAt    time.Time `gorm:"index" json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
+// TableName maps to the shared visitor tracking table. The created_at / last_activity
+// indexes matter: every dashboard analytics query filters this table by one of those two
+// timestamps over a multi-day window, and without an index each was a full table scan
+// (the analytics page could take 30s+ to render on a busy site).
 func (VisitorTracking) TableName() string { return "visitors_tracking" }
 
 // VisitorSession represents a visitor session

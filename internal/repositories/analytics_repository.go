@@ -110,12 +110,27 @@ type PostView struct {
 
 // humanPublicVisitorFilterSQL defines the dashboard's human-audience population.
 //
-// Bot markers intentionally mirror services.botUserAgentMarkers. The URL filter operates
+// Bot markers intentionally mirror services.botUserAgentMarkers. Expressed as a chain of
+// case-insensitive NOT LIKE substring checks rather than one NOT REGEXP alternation: the
+// regex automaton was evaluated per row across a multi-day scan and dominated the query
+// cost, while LIKE '%x%' uses MySQL's optimized substring search. The URL filter operates
 // on the resolved analytics URL, so a server-side API call carrying a valid X-Page can still
 // represent the actual public Astro page while raw runtime/API fallbacks are excluded.
 const humanPublicVisitorFilterSQL = `
-	LOWER(COALESCE(vt.user_agent, '')) NOT REGEXP
-		'bot|spider|crawl|slurp|facebookexternalhit|whatsapp|headlesschrome|phantomjs|curl/|wget/|python-requests|go-http-client|postmanruntime|scrapy'
+	LOWER(COALESCE(vt.user_agent, '')) NOT LIKE '%bot%'
+	AND LOWER(COALESCE(vt.user_agent, '')) NOT LIKE '%spider%'
+	AND LOWER(COALESCE(vt.user_agent, '')) NOT LIKE '%crawl%'
+	AND LOWER(COALESCE(vt.user_agent, '')) NOT LIKE '%slurp%'
+	AND LOWER(COALESCE(vt.user_agent, '')) NOT LIKE '%facebookexternalhit%'
+	AND LOWER(COALESCE(vt.user_agent, '')) NOT LIKE '%whatsapp%'
+	AND LOWER(COALESCE(vt.user_agent, '')) NOT LIKE '%headlesschrome%'
+	AND LOWER(COALESCE(vt.user_agent, '')) NOT LIKE '%phantomjs%'
+	AND LOWER(COALESCE(vt.user_agent, '')) NOT LIKE '%curl/%'
+	AND LOWER(COALESCE(vt.user_agent, '')) NOT LIKE '%wget/%'
+	AND LOWER(COALESCE(vt.user_agent, '')) NOT LIKE '%python-requests%'
+	AND LOWER(COALESCE(vt.user_agent, '')) NOT LIKE '%go-http-client%'
+	AND LOWER(COALESCE(vt.user_agent, '')) NOT LIKE '%postmanruntime%'
+	AND LOWER(COALESCE(vt.user_agent, '')) NOT LIKE '%scrapy%'
 	AND vt.url IS NOT NULL
 	AND vt.url <> ''
 	AND vt.url LIKE '/%'

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"runtime"
 	"strconv"
 	"strings"
@@ -161,10 +162,18 @@ func NewAnalyticsService(repo repositories.AnalyticsRepository) AnalyticsService
 	return &analyticsService{repo: repo}
 }
 
+// visitorTrendsData holds the multi-day aggregate portion of the visitor analytics payload
+// — the four heavy GROUP BY queries over visitors_tracking. Split out from the live
+// "active now" counters so it can be cached independently (see visitorTrends).
+type visitorTrendsData struct {
+	CountryStats   []repositories.CountryRow `json:"country_stats"`
+	ChartData      []ChartDataRow            `json:"chart_data"`
+	DeviceStats    []DeviceStatRow           `json:"device_stats"`
+	TrafficSources []TrafficSourceRow        `json:"traffic_sources"`
+}
+
 func (s *analyticsService) GetVisitorAnalytics(dbCode database.CountryID, days int) *VisitorAnalyticsResponse {
 	now := time.Now()
-	since := now.AddDate(0, 0, -days)
-	prevSince := now.AddDate(0, 0, -days*2)
 	activeWindow := now.Add(-15 * time.Minute)
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	yesterdayStart := todayStart.AddDate(0, 0, -1)
@@ -173,17 +182,12 @@ func (s *analyticsService) GetVisitorAnalytics(dbCode database.CountryID, days i
 
 	var currentActive, currentMembers, currentGuests, totalToday, totalYesterday int64
 	var activeRows []repositories.ActiveRow
-
 	var totalUsers, activeUsers, newToday int64
-	var countryStats []repositories.CountryRow
-	var dailyRows []repositories.DailyRow
-	var deviceRows []repositories.DeviceRow
-	var refRows []repositories.RefRow
-	var prevRefRows []repositories.RefRow
+	var trends visitorTrendsData
 
-	wg.Add(6)
+	wg.Add(3)
 
-	// visitor_stats
+	// visitor_stats — small windows (15 min / today), always fresh.
 	go func() {
 		defer wg.Done()
 		currentActive, currentMembers, currentGuests, totalToday, totalYesterday = s.repo.GetVisitorStats(dbCode, activeWindow, todayStart, yesterdayStart)
@@ -196,29 +200,10 @@ func (s *analyticsService) GetVisitorAnalytics(dbCode database.CountryID, days i
 		totalUsers, activeUsers, newToday = s.repo.GetUserStats(todayStart, now.AddDate(0, 0, -30))
 	}()
 
-	// country_stats
+	// country_stats / chart_data / device_stats / traffic_sources — cached (10 min).
 	go func() {
 		defer wg.Done()
-		countryStats, _ = s.repo.GetCountryStats(dbCode, since)
-	}()
-
-	// chart_data
-	go func() {
-		defer wg.Done()
-		dailyRows, _ = s.repo.GetDailyChartData(dbCode, since)
-	}()
-
-	// device_stats
-	go func() {
-		defer wg.Done()
-		deviceRows, _ = s.repo.GetDeviceStats(dbCode, since)
-	}()
-
-	// traffic_sources
-	go func() {
-		defer wg.Done()
-		refRows, _ = s.repo.GetTrafficSources(dbCode, since)
-		prevRefRows, _ = s.repo.GetTrafficSourcesPrev(dbCode, prevSince, since)
+		trends = s.visitorTrends(dbCode, days)
 	}()
 
 	wg.Wait()
@@ -255,6 +240,69 @@ func (s *analyticsService) GetVisitorAnalytics(dbCode database.CountryID, days i
 		}
 		activeVisitors = append(activeVisitors, av)
 	}
+
+	return &VisitorAnalyticsResponse{
+		VisitorStats: VisitorStatsData{
+			Current:            currentActive,
+			CurrentMembers:     currentMembers,
+			CurrentGuests:      currentGuests,
+			TotalToday:         totalToday,
+			TotalCombinedToday: totalToday,
+			Change:             changeVal,
+			History:            trends.ChartData,
+			ActiveVisitors:     activeVisitors,
+		},
+		UserStats: UserStatsData{
+			Total:    totalUsers,
+			Active:   activeUsers,
+			NewToday: newToday,
+		},
+		CountryStats:   trends.CountryStats,
+		ChartData:      trends.ChartData,
+		DeviceStats:    trends.DeviceStats,
+		TrafficSources: trends.TrafficSources,
+	}
+}
+
+// visitorTrends returns the multi-day aggregates, served from Redis when warm. The
+// underlying queries scan a wide created_at window of visitors_tracking; a 10-minute cache
+// keeps the analytics page responsive while the numbers stay current enough for a trend view.
+func (s *analyticsService) visitorTrends(dbCode database.CountryID, days int) visitorTrendsData {
+	rdb := database.Redis()
+	key := rdb.Key("analytics", "visitor_trends", database.CountryCode(dbCode), strconv.Itoa(days))
+	ctx := context.Background()
+
+	var cached visitorTrendsData
+	if rdb.GetJSON(ctx, key, &cached) {
+		return cached
+	}
+
+	data := s.computeVisitorTrends(dbCode, days)
+	_ = rdb.SetJSON(ctx, key, data, 10*time.Minute)
+	return data
+}
+
+func (s *analyticsService) computeVisitorTrends(dbCode database.CountryID, days int) visitorTrendsData {
+	now := time.Now()
+	since := now.AddDate(0, 0, -days)
+	prevSince := now.AddDate(0, 0, -days*2)
+
+	var wg sync.WaitGroup
+	var countryStats []repositories.CountryRow
+	var dailyRows []repositories.DailyRow
+	var deviceRows []repositories.DeviceRow
+	var refRows, prevRefRows []repositories.RefRow
+
+	wg.Add(4)
+	go func() { defer wg.Done(); countryStats, _ = s.repo.GetCountryStats(dbCode, since) }()
+	go func() { defer wg.Done(); dailyRows, _ = s.repo.GetDailyChartData(dbCode, since) }()
+	go func() { defer wg.Done(); deviceRows, _ = s.repo.GetDeviceStats(dbCode, since) }()
+	go func() {
+		defer wg.Done()
+		refRows, _ = s.repo.GetTrafficSources(dbCode, since)
+		prevRefRows, _ = s.repo.GetTrafficSourcesPrev(dbCode, prevSince, since)
+	}()
+	wg.Wait()
 
 	// ---- chart_data ----
 	chartData := make([]ChartDataRow, 0, len(dailyRows))
@@ -341,22 +389,7 @@ func (s *analyticsService) GetVisitorAnalytics(dbCode database.CountryID, days i
 		countryStats = []repositories.CountryRow{}
 	}
 
-	return &VisitorAnalyticsResponse{
-		VisitorStats: VisitorStatsData{
-			Current:            currentActive,
-			CurrentMembers:     currentMembers,
-			CurrentGuests:      currentGuests,
-			TotalToday:         totalToday,
-			TotalCombinedToday: totalToday,
-			Change:             changeVal,
-			History:            chartData,
-			ActiveVisitors:     activeVisitors,
-		},
-		UserStats: UserStatsData{
-			Total:    totalUsers,
-			Active:   activeUsers,
-			NewToday: newToday,
-		},
+	return visitorTrendsData{
 		CountryStats:   countryStats,
 		ChartData:      chartData,
 		DeviceStats:    deviceStats,
@@ -366,7 +399,10 @@ func (s *analyticsService) GetVisitorAnalytics(dbCode database.CountryID, days i
 
 func (s *analyticsService) PruneAnalytics(dbCode database.CountryID, days int) int64 {
 	cutoff := time.Now().AddDate(0, 0, -days)
-	return s.repo.PruneVisitorTracking(dbCode, cutoff)
+	deleted := s.repo.PruneVisitorTracking(dbCode, cutoff)
+	rdb := database.Redis()
+	_, _ = rdb.DeleteByPattern(context.Background(), rdb.Key("analytics", "visitor_trends", database.CountryCode(dbCode))+":*")
+	return deleted
 }
 
 func (s *analyticsService) GetDashboardSummary(dbCode database.CountryID) *DashboardSummaryResponse {

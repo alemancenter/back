@@ -61,8 +61,10 @@ func (h *Handler) VisitorAnalytics(c *fiber.Ctx) error {
 		days = 30
 	}
 
+	// Short TTL: the heavy multi-day aggregates are already cached deeper in the service
+	// (visitorTrends, 10 min); this only collapses bursts of the live "active now" queries.
 	key := database.Redis().Key("analytics", "visitor", database.CountryCode(countryID), strconv.Itoa(days))
-	return servedCached(c, key, 30*time.Second, func() *services.VisitorAnalyticsResponse {
+	return servedCached(c, key, 15*time.Second, func() *services.VisitorAnalyticsResponse {
 		return h.svc.GetVisitorAnalytics(countryID, days)
 	})
 }

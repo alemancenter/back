@@ -144,7 +144,8 @@ func (r *sitemapRepository) GetActivePosts(dbCode string) ([]struct {
 func (r *sitemapRepository) GetLatestQualityDecisions(dbCode, contentType string) (map[uint]models.ContentAIDecision, error) {
 	var rows []models.ContentAIDecision
 	err := database.DB().
-		Select("id, content_type, content_id, country_code, decision, adsense_risk, score, created_at").
+		// Column is ad_sense_risk (GORM's snake_case of AdSenseRisk), not adsense_risk.
+		Select("id, content_type, content_id, country_code, decision, ad_sense_risk, score, created_at").
 		Where("content_type = ? AND country_code = ?", contentType, dbCode).
 		Order("created_at DESC, id DESC").
 		Find(&rows).Error

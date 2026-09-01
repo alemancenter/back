@@ -162,6 +162,44 @@ func NewAnalyticsService(repo repositories.AnalyticsRepository) AnalyticsService
 	return &analyticsService{repo: repo}
 }
 
+// analyticsWarmerDayRanges are the day-windows the dashboard actually asks for:
+// 7 (the /dashboard landing-page islands) and 30 (the analytics page default).
+var analyticsWarmerDayRanges = []int{7, 30}
+
+// StartAnalyticsCacheWarmer keeps the visitor-analytics trend caches (the four heavy
+// GROUP BY queries over visitors_tracking) warm in the background so no dashboard request
+// ever pays that cost inline. It refreshes on a cycle shorter than the cache TTL.
+func StartAnalyticsCacheWarmer(interval time.Duration) {
+	svc := &analyticsService{repo: repositories.NewAnalyticsRepository()}
+
+	warm := func() {
+		defer func() { _ = recover() }()
+		rdb := database.Redis()
+		if rdb == nil {
+			return
+		}
+		for _, id := range []database.CountryID{
+			database.CountryJordan, database.CountrySaudi, database.CountryEgypt, database.CountryPalestine,
+		} {
+			for _, days := range analyticsWarmerDayRanges {
+				data := svc.computeVisitorTrends(id, days)
+				key := rdb.Key("analytics", "visitor_trends", database.CountryCode(id), strconv.Itoa(days))
+				_ = rdb.SetJSON(context.Background(), key, data, 12*time.Minute)
+			}
+		}
+	}
+
+	go func() {
+		time.Sleep(20 * time.Second) // let boot settle before the first heavy pass
+		warm()
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for range ticker.C {
+			warm()
+		}
+	}()
+}
+
 // visitorTrendsData holds the multi-day aggregate portion of the visitor analytics payload
 // — the four heavy GROUP BY queries over visitors_tracking. Split out from the live
 // "active now" counters so it can be cached independently (see visitorTrends).
@@ -264,9 +302,10 @@ func (s *analyticsService) GetVisitorAnalytics(dbCode database.CountryID, days i
 	}
 }
 
-// visitorTrends returns the multi-day aggregates, served from Redis when warm. The
-// underlying queries scan a wide created_at window of visitors_tracking; a 10-minute cache
-// keeps the analytics page responsive while the numbers stay current enough for a trend view.
+// visitorTrends returns the multi-day aggregates, served from Redis when warm (see
+// StartAnalyticsCacheWarmer). The underlying queries scan a wide created_at window of
+// visitors_tracking; the cache keeps the analytics page responsive while the numbers stay
+// current enough for a trend view.
 func (s *analyticsService) visitorTrends(dbCode database.CountryID, days int) visitorTrendsData {
 	rdb := database.Redis()
 	key := rdb.Key("analytics", "visitor_trends", database.CountryCode(dbCode), strconv.Itoa(days))
@@ -278,7 +317,7 @@ func (s *analyticsService) visitorTrends(dbCode database.CountryID, days int) vi
 	}
 
 	data := s.computeVisitorTrends(dbCode, days)
-	_ = rdb.SetJSON(ctx, key, data, 10*time.Minute)
+	_ = rdb.SetJSON(ctx, key, data, 12*time.Minute)
 	return data
 }
 

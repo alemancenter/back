@@ -195,6 +195,7 @@ func main() {
 	// Start background workers
 	services.StartViewSyncWorker(1 * time.Minute)
 	services.StartVisitorWorker(5 * time.Second)
+	services.StartAnalyticsCacheWarmer(8 * time.Minute)
 	startContentAuditScheduler(cfg)
 
 	// Periodically prune expired AI generation jobs from the in-memory store.

@@ -66,7 +66,7 @@ func (r *repository) ensureSchema(countryID database.CountryID, db *gorm.DB) {
 	if _, ok := r.migrated.Load(key); ok {
 		return
 	}
-	if err := db.AutoMigrate(
+	if err := database.RequireTables(db,
 		&models.ChatSession{},
 		&models.ChatMessage{},
 		&models.ChatKnowledgeBase{},

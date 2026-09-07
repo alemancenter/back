@@ -30,7 +30,7 @@ func (SubscriptionPlan) TableName() string { return "subscription_plans" }
 
 // TeacherProfile stores teacher-specific optional profile data.
 type TeacherProfile struct {
-	ID uint `gorm:"primaryKey" json:"id"`
+	ID     uint `gorm:"primaryKey" json:"id"`
 	UserID uint `gorm:"not null;uniqueIndex" json:"user_id"`
 	// Subject is the legacy single-subject field, kept for backward
 	// compatibility with any code/reports that still read it directly. It is
@@ -53,6 +53,7 @@ func (TeacherProfile) TableName() string { return "teacher_profiles" }
 
 // TeacherSubscription is the active or historical paid access record.
 type TeacherSubscription struct {
+	SourceOrderID     *uint      `gorm:"uniqueIndex" json:"source_order_id,omitempty"`
 	ID                uint       `gorm:"primaryKey" json:"id"`
 	UserID            uint       `gorm:"not null;index" json:"user_id"`
 	PlanID            uint       `gorm:"not null;index" json:"plan_id"`
@@ -177,6 +178,7 @@ func (TeacherLibraryItem) TableName() string { return "teacher_library_items" }
 
 // TeacherPremiumDownload logs future premium file downloads.
 type TeacherPremiumDownload struct {
+	Status           string    `gorm:"type:varchar(20);not null;default:'reserved';index" json:"status"`
 	ID               uint      `gorm:"primaryKey" json:"id"`
 	UserID           uint      `gorm:"not null;index" json:"user_id"`
 	SubscriptionID   uint      `gorm:"not null;index" json:"subscription_id"`

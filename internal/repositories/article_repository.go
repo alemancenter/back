@@ -204,10 +204,7 @@ func (r *articleRepository) Delete(countryID database.CountryID, article *models
 }
 
 func (r *articleRepository) GetFileByID(countryID database.CountryID, id uint64) (*models.File, error) {
-	db := r.GetDB(countryID)
-	var file models.File
-	err := db.First(&file, id).Error
-	return &file, err
+	return PublicFileByID(r.GetDB(countryID), id, "article")
 }
 
 func (r *articleRepository) IncrementViewCount(countryID database.CountryID, articleID uint64) error {

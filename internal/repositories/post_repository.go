@@ -129,10 +129,7 @@ func (r *postRepository) Delete(countryID database.CountryID, id uint64) error {
 }
 
 func (r *postRepository) GetFileByID(countryID database.CountryID, id uint64) (*models.File, error) {
-	db := r.getDB(countryID)
-	var file models.File
-	err := db.First(&file, id).Error
-	return &file, err
+	return PublicFileByID(r.getDB(countryID), id, "post")
 }
 
 func (r *postRepository) UpdateKeywords(countryID database.CountryID, postID uint64, keywordsStr string) error {

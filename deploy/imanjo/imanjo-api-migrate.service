@@ -1,0 +1,13 @@
+[Unit]
+Description=ImanJo explicit schema preparation
+After=network.target mariadb.service
+
+[Service]
+Type=oneshot
+User=imanjo
+Group=imanjo
+WorkingDirectory=/var/www/vhosts/api.imanjo.com/httpdocs
+EnvironmentFile=/etc/imanjo/api.env
+ExecStart=/var/www/vhosts/api.imanjo.com/httpdocs/fiber-api --migrate-only
+UMask=0027
+NoNewPrivileges=true

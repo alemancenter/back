@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -268,7 +269,7 @@ func (r *teacherSubscriptionRepository) DeactivateDevice(userID, deviceID uint) 
 
 func (r *teacherSubscriptionRepository) CountDownloads(subscriptionID uint) (int64, error) {
 	var count int64
-	err := r.DB().Model(&models.TeacherPremiumDownload{}).Where("subscription_id = ?", subscriptionID).Count(&count).Error
+	err := r.DB().Model(&models.TeacherPremiumDownload{}).Where("subscription_id = ? AND (status IS NULL OR status <> ?)", subscriptionID, "failed").Count(&count).Error
 	return count, err
 }
 
@@ -693,7 +694,10 @@ func ensureTeacherPremiumVaultTable(db *gorm.DB) error {
 	if db == nil {
 		return nil
 	}
-	return db.AutoMigrate(&models.TeacherPremiumFile{}, &models.TeacherPremiumDownload{}, &models.TeacherLibraryItem{})
+	if !db.Migrator().HasTable(&models.TeacherPremiumFile{}) {
+		return fmt.Errorf("teacher storage schema missing; run --migrate-only")
+	}
+	return nil
 }
 
 func (r *teacherSubscriptionRepository) ListTeacherPremiumFiles(countryID database.CountryID, subjects []string, category, query string, limit, offset int) ([]models.TeacherPremiumFile, int64, error) {
@@ -924,11 +928,11 @@ func (r *teacherSubscriptionRepository) CreateExpiryNotificationIfMissing(item *
 }
 
 func ensureTeacherNotificationTable(db *gorm.DB) error {
-	return db.AutoMigrate(&models.TeacherNotification{})
+	return database.RequireTables(db, &models.TeacherNotification{})
 }
 
 func ensureTeacherPaymentSettingsTable(db *gorm.DB) error {
-	return db.AutoMigrate(&models.TeacherPaymentSetting{})
+	return database.RequireTables(db, &models.TeacherPaymentSetting{})
 }
 
 func (r *teacherSubscriptionRepository) CreateTeacherAIGeneration(item *models.TeacherAIGeneration) error {

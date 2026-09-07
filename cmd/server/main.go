@@ -57,6 +57,10 @@ import (
 // @description Frontend identifier key for public endpoints.
 
 func main() {
+	if len(os.Args) > 1 && (len(os.Args) != 2 || os.Args[1] != "--migrate-only") {
+		fmt.Fprintln(os.Stderr, "usage: imanjo-api [--migrate-only]")
+		os.Exit(2)
+	}
 	// Load configuration
 	cfg := config.Load()
 
@@ -87,105 +91,142 @@ func main() {
 		}
 	}
 
-	// Authentication/session state belongs to the Jordan primary user database.
-	// Do not put User in the per-country migrateTargets loop below.
-	primaryDB := database.DB()
-	if !primaryDB.Migrator().HasColumn(&models.User{}, "AuthVersion") {
-		if err := primaryDB.Migrator().AddColumn(&models.User{}, "AuthVersion"); err != nil {
-			logger.Fatal(
-				"failed to add users.auth_version",
-				zap.Error(err),
-			)
+	migrateOnly := len(os.Args) == 2 && os.Args[1] == "--migrate-only"
+	if migrateOnly {
+		// Authentication/session state belongs to the Jordan primary user database.
+		// Do not put User in the per-country migrateTargets loop below.
+		primaryDB := database.DB()
+		if err := primaryDB.AutoMigrate(&models.AccessTokenRevocation{}, &models.ContactMessage{}, &models.ContentAIJob{}, &models.ContentAIJobItem{}, &models.ContentAIModelRun{}); err != nil {
+			logger.Fatal("revocation migration failed", zap.Error(err))
 		}
-		logger.Info("added durable users.auth_version column")
-	}
+		if !primaryDB.Migrator().HasColumn(&models.User{}, "AuthVersion") {
+			if err := primaryDB.Migrator().AddColumn(&models.User{}, "AuthVersion"); err != nil {
+				logger.Fatal(
+					"failed to add users.auth_version",
+					zap.Error(err),
+				)
+			}
+			logger.Info("added durable users.auth_version column")
+		}
 
-	// Auto-migrate: add any missing columns (safe — never drops existing data)
-	migrateTargets := []interface{}{
-		&models.Article{},
-		&models.BlockedIP{},
-		&models.TrustedIP{},
-		&models.SecurityLog{},
-		&models.VisitorTracking{},
-		&models.VisitorSession{},
-		&models.Comment{},
-		&models.Permission{},
-		&models.PolicyAuditRun{},
-		&models.PolicyAuditFinding{},
-		&models.ContentPolicyReadiness{},
-		&models.ContentAIDecision{},
-		&models.ContentAIIssue{},
-		&models.ContentAISuggestion{},
-		&models.ContentAIFixPreview{},
-		&models.ContentAIApprovalLog{},
-		&models.ContentEditorialDecision{},
-		&models.ContentQualityRule{},
-		&models.GSCProperty{},
-		&models.GSCURLStatus{},
-		&models.GSCSearchAnalyticsDaily{},
-		&models.GSCSearchQueryDaily{},
-		&models.GSCSyncRun{},
-		&models.SEOMetadata{},
-		&models.SEORevision{},
-		&models.SEORedirect{},
-		&models.SEO404Log{},
-		&models.SEOAuditRun{},
-		&models.SEOIssue{},
-		&models.SEOIndexNowSubmission{},
-		&models.SubscriptionPlan{},
-		&models.TeacherProfile{},
-		&models.TeacherSubscription{},
-		&models.SubscriptionOrder{},
-		&models.TeacherDevice{},
-		&models.TeacherLibraryItem{},
-		&models.TeacherPremiumDownload{},
-		&models.TeacherAIGeneration{},
+		// Auto-migrate: add any missing columns (safe — never drops existing data)
+		migrateTargets := []interface{}{
+			&models.ChatSession{}, &models.ChatMessage{}, &models.ChatKnowledgeBase{}, &models.ChatFeedback{}, &models.ChatAIUsage{},
+			&models.Article{},
+			&models.BlockedIP{},
+			&models.TrustedIP{},
+			&models.SecurityLog{},
+			&models.VisitorTracking{},
+			&models.VisitorSession{},
+			&models.Comment{},
+			&models.Permission{},
+			&models.PolicyAuditRun{},
+			&models.PolicyAuditFinding{},
+			&models.ContentPolicyReadiness{},
+			&models.ContentAIDecision{},
+			&models.ContentAIIssue{},
+			&models.ContentAISuggestion{},
+			&models.ContentAIFixPreview{},
+			&models.ContentAIApprovalLog{},
+			&models.ContentEditorialDecision{},
+			&models.ContentQualityRule{},
+			&models.GSCProperty{},
+			&models.GSCURLStatus{},
+			&models.GSCSearchAnalyticsDaily{},
+			&models.GSCSearchQueryDaily{},
+			&models.GSCSyncRun{},
+			&models.SEOMetadata{},
+			&models.SEORevision{},
+			&models.SEORedirect{},
+			&models.SEO404Log{},
+			&models.SEOAuditRun{},
+			&models.SEOIssue{},
+			&models.SEOIndexNowSubmission{},
+			&models.SubscriptionPlan{},
+			&models.TeacherProfile{},
+			&models.TeacherSubscription{},
+			&models.SubscriptionOrder{},
+			&models.TeacherDevice{},
+			&models.TeacherLibraryItem{},
+			&models.TeacherPremiumDownload{},
+			&models.TeacherAIGeneration{},
+		}
+		seen := make(map[*gorm.DB]bool)
+		for _, id := range []database.CountryID{database.CountryJordan, database.CountrySaudi, database.CountryEgypt, database.CountryPalestine} {
+			db := dbManager.Get(id)
+			if db.Error != nil {
+				continue
+			}
+			if seen[db] {
+				continue
+			}
+			seen[db] = true
+			// Drop legacy incompatible FK constraints left by Laravel before migrating
+			if db.Migrator().HasConstraint(&models.Article{}, "articles_grade_level_foreign") {
+				db.Migrator().DropConstraint(&models.Article{}, "articles_grade_level_foreign")
+			}
+			if err := db.AutoMigrate(migrateTargets...); err != nil {
+				logger.Fatal("auto-migrate failed", zap.String("country", database.CountryCode(id)), zap.Error(err))
+			}
+			ensureContentAISchema(db, database.CountryCode(id))
+			if err := rulesregistry.Seed(db); err != nil {
+				logger.Warn("content quality rule registry seed failed", zap.String("country", database.CountryCode(id)), zap.Error(err))
+			}
+			if err := services.EnsureTeacherSubscriptionDatabase(db); err != nil {
+				logger.Fatal("teacher subscription database bootstrap failed", zap.String("country", database.CountryCode(id)), zap.Error(err))
+			}
+		}
+		ensurePermission("manage content audit")
+		ensurePermission("manage seo")
+		ensurePermission("manage teacher subscriptions")
+		ensurePermission("teacher.subscription.plans.view")
+		ensurePermission("teacher.subscription.orders.review")
+		ensurePermission("teacher.usage.view")
+		ensurePermission("teacher.devices.manage")
+		ensurePermission("teacher.library.access")
+		ensurePermission("teacher.ai.remedial_plan.generate")
+		ensurePermission("teacher.ai.worksheet.generate")
+		ensurePermission("teacher.ai.answer_key.generate")
+		ensurePermission("teacher.ai.exam.generate")
+		ensurePermission("teacher.files.word_pdf.export")
+		ensurePermission("teacher.files.premium.download")
+		ensurePermission("teacher.subscription.access")
+
+		if err := services.EnsureTeacherSubscriptionDatabase(database.DB()); err != nil {
+			logger.Fatal("teacher subscription main database bootstrap failed", zap.Error(err))
+		}
+		// Author identities are global and belong only to the Jordan primary user
+		// database. Never add this model to the per-country migration loop above.
+		if err := primaryDB.AutoMigrate(&models.SEOAuthorProfile{}); err != nil {
+			logger.Fatal("SEO author profile migration failed", zap.Error(err))
+		}
+
+		for _, id := range []database.CountryID{database.CountryJordan, database.CountrySaudi, database.CountryEgypt, database.CountryPalestine} {
+			db := dbManager.Get(id)
+			if db.Error != nil {
+				continue
+			}
+			if err := db.Exec("CREATE TABLE IF NOT EXISTS imanjo_schema_revisions (version VARCHAR(64) PRIMARY KEY, applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)").Error; err != nil {
+				logger.Fatal("schema ledger failed", zap.Error(err))
+			}
+			if err := db.Exec("INSERT IGNORE INTO imanjo_schema_revisions (version) VALUES (?)", "20260906_hardening_v1").Error; err != nil {
+				logger.Fatal("schema ledger failed", zap.Error(err))
+			}
+		}
+		logger.Info("Schema preparation complete; no HTTP server or workers started")
+		return
 	}
-	seen := make(map[*gorm.DB]bool)
 	for _, id := range []database.CountryID{database.CountryJordan, database.CountrySaudi, database.CountryEgypt, database.CountryPalestine} {
-		db := dbManager.Get(id)
-		if seen[db] {
+		if dbManager.Get(id).Error != nil {
 			continue
 		}
-		seen[db] = true
-		// Drop legacy incompatible FK constraints left by Laravel before migrating
-		if db.Migrator().HasConstraint(&models.Article{}, "articles_grade_level_foreign") {
-			db.Migrator().DropConstraint(&models.Article{}, "articles_grade_level_foreign")
-		}
-		if err := db.AutoMigrate(migrateTargets...); err != nil {
-			logger.Warn("auto-migrate failed", zap.String("country", database.CountryCode(id)), zap.Error(err))
-		}
-		ensureContentAISchema(db, database.CountryCode(id))
-		if err := rulesregistry.Seed(db); err != nil {
-			logger.Warn("content quality rule registry seed failed", zap.String("country", database.CountryCode(id)), zap.Error(err))
-		}
-		if err := services.EnsureTeacherSubscriptionDatabase(db); err != nil {
-			logger.Warn("teacher subscription database bootstrap failed", zap.String("country", database.CountryCode(id)), zap.Error(err))
+		var count int64
+		if err := dbManager.Get(id).Table("imanjo_schema_revisions").Where("version = ?", "20260906_hardening_v1").Count(&count).Error; err != nil || count != 1 {
+			logger.Fatal("Run the binary with --migrate-only before starting this release", zap.Error(err))
 		}
 	}
-	ensurePermission("manage content audit")
-	ensurePermission("manage seo")
-	ensurePermission("manage teacher subscriptions")
-	ensurePermission("teacher.subscription.plans.view")
-	ensurePermission("teacher.subscription.orders.review")
-	ensurePermission("teacher.usage.view")
-	ensurePermission("teacher.devices.manage")
-	ensurePermission("teacher.library.access")
-	ensurePermission("teacher.ai.remedial_plan.generate")
-	ensurePermission("teacher.ai.worksheet.generate")
-	ensurePermission("teacher.ai.answer_key.generate")
-	ensurePermission("teacher.ai.exam.generate")
-	ensurePermission("teacher.files.word_pdf.export")
-	ensurePermission("teacher.files.premium.download")
-	ensurePermission("teacher.subscription.access")
-
-	if err := services.EnsureTeacherSubscriptionDatabase(database.DB()); err != nil {
-		logger.Warn("teacher subscription main database bootstrap failed", zap.Error(err))
-	}
-	// Author identities are global and belong only to the Jordan primary user
-	// database. Never add this model to the per-country migration loop above.
-	if err := primaryDB.AutoMigrate(&models.SEOAuthorProfile{}); err != nil {
-		logger.Warn("SEO author profile migration failed", zap.Error(err))
+	if !database.DB().Migrator().HasTable(&models.AccessTokenRevocation{}) {
+		logger.Fatal("Missing durable session revocation table")
 	}
 
 	// Initialize Redis
@@ -204,6 +245,9 @@ func main() {
 		defer ticker.Stop()
 		for range ticker.C {
 			services.GetAIJobStore().Prune()
+			_ = database.DB().Where("expires_at <= ?", time.Now()).Delete(&models.AccessTokenRevocation{}).Error
+			// Interrupted preparations are refunded; served downloads are retained.
+			_ = database.DB().Model(&models.TeacherPremiumDownload{}).Where("status = ? AND created_at < ?", "reserved", time.Now().Add(-10*time.Minute)).Update("status", "failed").Error
 		}
 	}()
 
@@ -292,12 +336,7 @@ func main() {
 	if storageRoot == "" {
 		storageRoot = "./storage/app/public"
 	}
-	app.Static("/storage", storageRoot, fiber.Static{
-		Compress:  true,
-		ByteRange: true,
-		Browse:    false,
-		MaxAge:    31536000,
-	})
+	app.Use("/storage", middleware.PublicStorage(storageRoot))
 
 	// Register all routes
 	routes.Setup(app)

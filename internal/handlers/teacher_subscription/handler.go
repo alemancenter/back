@@ -9,12 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gabriel-vasile/mimetype"
+	"github.com/gofiber/fiber/v2"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/middleware"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/services"
 	"github.com/imanjo/fiber-api/internal/utils"
-	"github.com/gofiber/fiber/v2"
 )
 
 type Handler struct {
@@ -255,8 +256,20 @@ func (h *Handler) DownloadPremiumVaultFile(c *fiber.Ctx) error {
 
 	download, err := h.svc.RecordPremiumVaultDownload(user.ID, subscription.ID, countryID, file, c.IP(), c.Get("User-Agent"))
 	if err != nil {
+		if errors.Is(err, services.ErrTeacherDeviceLimit) {
+			return utils.ForbiddenCode(c, "TEACHER_DOWNLOAD_LIMIT_REACHED", "وصلت إلى حد التنزيلات")
+		}
 		return utils.InternalError(c)
 	}
+
+	served := false
+	defer func() {
+		state := "failed"
+		if served {
+			state = "served"
+		}
+		_ = database.DB().Model(&models.TeacherPremiumDownload{}).Where("id = ?", download.ID).Update("status", state).Error
+	}()
 
 	prepared, err := services.PrepareTeacherPremiumDownloadFile(user, file, download)
 	if err != nil {
@@ -268,13 +281,17 @@ func (h *Handler) DownloadPremiumVaultFile(c *fiber.Ctx) error {
 		c.Set("X-Teacher-Watermark-Applied", fmt.Sprintf("%t", prepared.Applied))
 		c.Set("X-Teacher-Download-Code", download.DownloadCode)
 		c.Set("X-Teacher-Watermark", prepared.Text)
-		return c.Download(prepared.Path, prepared.Name)
+		err = c.Download(prepared.Path, prepared.Name)
+		served = err == nil
+		return err
 	}
 
 	c.Set("Content-Type", file.MimeType)
 	c.Set("X-Teacher-Download-Code", download.DownloadCode)
 	c.Set("X-Teacher-Watermark", services.BuildTeacherWatermarkText(user.ID, download.DownloadCode))
-	return c.Download(file.PrivatePath, file.OriginalFilename)
+	err = c.Download(file.PrivatePath, file.OriginalFilename)
+	served = err == nil
+	return err
 }
 
 func (h *Handler) GenerateAI(c *fiber.Ctx) error {
@@ -344,6 +361,20 @@ func (h *Handler) CreateOrderWithProof(c *fiber.Ctx) error {
 	proofPath := ""
 	fileHeader, err := c.FormFile("payment_proof")
 	if err == nil && fileHeader != nil {
+		extCheck := strings.ToLower(filepath.Ext(fileHeader.Filename))
+		if fileHeader.Size > 10*1024*1024 || (extCheck != ".pdf" && extCheck != ".png" && extCheck != ".jpg" && extCheck != ".jpeg" && extCheck != ".webp") {
+			return utils.BadRequest(c, "إثبات الدفع يجب أن يكون صورة أو PDF حتى 10MB")
+		}
+		proofReader, openErr := fileHeader.Open()
+		if openErr != nil {
+			return utils.BadRequest(c, "تعذّر قراءة إثبات الدفع")
+		}
+		detected, detectErr := mimetype.DetectReader(proofReader)
+		proofReader.Close()
+		expected := map[string]string{".pdf": "application/pdf", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+		if detectErr != nil || strings.Split(detected.String(), ";")[0] != expected[extCheck] {
+			return utils.BadRequest(c, "نوع إثبات الدفع لا يطابق امتداده")
+		}
 		dir := filepath.Join("storage", "private", "teacher-payment-proofs", fmt.Sprintf("user-%d", user.ID))
 		if err := os.MkdirAll(dir, 0750); err != nil {
 			return utils.InternalError(c)
@@ -402,6 +433,9 @@ func (h *Handler) CreateOrder(c *fiber.Ctx) error {
 	var req services.CreateTeacherOrderRequest
 	if err := c.BodyParser(&req); err != nil {
 		return utils.BadRequest(c, "بيانات الطلب غير صحيحة")
+	}
+	if req.PaymentProofURL != "" {
+		return utils.BadRequest(c, "ارفع إثبات الدفع عبر نموذج الملفات")
 	}
 	if req.PaymentMethod == "" {
 		return utils.BadRequest(c, "يرجى اختيار طريقة الدفع")

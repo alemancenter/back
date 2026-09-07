@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -28,7 +29,7 @@ func NewCacheService(client *redis.Client) CacheService {
 }
 
 func (s *cacheService) Get(key string, dest any) bool {
-	if s == nil || s.client == nil {
+	if sensitiveContentCacheKey(key) || s == nil || s.client == nil {
 		return false
 	}
 
@@ -41,6 +42,9 @@ func (s *cacheService) Get(key string, dest any) bool {
 }
 
 func (s *cacheService) Set(key string, value any, ttl time.Duration) error {
+	if sensitiveContentCacheKey(key) {
+		return nil
+	}
 	if s == nil || s.client == nil {
 		return nil
 	}
@@ -72,4 +76,9 @@ func (s *cacheService) DeletePattern(pattern string) error {
 	}
 
 	return iter.Err()
+}
+
+// Full content bodies are intentionally read live; reference/analytics caches remain.
+func sensitiveContentCacheKey(key string) bool {
+	return strings.HasPrefix(key, "articles:list:") || strings.HasPrefix(key, "posts:list:") || strings.Contains(":"+key, ":home:")
 }

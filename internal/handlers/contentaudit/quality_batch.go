@@ -8,10 +8,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
+	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	auditservice "github.com/imanjo/fiber-api/internal/services/contentaudit"
 	"github.com/imanjo/fiber-api/internal/utils"
-	"github.com/gofiber/fiber/v2"
 )
 
 // Content quality batch processing is preview-first for title/body/policy work.
@@ -21,7 +22,15 @@ func (h *Handler) StartQualityBatch(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return utils.BadRequest(c, "invalid quality batch payload")
 	}
-	req = normalizeQualityBatchRequest(req)
+	countryID, _ := c.Locals("country_id").(database.CountryID)
+	if countryID == 0 {
+		countryID = database.CountryIDFromHeader(c.Get("X-Country-Id"))
+	}
+	var bindErr error
+	req, bindErr = bindQualityBatchCountry(req, countryID)
+	if bindErr != nil {
+		return utils.BadRequest(c, bindErr.Error())
+	}
 
 	// Create the job immediately (empty), then select targets + process in the
 	// background. Target selection can scan a lot of content, so doing it in the
@@ -309,4 +318,13 @@ func finishQualityBatchItem(jobID string, itemIndex int, status, message string,
 		}
 		recalcQualityBatchProgress(job)
 	})
+}
+
+func bindQualityBatchCountry(req contentQualityBatchRequest, countryID database.CountryID) (contentQualityBatchRequest, error) {
+	countryCode := database.CountryCode(countryID)
+	if req.CountryCode != "" && req.CountryCode != countryCode {
+		return req, errors.New("country does not match request context")
+	}
+	req.CountryCode = countryCode
+	return normalizeQualityBatchRequest(req), nil
 }

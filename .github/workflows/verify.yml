@@ -1,0 +1,28 @@
+name: Backend verification
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: integration-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -pintegration-only"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    env:
+      IMANJO_TEST_MYSQL_DSN: 'root:integration-only@tcp(127.0.0.1:3306)/?parseTime=true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test ./...
+      - run: go vet ./...
+      - run: go test -race ./internal/services -run 'TestAtomic'
+      - run: go build -trimpath -o bin/imanjo-api ./cmd/server

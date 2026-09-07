@@ -1,8 +1,12 @@
 package routes
 
 import (
+	"fmt"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/imanjo/fiber-api/internal/middleware"
+	"github.com/imanjo/fiber-api/internal/utils"
+	"time"
 )
 
 // registerContentRoutes handles all routes related to core content:
@@ -25,6 +29,12 @@ func registerContentRoutes(api, public, dash fiber.Router, h *Handlers) {
 	public.Get("/articles/file/:id/download", downloadGateM, activityM, h.Articles.DownloadFile)
 	public.Get("/articles/file/:id/download-url", downloadGateM, activityM, h.Articles.GetDownloadToken)
 	public.Get("/articles/:id", h.Articles.Show)
+	public.Post("/articles/:id/increment-view", limiter.New(limiter.Config{
+		Max: 1, Expiration: 30 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return fmt.Sprintf("%s:%s:%s", utils.GetClientIP(c), c.Get("X-Country-Id"), c.Params("id"))
+		},
+	}), h.Articles.IncrementView)
 	public.Get("/articles/:id/ad-status", h.ContentAudit.PublicArticleQualityStatus)
 
 	// Posts
@@ -63,11 +73,11 @@ func registerContentRoutes(api, public, dash fiber.Router, h *Handlers) {
 	api.Get("/reactions/:comment_id", authM, activityM, h.Comments.GetReactions)
 
 	// File upload
-	api.Post("/upload/image", authM, activityM, h.Files.UploadImage)
-	api.Post("/upload/file", authM, activityM, h.Files.UploadDocument)
+	api.Post("/upload/image", authM, middleware.RequireVerifiedEmail(), middleware.Can("upload files"), activityM, h.Files.UploadImage)
+	api.Post("/upload/file", authM, middleware.RequireVerifiedEmail(), middleware.Can("upload files"), activityM, h.Files.UploadDocument)
 
 	// Secure file view
-	api.Get("/secure/view", authM, activityM, h.Files.SecureView)
+	api.Get("/secure/view", authM, middleware.RequireVerifiedEmail(), middleware.Can("manage files"), activityM, h.Files.SecureView)
 
 	// AI generation is an editorial capability. The production frontend uses
 	// /dashboard/ai/*; keep the legacy authenticated endpoints permission-gated
@@ -128,7 +138,7 @@ func registerContentRoutes(api, public, dash fiber.Router, h *Handlers) {
 	dashFiles := dash.Group("/files", middleware.Can("manage files"))
 	dashFiles.Get("", h.Files.DashboardList)
 	dashFiles.Post("", h.Files.DashboardUpload)
-	dashFiles.Get("/:id/info", h.Files.Info)
+	dashFiles.Get("/:id/info", h.Files.DashboardShow)
 	dashFiles.Get("/:id/download", h.Files.DashboardDownload)
 	dashFiles.Get("/:id", h.Files.DashboardShow)
 	dashFiles.Put("/:id", h.Files.DashboardUpdate)

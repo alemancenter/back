@@ -106,7 +106,7 @@ func (r *fileRepository) FindByID(countryID database.CountryID, id uint64) (*mod
 }
 
 func (r *fileRepository) GetFileWithParent(countryID database.CountryID, id uint64) (*models.File, interface{}, string, error) {
-	file, err := r.FindByID(countryID, id)
+	file, err := PublicFileByID(r.GetDB(countryID), id, "")
 	if err != nil {
 		return nil, nil, "", err
 	}

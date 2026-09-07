@@ -1,6 +1,6 @@
 APP_NAME = fiber-api
 BUILD_DIR = ./bin
-MAIN_FILE = ./cmd/server/main.go
+MAIN_FILE = ./cmd/server
 
 .PHONY: all build run dev test clean tidy lint migrate seed docker-up docker-down
 
@@ -48,11 +48,12 @@ fmt:
 	gofmt -s -w .
 
 ## Generate migration files (requires golang-migrate)
-migrate-up:
-	migrate -path ./database/migrations -database "mysql://$(DB_USER_JO):$(DB_PASS_JO)@tcp($(DB_HOST_JO):$(DB_PORT_JO))/$(DB_NAME_JO)" up
+migrate-up: build
+	$(BUILD_DIR)/$(APP_NAME) --migrate-only
 
 migrate-down:
-	migrate -path ./database/migrations -database "mysql://$(DB_USER_JO):$(DB_PASS_JO)@tcp($(DB_HOST_JO):$(DB_PORT_JO))/$(DB_NAME_JO)" down 1
+	@echo "Automatic schema rollback is disabled. Restore a verified backup with the matching release."
+	@exit 1
 
 ## Docker commands
 docker-build:

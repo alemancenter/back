@@ -5,12 +5,12 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/repositories"
 	"github.com/imanjo/fiber-api/internal/services"
 	"github.com/imanjo/fiber-api/internal/utils"
-	"github.com/gofiber/fiber/v2"
 )
 
 // slugify converts a string to a filesystem-safe slug, preserving Unicode
@@ -164,6 +164,10 @@ func (h *Handler) Info(c *fiber.Ctx) error {
 		return utils.InternalError(c)
 	}
 
+	if resp.File != nil {
+		resp.File.FilePath = ""
+	}
+	c.Set("Cache-Control", "private, no-store")
 	return utils.Success(c, "success", resp)
 }
 

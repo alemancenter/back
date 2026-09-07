@@ -25,7 +25,7 @@ var (
 
 func ensureQualityBatchTables() error {
 	qualityBatchOnce.Do(func() {
-		qualityBatchInitErr = database.DB().AutoMigrate(
+		qualityBatchInitErr = database.RequireTables(database.DB(),
 			&models.ContentAIJob{},
 			&models.ContentAIJobItem{},
 			&models.ContentAIModelRun{},

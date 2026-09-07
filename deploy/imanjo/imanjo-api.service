@@ -5,8 +5,8 @@ Wants=redis.service
 
 [Service]
 Type=simple
-User=root
-Group=root
+User=imanjo
+Group=imanjo
 # NOTE: back/ has TWO different WorkingDirectory conventions for the alemancenter
 # version of this file (this Plesk-httpdocs one, and a second, older one at
 # back/alemancenter-api.service using /var/www/vhosts/alemancenter.com/fiber/) — it was
@@ -25,6 +25,10 @@ SyslogIdentifier=imanjo-api
 LimitNOFILE=65536
 LimitNPROC=4096
 NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+UMask=0027
 
 [Install]
 WantedBy=multi-user.target

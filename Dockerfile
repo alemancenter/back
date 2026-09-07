@@ -19,7 +19,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-w -s -X main.version=$(git describe --tags --always 2>/dev/null || echo 'dev')" \
     -o /app/bin/fiber-api \
-    ./cmd/server/main.go
+    ./cmd/server
 
 # =====================
 # Runtime stage

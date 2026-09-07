@@ -686,3 +686,20 @@ func (h *Handler) DashboardStats(c *fiber.Ctx) error {
 
 	return utils.Success(c, "success", stats)
 }
+
+// IncrementView records a browser view independently from content reads.
+func (h *Handler) IncrementView(c *fiber.Ctx) error {
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil || id == 0 {
+		return utils.BadRequest(c, "معرف غير صحيح")
+	}
+	countryID, _ := c.Locals("country_id").(database.CountryID)
+	article, err := h.svc.GetByID(countryID, id)
+	if err != nil || article.Status != 1 {
+		return utils.NotFound(c)
+	}
+	if err := services.ViewCounter.IncrementArticleView(countryID, id); err != nil {
+		return utils.InternalError(c)
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}

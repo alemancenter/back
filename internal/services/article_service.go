@@ -145,9 +145,6 @@ func (s *articleService) GetByID(countryID database.CountryID, id uint64) (*mode
 	if err != nil {
 		return nil, MapError(err)
 	}
-	go func() {
-		_ = ViewCounter.IncrementArticleView(countryID, id)
-	}()
 	return article, nil
 }
 
@@ -169,7 +166,10 @@ func (s *articleService) GetFileForDownload(countryID database.CountryID, id uin
 
 	var absPath string
 	if s.fileSvc != nil {
-		absPath = s.fileSvc.GetAbsPath(file.FilePath)
+		absPath, err = s.fileSvc.SafeGetAbsPath(file.FilePath)
+		if err != nil {
+			return nil, "", MapError(err)
+		}
 	} else {
 		absPath = file.FilePath
 	}
@@ -209,7 +209,10 @@ func (s *articleService) GetFileBySignedToken(token string) (*models.File, strin
 
 	var absPath string
 	if s.fileSvc != nil {
-		absPath = s.fileSvc.GetAbsPath(file.FilePath)
+		absPath, err = s.fileSvc.SafeGetAbsPath(file.FilePath)
+		if err != nil {
+			return nil, "", MapError(err)
+		}
 	} else {
 		absPath = file.FilePath
 	}

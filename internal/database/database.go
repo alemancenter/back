@@ -58,7 +58,7 @@ func GetManager() *Manager {
 
 // initAll initializes all database connections.
 // Jordan (primary) is required — its failure is fatal.
-// Secondary databases (SA/EG/PS) log a warning and fall back to Jordan on error.
+// Unavailable secondary databases remain unavailable; they never serve Jordan data.
 func (m *Manager) initAll() error {
 	type entry struct {
 		id  CountryID
@@ -73,20 +73,30 @@ func (m *Manager) initAll() error {
 	m.connections[CountryJordan] = jordanDB
 	logger.Info("database connected", zap.String("country", "jo"))
 
-	// Secondary databases — warn but fall back to Jordan on error
+	// Secondary databases have independent failure states.
 	secondaries := []entry{
 		{CountrySaudi, m.cfg.Database.Saudi},
 		{CountryEgypt, m.cfg.Database.Egypt},
 		{CountryPalestine, m.cfg.Database.Palestine},
 	}
 	for _, s := range secondaries {
+		primary := m.cfg.Database.Jordan
+		if s.cfg.Host == primary.Host && s.cfg.Port == primary.Port && s.cfg.Name == primary.Name {
+			failed := jordanDB.Session(&gorm.Session{NewDB: true})
+			failed.AddError(fmt.Errorf("secondary country cannot share the primary database"))
+			m.connections[s.id] = failed
+			logger.Error("secondary country database aliases primary; disabled", zap.String("country", countryNames[s.id]))
+			continue
+		}
 		db, err := m.connect(s.cfg)
 		if err != nil {
-			logger.Error("secondary database unavailable — falling back to Jordan",
+			logger.Error("secondary database unavailable — requests will fail closed",
 				zap.String("country", countryNames[s.id]),
 				zap.Error(err),
 			)
-			m.connections[s.id] = jordanDB // safe fallback
+			failed := jordanDB.Session(&gorm.Session{NewDB: true})
+			failed.AddError(fmt.Errorf("country %s database unavailable: %w", countryNames[s.id], err))
+			m.connections[s.id] = failed
 			continue
 		}
 		m.connections[s.id] = db
@@ -136,7 +146,9 @@ func (m *Manager) Get(countryID CountryID) *gorm.DB {
 	db, ok := m.connections[countryID]
 	if !ok {
 		logger.Error("unknown country database", zap.Int("country_id", int(countryID)))
-		return m.connections[CountryJordan]
+		failed := m.connections[CountryJordan].Session(&gorm.Session{NewDB: true})
+		failed.AddError(fmt.Errorf("unknown country database: %d", countryID))
+		return failed
 	}
 	return db
 }
@@ -148,7 +160,7 @@ func (m *Manager) GetByCode(code string) *gorm.DB {
 			return m.Get(id)
 		}
 	}
-	return m.Get(CountryJordan)
+	return m.Get(CountryID(-1))
 }
 
 // Jordan returns Jordan's database connection (default)
@@ -168,6 +180,10 @@ func (m *Manager) HealthCheck() map[string]bool {
 	results := make(map[string]bool)
 	for id, name := range countryNames {
 		db := m.Get(id)
+		if db.Error != nil {
+			results[name] = false
+			continue
+		}
 		sqlDB, err := db.DB()
 		if err != nil {
 			results[name] = false

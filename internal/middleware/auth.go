@@ -81,7 +81,13 @@ func isTokenBlacklisted(tokenStr string) bool {
 	key := rdb.Key("blacklist", fmt.Sprintf("%x", hash))
 
 	exists, _ := rdb.Exists(ctx, key)
-	return exists
+	if exists {
+		return true
+	}
+	var count int64
+	err := database.DB().Model(&models.AccessTokenRevocation{}).Where("token_hash = ? AND expires_at > ?", fmt.Sprintf("%x", hash), time.Now()).Count(&count).Error
+	// Durable revocation lookup fails closed; a cache miss is not authorization.
+	return err != nil || count > 0
 }
 
 // isAuthVersionAllowed compares the JWT against the durable MariaDB state.
@@ -170,7 +176,7 @@ func OptionalAuth() fiber.Handler {
 			return c.Next()
 		}
 
-		if user, err := loadUserCached(claims.UserID); err == nil {
+		if user, err := loadUserCached(claims.UserID); err == nil && user.IsActive() {
 			c.Locals("user", user)
 			c.Locals("user_id", user.ID)
 			c.Locals("auth_token", tokenStr)

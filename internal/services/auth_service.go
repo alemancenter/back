@@ -12,6 +12,7 @@ import (
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/repositories"
+	"github.com/imanjo/fiber-api/internal/utils"
 	"github.com/imanjo/fiber-api/pkg/logger"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
@@ -262,6 +263,23 @@ func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
 
+// safeOAuthDisplayName keeps a provider-supplied name only if it looks like a real
+// display name; otherwise it falls back to the email's local part, then a generic
+// label. Providers normally send clean names, but this stops a junk value from a
+// compromised/abused social account landing in the users table.
+func safeOAuthDisplayName(raw, email string) string {
+	n := utils.NormalizeHumanName(raw)
+	if ok, _ := utils.ValidateHumanName(n); ok {
+		return n
+	}
+	if at := strings.IndexByte(email, '@'); at > 1 {
+		if local := utils.NormalizeHumanName(email[:at]); local != "" {
+			return local
+		}
+	}
+	return "مستخدم"
+}
+
 func (s *authService) CheckEmailAvailable(email string) (bool, error) {
 	count, err := s.repo.CountByEmail(normalizeEmail(email))
 	if err != nil {
@@ -501,6 +519,16 @@ func (s *authService) GenerateRefreshTokenForUser(userID uint, email, accessToke
 }
 
 func (s *authService) Logout(tokenStr, refreshTokenStr string, user *models.User) error {
+	if strings.TrimSpace(tokenStr) != "" {
+		claims, err := s.jwtSvc.ValidateToken(tokenStr)
+		if err == nil && claims.ExpiresAt != nil {
+			hash := sha256.Sum256([]byte(tokenStr))
+			record := models.AccessTokenRevocation{TokenHash: fmt.Sprintf("%x", hash), ExpiresAt: claims.ExpiresAt.Time}
+			if err := database.DB().Save(&record).Error; err != nil {
+				return fmt.Errorf("durable logout revocation failed: %w", err)
+			}
+		}
+	}
 	rdb := database.Redis()
 	ctx := context.Background()
 
@@ -1017,7 +1045,7 @@ func (s *authService) LoginOrRegisterGoogleUser(info *GoogleUserInfo) (*models.U
 		// Register new user
 		now := time.Now()
 		user = &models.User{
-			Name:            info.Name,
+			Name:            safeOAuthDisplayName(info.Name, info.Email),
 			Email:           info.Email,
 			GoogleID:        &info.ID,
 			EmailVerifiedAt: &now,
@@ -1076,7 +1104,7 @@ func (s *authService) LoginOrRegisterFacebookUser(info *FacebookUserInfo) (*mode
 	if err == gorm.ErrRecordNotFound {
 		now := time.Now()
 		user = &models.User{
-			Name:            info.Name,
+			Name:            safeOAuthDisplayName(info.Name, info.Email),
 			Email:           info.Email,
 			FacebookID:      &info.ID,
 			EmailVerifiedAt: &now,

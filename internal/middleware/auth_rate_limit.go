@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/utils"
 	"github.com/imanjo/fiber-api/pkg/logger"
-	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
 )
 
@@ -28,7 +28,7 @@ type authLimitRule struct {
 // by IP and by logical actor (email/user) so one endpoint cannot be abused repeatedly.
 var authLimits = map[string]authLimitRule{
 	"/auth/login":             {max: 10, window: 10 * time.Minute, subjectMax: 5, subjectWindow: 10 * time.Minute},
-	"/auth/register":          {max: 10, window: 15 * time.Minute, subjectMax: 3, subjectWindow: 30 * time.Minute},
+	"/auth/register":          {max: 5, window: 30 * time.Minute, subjectMax: 3, subjectWindow: time.Hour},
 	"/auth/check-email":       {max: 30, window: 10 * time.Minute, subjectMax: 8, subjectWindow: 10 * time.Minute},
 	"/auth/email/preflight":   {max: 30, window: 10 * time.Minute, subjectMax: 8, subjectWindow: 10 * time.Minute},
 	"/auth/email/verify/":     {max: 10, window: 15 * time.Minute},

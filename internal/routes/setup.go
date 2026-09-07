@@ -58,7 +58,6 @@ func Setup(app *fiber.App) *Handlers {
 		Level: fiberCompress.LevelBestSpeed,
 	}))
 	app.Use(etag.New())
-	app.Use(middleware.ResponseCache(2 * time.Minute))
 
 	// Operational endpoints are not public. They are available to direct local
 	// checks and to callers that provide an internal monitor/frontend key.
@@ -71,6 +70,8 @@ func Setup(app *fiber.App) *Handlers {
 	api := app.Group("/api",
 		middleware.IPGuard(),
 		middleware.FrontendGuard(),
+		middleware.ResponseCache(0),
+		middleware.RequireCountryDatabase(),
 	)
 
 	// Public Group
@@ -82,6 +83,7 @@ func Setup(app *fiber.App) *Handlers {
 		middleware.RequireVerifiedEmail(),
 		middleware.UpdateLastActivity(),
 		middleware.DashboardSecurityHeaders(),
+		middleware.InvalidateContentAfterWrite(),
 	)
 
 	// Register Domain Modules

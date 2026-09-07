@@ -17,6 +17,7 @@ import (
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/repositories"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
@@ -697,6 +698,12 @@ func (s *teacherSubscriptionService) MySummary(userID uint) (*TeacherSubscriptio
 }
 
 func (s *teacherSubscriptionService) CreateOrder(user *models.User, req CreateTeacherOrderRequest) (*models.SubscriptionOrder, error) {
+	if req.PaymentProofURL != "" {
+		if _, err := validTeacherProofPath(user.ID, proofPathFromPrivateURL(req.PaymentProofURL)); err != nil {
+			return nil, err
+		}
+	}
+
 	subjects := normalizeTeacherSubjects(req.Subjects, req.Subject)
 	if len(subjects) == 0 {
 		return nil, errors.New("teacher subject is required")
@@ -797,6 +804,10 @@ func (s *teacherSubscriptionService) AdminOrderProofPath(orderID uint) (string, 
 	}
 	if proofPath == "" {
 		return "", "", "", gorm.ErrRecordNotFound
+	}
+	proofPath, err = validTeacherProofPath(order.UserID, proofPath)
+	if err != nil {
+		return "", "", "", err
 	}
 	info, err := os.Stat(proofPath)
 	if err != nil || info.IsDir() {
@@ -942,12 +953,11 @@ func (s *teacherSubscriptionService) RecordPremiumVaultDownload(userID uint, sub
 		UserAgentHash:    hashValue(userAgent),
 	}
 
-	if err := s.repo.CreateTeacherPremiumDownload(download); err != nil {
+	download.Status = "reserved"
+	if err := reserveTeacherDownload(s.repo.DB(), download); err != nil {
 		return nil, err
 	}
-	if err := s.repo.IncrementTeacherPremiumFileDownload(countryID, file.ID); err != nil {
-		return nil, err
-	}
+	_ = s.repo.IncrementTeacherPremiumFileDownload(countryID, file.ID)
 	return download, nil
 }
 
@@ -1848,52 +1858,15 @@ func (s *teacherSubscriptionService) revokeTeacherAccessHard(userID uint, adminN
 }
 
 func (s *teacherSubscriptionService) ApproveOrder(orderID uint, adminID uint, req TeacherOrderReviewRequest) (*models.TeacherSubscription, error) {
-	order, err := s.repo.GetOrder(orderID)
+	role, err := s.EnsureTeacherProRole()
 	if err != nil {
 		return nil, err
 	}
-	if order.Status != "pending" {
-		return nil, ErrTeacherOrderNotPending
-	}
-	plan := order.Plan
-	if plan == nil {
-		plan, err = s.PublicPlan()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	now := time.Now()
-	reviewer := adminID
-	order.Status = "approved"
-	order.ReviewedBy = &reviewer
-	order.ReviewedAt = &now
-	order.AdminNote = strings.TrimSpace(req.AdminNote)
-	if err := s.repo.UpdateOrder(order); err != nil {
+	sub, err := approveTeacherOrder(s.repo.DB(), orderID, adminID, role.ID, req.AdminNote)
+	if err != nil {
 		return nil, err
 	}
-
-	sub := &models.TeacherSubscription{
-		UserID:            order.UserID,
-		PlanID:            plan.ID,
-		Status:            "active",
-		StartsAt:          now,
-		EndsAt:            now.AddDate(0, 0, plan.DurationDays),
-		PriceJOD:          order.AmountJOD,
-		DeviceLimit:       plan.DeviceLimit,
-		DownloadLimit:     plan.DownloadLimit,
-		AIGenerationLimit: plan.AIGenerationLimit,
-		ExportLimit:       plan.ExportLimit,
-		ActivatedBy:       &reviewer,
-		AdminNote:         order.AdminNote,
-	}
-	if err := s.repo.CreateSubscription(sub); err != nil {
-		return nil, err
-	}
-	if err := s.assignTeacherProRole(order.UserID); err != nil {
-		return nil, err
-	}
-	_ = s.repo.CreateTeacherNotification(&models.TeacherNotification{UserID: &order.UserID, Type: "subscription_approved", Title: "تم قبول اشتراكك", Message: "تم تفعيل اشتراك المعلم للفصل الدراسي.", URL: "/dashboard/teacher"})
+	InvalidateUserCache(sub.UserID)
 	return sub, nil
 }
 
@@ -1911,7 +1884,11 @@ func (s *teacherSubscriptionService) RejectOrder(orderID uint, adminID uint, req
 	order.ReviewedBy = &reviewer
 	order.ReviewedAt = &now
 	order.AdminNote = strings.TrimSpace(req.AdminNote)
-	err = s.repo.UpdateOrder(order)
+	result := s.repo.DB().Model(&models.SubscriptionOrder{}).Where("id = ? AND status = ?", order.ID, "pending").Updates(map[string]interface{}{"status": "rejected", "reviewed_by": adminID, "reviewed_at": now, "admin_note": order.AdminNote})
+	err = result.Error
+	if err == nil && result.RowsAffected != 1 {
+		return ErrTeacherOrderNotPending
+	}
 	if err == nil {
 		_ = s.repo.CreateTeacherNotification(&models.TeacherNotification{UserID: &order.UserID, Type: "subscription_rejected", Title: "تم رفض طلب الاشتراك", Message: order.AdminNote, URL: "/dashboard/teacher/subscription"})
 	}
@@ -2180,4 +2157,82 @@ func trimString(v string, max int) string {
 		return v[:max]
 	}
 	return v
+}
+
+func approveTeacherOrder(db *gorm.DB, orderID, adminID, roleID uint, note string) (*models.TeacherSubscription, error) {
+	var sub models.TeacherSubscription
+	err := db.Transaction(func(tx *gorm.DB) error {
+		var order models.SubscriptionOrder
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&order, orderID).Error; err != nil {
+			return err
+		}
+		if order.Status == "approved" {
+			return tx.Where("source_order_id = ?", order.ID).First(&sub).Error
+		}
+		if order.Status != "pending" {
+			return ErrTeacherOrderNotPending
+		}
+		var plan models.SubscriptionPlan
+		if err := tx.First(&plan, order.PlanID).Error; err != nil {
+			return err
+		}
+		now := time.Now()
+		sub = models.TeacherSubscription{
+			SourceOrderID: &order.ID, UserID: order.UserID, PlanID: plan.ID, Status: "active",
+			StartsAt: now, EndsAt: now.AddDate(0, 0, plan.DurationDays), PriceJOD: order.AmountJOD,
+			DeviceLimit: plan.DeviceLimit, DownloadLimit: plan.DownloadLimit,
+			AIGenerationLimit: plan.AIGenerationLimit, ExportLimit: plan.ExportLimit,
+			ActivatedBy: &adminID, AdminNote: strings.TrimSpace(note),
+		}
+		if err := tx.Create(&sub).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("INSERT IGNORE INTO model_has_roles (role_id, model_type, model_id) VALUES (?, ?, ?)", roleID, modelTypeUser, order.UserID).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&order).Updates(map[string]interface{}{"status": "approved", "reviewed_by": adminID, "reviewed_at": now, "admin_note": sub.AdminNote}).Error; err != nil {
+			return err
+		}
+		return tx.Create(&models.TeacherNotification{UserID: &order.UserID, Type: "subscription_approved", Title: "تم قبول اشتراكك", Message: "تم تفعيل اشتراك المعلم للفصل الدراسي.", URL: "/account/teacher"}).Error
+	})
+	return &sub, err
+}
+
+func validTeacherProofPath(userID uint, stored string) (string, error) {
+	root := filepath.Join("storage", "private", "teacher-payment-proofs", fmt.Sprintf("user-%d", userID))
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	absStored, err := filepath.Abs(stored)
+	if err != nil || stored == "" {
+		return "", errors.New("invalid proof")
+	}
+	rel, err := filepath.Rel(absRoot, absStored)
+	if err != nil {
+		return "", err
+	}
+	return ResolveStoragePath(root, rel)
+}
+
+func reserveTeacherDownload(db *gorm.DB, download *models.TeacherPremiumDownload) error {
+	subscriptionID, userID := download.SubscriptionID, download.UserID
+	return db.Transaction(func(tx *gorm.DB) error {
+		var sub models.TeacherSubscription
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&sub, subscriptionID).Error; err != nil {
+			return err
+		}
+		now := time.Now()
+		if sub.UserID != userID || sub.Status != "active" || now.Before(sub.StartsAt) || !now.Before(sub.EndsAt) {
+			return ErrTeacherPlanNotFound
+		}
+		var used int64
+		if err := tx.Model(&models.TeacherPremiumDownload{}).Where("subscription_id = ? AND (status IS NULL OR status <> ?)", subscriptionID, "failed").Count(&used).Error; err != nil {
+			return err
+		}
+		if sub.DownloadLimit > 0 && used >= int64(sub.DownloadLimit) {
+			return ErrTeacherDeviceLimit
+		}
+		return tx.Create(download).Error
+	})
 }

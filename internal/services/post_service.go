@@ -93,7 +93,10 @@ func (s *postService) GetFileBySignedToken(token string) (*models.File, string, 
 
 	var absPath string
 	if s.fileSvc != nil {
-		absPath = s.fileSvc.GetAbsPath(file.FilePath)
+		absPath, err = s.fileSvc.SafeGetAbsPath(file.FilePath)
+		if err != nil {
+			return nil, "", MapError(err)
+		}
 	} else {
 		absPath = file.FilePath
 	}

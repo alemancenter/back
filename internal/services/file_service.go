@@ -3,7 +3,6 @@ package services
 import (
 	"archive/zip"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -223,7 +222,7 @@ func (s *FileService) UploadDocument(header *multipart.FileHeader, subdir string
 		return nil, fmt.Errorf("حجم الملف يتجاوز الحد المسموح (80MB)")
 	}
 
-	return s.upload(header, subdir, AllowedDocumentTypes)
+	return s.upload(header, path.Join("private", "attachments", subdir), AllowedDocumentTypes)
 }
 
 // upload is the core upload implementation
@@ -307,7 +306,10 @@ func (s *FileService) upload(header *multipart.FileHeader, subdir string, allowe
 
 // Delete removes a file from storage
 func (s *FileService) Delete(relPath string) error {
-	absPath := filepath.Join(s.cfg.Path, normalizeLegacyPath(relPath))
+	absPath, err := s.SafeGetAbsPath(relPath)
+	if err != nil {
+		return err
+	}
 	if err := os.Remove(absPath); err != nil && !os.IsNotExist(err) {
 		return MapError(err)
 	}
@@ -322,21 +324,7 @@ func (s *FileService) GetAbsPath(relPath string) string {
 // SafeGetAbsPath resolves relPath within the storage root and rejects any
 // path that escapes it (path traversal). Returns an error for invalid paths.
 func (s *FileService) SafeGetAbsPath(relPath string) (string, error) {
-	// Strip legacy "storage/" prefix that old Laravel records may have in the DB
-	relPath = normalizeLegacyPath(relPath)
-	// Clean removes ".." and "." components
-	cleaned := filepath.Clean(relPath)
-	// Reject absolute paths supplied by the caller
-	if filepath.IsAbs(cleaned) {
-		return "", errors.New("absolute paths are not allowed")
-	}
-	storageRoot := filepath.Clean(s.cfg.Path)
-	abs := filepath.Join(storageRoot, cleaned)
-	// Ensure the resolved path is still under the storage root
-	if !strings.HasPrefix(abs, storageRoot+string(filepath.Separator)) {
-		return "", errors.New("path traversal detected")
-	}
-	return abs, nil
+	return ResolveStoragePath(s.cfg.Path, normalizeLegacyPath(relPath))
 }
 
 // normalizeLegacyPath strips the leading "storage/" prefix that old Laravel

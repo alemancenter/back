@@ -41,7 +41,7 @@ func ensureContactMessageSchema() error {
 		return nil
 	}
 
-	if err := database.DB().AutoMigrate(&models.ContactMessage{}); err != nil {
+	if err := database.RequireTables(database.DB(), &models.ContactMessage{}); err != nil {
 		return err
 	}
 	contactMessageSchema.checked = true

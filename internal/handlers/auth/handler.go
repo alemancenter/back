@@ -14,15 +14,20 @@ import (
 	"github.com/imanjo/fiber-api/internal/repositories"
 	"github.com/imanjo/fiber-api/internal/services"
 	"github.com/imanjo/fiber-api/internal/utils"
+	"github.com/imanjo/fiber-api/pkg/logger"
+	"go.uber.org/zap"
 	"golang.org/x/oauth2"
 )
 
 // RegisterRequest contains fields for user registration
 type RegisterRequest struct {
-	Name                 string `json:"name" validate:"required,min=2,max=255"`
+	Name                 string `json:"name" validate:"required,min=2,max=80"`
 	Email                string `json:"email" validate:"required,email"`
 	Password             string `json:"password" validate:"required,min=8"`
 	PasswordConfirmation string `json:"password_confirmation" validate:"required"`
+	// Website is a honeypot — hidden in the form, always empty for real users.
+	// Bots that fill every field trip it and are rejected.
+	Website string `json:"website"`
 }
 
 // LoginRequest contains fields for user login
@@ -205,13 +210,32 @@ func (h *Handler) Register(c *fiber.Ctx) error {
 		return utils.BadRequest(c, "بيانات غير صحيحة")
 	}
 
+	// Honeypot: a filled hidden field means an automated client. Reject before any work.
+	if strings.TrimSpace(req.Website) != "" {
+		logger.Warn("registration honeypot triggered",
+			zap.String("ip", utils.GetClientIP(c)),
+			zap.String("email", req.Email),
+		)
+		return utils.BadRequest(c, "بيانات غير صحيحة")
+	}
+
 	// Sanitize inputs
-	req.Name = utils.SanitizeInput(req.Name)
+	req.Name = utils.NormalizeHumanName(utils.SanitizeInput(req.Name))
 	req.Email = strings.ToLower(strings.TrimSpace(utils.SanitizeInput(req.Email)))
 
 	// Validate
 	if errs := utils.Validate(req); errs != nil {
 		return utils.ValidationError(c, errs)
+	}
+
+	// The name field was being abused to inject spam sentences and shortener links.
+	if ok, reason := utils.ValidateHumanName(req.Name); !ok {
+		logger.Warn("registration rejected: invalid name",
+			zap.String("ip", utils.GetClientIP(c)),
+			zap.String("email", req.Email),
+			zap.String("reason", reason),
+		)
+		return utils.ValidationError(c, map[string]string{"name": reason})
 	}
 
 	if req.Password != req.PasswordConfirmation {
@@ -440,7 +464,10 @@ func (h *Handler) UpdateProfile(c *fiber.Ctx) error {
 	}
 
 	if req.Name != "" {
-		req.Name = utils.SanitizeInput(req.Name)
+		req.Name = utils.NormalizeHumanName(utils.SanitizeInput(req.Name))
+		if ok, reason := utils.ValidateHumanName(req.Name); !ok {
+			return utils.ValidationError(c, map[string]string{"name": reason})
+		}
 	}
 	if req.JobTitle != nil && *req.JobTitle != "" {
 		sanitized := utils.SanitizeInput(*req.JobTitle)

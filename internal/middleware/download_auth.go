@@ -73,7 +73,7 @@ func attachOptionalUser(c *fiber.Ctx) {
 	}
 
 	user, err := loadUserCached(claims.UserID)
-	if err != nil {
+	if err != nil || !user.IsActive() {
 		return
 	}
 

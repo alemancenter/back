@@ -117,9 +117,9 @@ var readinessProblems = map[string]readinessProblemDefinition{
 	},
 	readinessProblemMetaDescription: {
 		Code: readinessProblemMetaDescription, Label: "وصف تعريفي ناقص أو قصير",
-		Description: "توليد وصف دقيق من مضمون الصفحة، تطبيقه على الحقل الوصفي فقط، ثم إعادة فحص الجاهزية تلقائيًا.",
-		Severity:    "medium", ActionType: "auto_repair", Preset: readinessProblemMetaDescription,
-		Mode: "auto_apply", ModelStrategy: "balanced", Priority: 70,
+		Description: "إنشاء وصف مقترح من مضمون الصفحة؛ يُعرض للمراجعة الفردية قبل حفظه.",
+		Severity:    "medium", ActionType: "ai_preview", Preset: readinessProblemMetaDescription,
+		Mode: "fix_preview", ModelStrategy: "balanced", Priority: 70,
 	},
 	readinessProblemShortTitle: {
 		Code: readinessProblemShortTitle, Label: "عنوان يحتاج مراجعة",

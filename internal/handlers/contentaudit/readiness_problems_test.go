@@ -82,7 +82,7 @@ func TestNormalizeQualityBatchRequestPreservesSafeMetadataPreset(t *testing.T) {
 			{ContentType: "post", ContentID: 9},
 		},
 	})
-	if req.Preset != readinessProblemMetaDescription || req.Mode != "auto_apply" || req.Limit != 2 {
+	if req.Preset != readinessProblemMetaDescription || req.Mode != "fix_preview" || req.Limit != 2 {
 		t.Fatalf("safe metadata batch was not preserved: %#v", req)
 	}
 }
@@ -96,8 +96,8 @@ func TestNormalizeQualityBatchRequestDowngradesUnsafeAutoApply(t *testing.T) {
 
 func TestIssueSpecificExplicitTargetsRequireMembershipAndProblem(t *testing.T) {
 	req := contentQualityBatchRequest{
-		Source: "adsense_readiness",
-		Preset: readinessProblemMetaDescription,
+		Source:  "adsense_readiness",
+		Preset:  readinessProblemMetaDescription,
 		Targets: []contentQualityBatchTarget{{ContentType: "article", ContentID: 7}},
 	}
 	matching := unifiedReadinessItem{Type: "article", ID: 7, Problems: []readinessItemProblem{{Code: readinessProblemMetaDescription}}}
@@ -115,7 +115,7 @@ func TestIssueSpecificExplicitTargetsRequireMembershipAndProblem(t *testing.T) {
 
 func TestSelectedQualityTargetsMatchTypeAndID(t *testing.T) {
 	req := contentQualityBatchRequest{
-		Preset: "selected_items",
+		Preset:  "selected_items",
 		Targets: []contentQualityBatchTarget{{ContentType: "article", ContentID: 7}},
 	}
 	if !shouldIncludeQualityTarget(unifiedReadinessItem{Type: "article", ID: 7}, req) {

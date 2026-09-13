@@ -7,11 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/imanjo/fiber-api/internal/models"
+	"github.com/gofiber/fiber/v2"
 	auditservice "github.com/imanjo/fiber-api/internal/services/contentaudit"
 	"github.com/imanjo/fiber-api/internal/utils"
 	"github.com/imanjo/fiber-api/pkg/logger"
-	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -41,8 +40,8 @@ type bulkFixReviewResult struct {
 
 func normalizeBulkFixReviewRequest(req bulkFixReviewRequest) (bulkFixReviewRequest, error) {
 	req.Action = strings.ToLower(strings.TrimSpace(req.Action))
-	if req.Action != "apply" && req.Action != "reject" {
-		return bulkFixReviewRequest{}, errors.New("يجب اختيار قبول المعاينات أو رفضها")
+	if req.Action != "reject" {
+		return bulkFixReviewRequest{}, errors.New("الاعتماد يتطلب مراجعة كل معاينة منفردة؛ المتاح جماعيًا هو الرفض فقط")
 	}
 	if len(req.FixPreviewIDs) == 0 {
 		return bulkFixReviewRequest{}, errors.New("حدد معاينة واحدة على الأقل")
@@ -68,17 +67,6 @@ func normalizeBulkFixReviewRequest(req bulkFixReviewRequest) (bulkFixReviewReque
 	return req, nil
 }
 
-func bulkFixReviewTargetKey(preview *models.ContentAIFixPreview) string {
-	if preview == nil {
-		return ""
-	}
-	return strings.Join([]string{
-		strings.ToLower(strings.TrimSpace(preview.CountryCode)),
-		strings.ToLower(strings.TrimSpace(preview.ContentType)),
-		strings.TrimSpace(preview.ContentID),
-	}, ":")
-}
-
 func bulkFixReviewFailureMessage(err error) string {
 	switch {
 	case errors.Is(err, gorm.ErrRecordNotFound):
@@ -96,7 +84,7 @@ func bulkFixReviewFailureMessage(err error) string {
 	}
 }
 
-// BulkReviewFixes applies one explicit human decision to the selected preview IDs.
+// BulkReviewFixes only rejects previews; applying changes requires individual review.
 // Each preview is processed independently: a closed or invalid item cannot hide successful
 // decisions for the rest of the selection, and the response reports every outcome.
 func (h *Handler) BulkReviewFixes(c *fiber.Ctx) error {
@@ -119,37 +107,13 @@ func (h *Handler) BulkReviewFixes(c *fiber.Ctx) error {
 		Results:   make([]bulkFixReviewItemResult, 0, len(req.FixPreviewIDs)),
 	}
 
-	// Applying two drafts for the same content in one click is ambiguous: the second draft
-	// could overwrite the first. Rejecting multiple drafts is safe, so this guard is apply-only.
-	duplicateTargets := make(map[string]int)
-	previews := make(map[uint64]*models.ContentAIFixPreview, len(req.FixPreviewIDs))
-	if req.Action == "apply" {
-		for _, id := range req.FixPreviewIDs {
-			preview, loadErr := h.svc.GetFixPreview(ctx, id)
-			if loadErr != nil {
-				continue
-			}
-			previews[id] = preview
-			duplicateTargets[bulkFixReviewTargetKey(preview)]++
-		}
-	}
-
 	userID := currentUserID(c)
+	if userID == nil || *userID == 0 {
+		return utils.Forbidden(c)
+	}
 	for _, id := range req.FixPreviewIDs {
 		item := bulkFixReviewItemResult{FixPreviewID: id}
-		if preview := previews[id]; req.Action == "apply" && preview != nil && duplicateTargets[bulkFixReviewTargetKey(preview)] > 1 {
-			item.Message = "تم تحديد أكثر من معاينة للمحتوى نفسه؛ راجع واختر معاينة واحدة فقط"
-			result.Failed++
-			result.Results = append(result.Results, item)
-			continue
-		}
-
-		var preview *models.ContentAIFixPreview
-		if req.Action == "apply" {
-			preview, err = h.svc.ApplyGroundedFix(ctx, id, userID, req.Note)
-		} else {
-			preview, err = h.svc.RejectFix(ctx, id, userID, req.Note)
-		}
+		preview, err := h.svc.RejectFix(ctx, id, userID, req.Note)
 		if err != nil {
 			item.Message = bulkFixReviewFailureMessage(err)
 			result.Failed++
@@ -166,11 +130,7 @@ func (h *Handler) BulkReviewFixes(c *fiber.Ctx) error {
 
 		item.Success = true
 		item.Status = preview.Status
-		if req.Action == "apply" {
-			item.Message = "تم قبول المعاينة وتطبيق الإصلاح"
-		} else {
-			item.Message = "تم رفض المعاينة دون تغيير المحتوى"
-		}
+		item.Message = "تم رفض المعاينة دون تغيير المحتوى"
 		result.Succeeded++
 		result.Results = append(result.Results, item)
 	}

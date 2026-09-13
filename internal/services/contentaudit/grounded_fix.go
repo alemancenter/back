@@ -18,6 +18,7 @@ import (
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/utils"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
@@ -239,12 +240,18 @@ func (s *Service) CreateGroundedFixPreview(ctx context.Context, decisionID uint6
 }
 
 func (s *Service) ApplyGroundedFix(ctx context.Context, previewID uint64, userID *uint, note string) (*models.ContentAIFixPreview, error) {
+	if userID == nil || *userID == 0 {
+		return nil, ErrHumanReviewRequired
+	}
 	preview, err := s.repo.GetFixPreview(ctx, previewID)
 	if err != nil {
 		return nil, err
 	}
 	if preview.Status != models.AIFixStatusPreviewed {
 		return nil, ErrFixAlreadyClosed
+	}
+	if strings.HasPrefix(strings.TrimSpace(preview.FixSummary), safeMetadataSummaryPrefix) {
+		return s.applySafeMetadataFix(ctx, preview, userID, note)
 	}
 	meta, ok := parseGroundingSummary(preview.FixSummary)
 	if !ok {
@@ -270,7 +277,7 @@ func (s *Service) ApplyGroundedFix(ctx context.Context, previewID uint64, userID
 		switch normalizeContentType(preview.ContentType) {
 		case "article":
 			var item models.Article
-			if err := tx.Preload("Subject").Preload("Subject.SchoolClass").Preload("Semester").Preload("Semester.SchoolClass").Preload("KeywordsRel").First(&item, id).Error; err != nil {
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Preload("Subject").Preload("Subject.SchoolClass").Preload("Semester").Preload("Semester.SchoolClass").Preload("KeywordsRel").First(&item, id).Error; err != nil {
 				return err
 			}
 			if !groundedSourceMatches(item.Title, item.Content, item.MetaDescription, articleKeywordsString(item.KeywordsRel), preview) {
@@ -297,7 +304,7 @@ func (s *Service) ApplyGroundedFix(ctx context.Context, previewID uint64, userID
 			notifURL = contentAuditEditURL("article", item.ID, preview.CountryCode)
 		case "post":
 			var item models.Post
-			if err := tx.Preload("Category").First(&item, id).Error; err != nil {
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Preload("Category").First(&item, id).Error; err != nil {
 				return err
 			}
 			if !groundedSourceMatches(item.Title, item.Content, item.MetaDescription, item.Keywords, preview) {

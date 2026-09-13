@@ -7,6 +7,7 @@ import (
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/repositories"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
@@ -138,6 +139,16 @@ func TestAuthService_UpdateProfile_UsesPartialUpdate(t *testing.T) {
 }
 
 func TestAuthService_Register(t *testing.T) {
+	// Registration behavior must not depend on public DNS for the fixture domain.
+	previousTrusted, existed := trustedEmailDomains["example.com"]
+	trustedEmailDomains["example.com"] = true
+	t.Cleanup(func() {
+		if existed {
+			trustedEmailDomains["example.com"] = previousTrusted
+		} else {
+			delete(trustedEmailDomains, "example.com")
+		}
+	})
 	oldAssignDefaultRole := assignDefaultRole
 	assignDefaultRole = func(uint) {}
 	t.Cleanup(func() {
@@ -158,8 +169,8 @@ func TestAuthService_Register(t *testing.T) {
 
 		user, token, verificationSent, err := svc.Register("Test User", "test@example.com", "password123")
 
-		assert.NoError(t, err)
-		assert.NotNil(t, user)
+		require.NoError(t, err)
+		require.NotNil(t, user)
 		assert.Equal(t, "Test User", user.Name)
 		assert.Equal(t, "test@example.com", user.Email)
 		assert.NotEmpty(t, token)
@@ -203,8 +214,8 @@ func TestAuthService_Login(t *testing.T) {
 
 		user, token, err := svc.Login("login@example.com", "correct_password", "127.0.0.1", "TestAgent", "POST", "/api/auth/login")
 
-		assert.NoError(t, err)
-		assert.NotNil(t, user)
+		require.NoError(t, err)
+		require.NotNil(t, user)
 		assert.Equal(t, "Login User", user.Name)
 		assert.NotEmpty(t, token)
 	})

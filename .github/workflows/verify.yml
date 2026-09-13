@@ -6,15 +6,23 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     services:
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=3s --health-retries=10
       mysql:
         image: mysql:8.0
         env:
           MYSQL_ROOT_PASSWORD: integration-only
+          MYSQL_DATABASE: test_db
         ports: ['3306:3306']
         options: >-
           --health-cmd="mysqladmin ping -h localhost -pintegration-only"
           --health-interval=10s --health-timeout=5s --health-retries=10
     env:
+      DB_PASS_JO: integration-only
       IMANJO_TEST_MYSQL_DSN: 'root:integration-only@tcp(127.0.0.1:3306)/?parseTime=true'
     steps:
       - uses: actions/checkout@v4

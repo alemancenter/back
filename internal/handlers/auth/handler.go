@@ -2,14 +2,19 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/imanjo/fiber-api/internal/config"
+	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/repositories"
 	"github.com/imanjo/fiber-api/internal/services"
@@ -59,15 +64,40 @@ type ResetPasswordRequest struct {
 
 // Handler contains auth route handlers
 type Handler struct {
-	svc services.AuthService
-	cfg *config.Config
+	svc         services.AuthService
+	settingsSvc services.SettingService
+	cfg         *config.Config
 }
 
 // New creates a new auth Handler
-func New(svc services.AuthService) *Handler {
+func New(svc services.AuthService, settingsSvc services.SettingService) *Handler {
 	return &Handler{
-		svc: svc,
-		cfg: config.Get(),
+		svc:         svc,
+		settingsSvc: settingsSvc,
+		cfg:         config.Get(),
+	}
+}
+
+// registrationAllowed reports whether the public "enable_registration" setting permits creating
+// a brand-new account. Social sign-in (Google/Facebook) implicitly registers a user on first
+// login — without this check that path bypassed the toggle entirely: the dedicated
+// POST /auth/register route can be gated up front, but "login or register" only knows which of
+// the two it's doing once it has already looked the user up, so the check has to happen inside
+// that same flow rather than as a route-level gate.
+func (h *Handler) registrationAllowed(c *fiber.Ctx) bool {
+	countryID, _ := c.Locals("country_id").(database.CountryID)
+	if countryID == 0 {
+		countryID = database.CountryJordan
+	}
+	settings, err := h.settingsSvc.GetPublic(c.Context(), countryID)
+	if err != nil || settings == nil {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(settings["enable_registration"])) {
+	case "false", "0", "no", "off":
+		return false
+	default:
+		return true
 	}
 }
 
@@ -699,12 +729,85 @@ func (h *Handler) DeleteAccount(c *fiber.Ctx) error {
 	return utils.Success(c, "تم حذف الحساب بنجاح", nil)
 }
 
+const oauthStateCookieName = "oauth_state"
+
+// beginOAuthFlow issues a random single-use nonce (stored in a short-lived cookie, never sent to
+// the provider) and combines it with a sanitized redirect_to into the opaque `state` parameter
+// forwarded to Google/Facebook. Without a real nonce here — the previous code passed the literal
+// string "state" and never checked it came back unchanged — the redirect callback has no way to
+// tell a legitimate provider response apart from an attacker simply crafting their own callback
+// URL with a `code` they obtained for their OWN account, which is the standard OAuth
+// login-CSRF: the victim gets signed into the attacker's account and unknowingly stores data
+// there (e.g. payment info) that the attacker can later access by logging in normally.
+func (h *Handler) beginOAuthFlow(c *fiber.Ctx, redirectTo string) (state string, err error) {
+	nonceBytes := make([]byte, 24)
+	if _, err = rand.Read(nonceBytes); err != nil {
+		return "", err
+	}
+	nonce := hex.EncodeToString(nonceBytes)
+
+	c.Cookie(&fiber.Cookie{
+		Name:     oauthStateCookieName,
+		Value:    nonce,
+		HTTPOnly: true,
+		Secure:   h.isProduction() || strings.EqualFold(c.Protocol(), "https"),
+		// Must be Lax, not Strict: this cookie has to survive the top-level navigation Google/
+		// Facebook makes back to our callback, which is a cross-site request from their origin.
+		SameSite: "Lax",
+		Path:     "/",
+		Domain:   h.cookieDomain(),
+		MaxAge:   600,
+	})
+
+	return nonce + "|" + sanitizeOAuthRedirectTo(redirectTo), nil
+}
+
+// verifyOAuthState checks the provider-returned state's nonce against the cookie set by
+// beginOAuthFlow (constant-time, and single-use — the cookie is cleared either way), returning
+// the sanitized redirect_to that was embedded alongside it if the nonce matches.
+func (h *Handler) verifyOAuthState(c *fiber.Ctx) (redirectTo string, ok bool) {
+	returned := c.Query("state")
+	cookieVal := c.Cookies(oauthStateCookieName)
+
+	c.Cookie(&fiber.Cookie{
+		Name:     oauthStateCookieName,
+		Value:    "",
+		HTTPOnly: true,
+		Path:     "/",
+		Domain:   h.cookieDomain(),
+		MaxAge:   -1,
+	})
+
+	nonce, redirectTo, found := strings.Cut(returned, "|")
+	if !found || cookieVal == "" || nonce == "" ||
+		subtle.ConstantTimeCompare([]byte(nonce), []byte(cookieVal)) != 1 {
+		return "", false
+	}
+	return redirectTo, true
+}
+
+// sanitizeOAuthRedirectTo is a first-pass sanity check on the backend, which only round-trips
+// this value opaquely through the provider's state param — the frontend callback page (using
+// safeRedirectPath, the same guard every other post-action redirect in this app goes through)
+// is the authoritative check before anything is actually navigated to.
+func sanitizeOAuthRedirectTo(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") || strings.ContainsAny(raw, "|\r\n") {
+		return ""
+	}
+	return raw
+}
+
 // GoogleRedirect redirects to Google OAuth
 // GET /api/auth/google/redirect
 func (h *Handler) GoogleRedirect(c *fiber.Ctx) error {
+	state, err := h.beginOAuthFlow(c, c.Query("redirect_to"))
+	if err != nil {
+		return utils.InternalError(c, "تعذر بدء تسجيل الدخول عبر Google")
+	}
 	oauthCfg := h.svc.GetGoogleOAuthConfig()
-	url := oauthCfg.AuthCodeURL("state", oauth2.AccessTypeOffline)
-	return c.Redirect(url)
+	authURL := oauthCfg.AuthCodeURL(state, oauth2.AccessTypeOffline)
+	return c.Redirect(authURL)
 }
 
 // GoogleCallback handles the Google OAuth callback
@@ -712,6 +815,11 @@ func (h *Handler) GoogleRedirect(c *fiber.Ctx) error {
 func (h *Handler) GoogleCallback(c *fiber.Ctx) error {
 	frontendURL := strings.TrimRight(h.cfg.Frontend.URL, "/")
 	callbackBase := frontendURL + "/auth/google/callback"
+
+	redirectTo, stateOK := h.verifyOAuthState(c)
+	if !stateOK {
+		return c.Redirect(callbackBase + "?error=invalid_state")
+	}
 
 	code := c.Query("code")
 	if code == "" {
@@ -723,7 +831,10 @@ func (h *Handler) GoogleCallback(c *fiber.Ctx) error {
 		return c.Redirect(callbackBase + "?error=google_auth_failed")
 	}
 
-	user, token, err := h.svc.LoginOrRegisterGoogleUser(userInfo)
+	user, token, err := h.svc.LoginOrRegisterGoogleUser(userInfo, h.registrationAllowed(c))
+	if err == services.ErrRegistrationDisabled {
+		return c.Redirect(callbackBase + "?error=registration_disabled")
+	}
 	if err != nil || user == nil {
 		return c.Redirect(callbackBase + "?error=login_failed")
 	}
@@ -734,6 +845,9 @@ func (h *Handler) GoogleCallback(c *fiber.Ctx) error {
 	}
 	h.setAuthCookies(c, token, refreshToken)
 
+	if redirectTo != "" {
+		return c.Redirect(callbackBase + "?redirect_to=" + url.QueryEscape(redirectTo))
+	}
 	return c.Redirect(callbackBase)
 }
 
@@ -770,9 +884,13 @@ func (h *Handler) GoogleTokenLogin(c *fiber.Ctx) error {
 // FacebookRedirect redirects to Facebook OAuth
 // GET /api/auth/facebook/redirect
 func (h *Handler) FacebookRedirect(c *fiber.Ctx) error {
+	state, err := h.beginOAuthFlow(c, c.Query("redirect_to"))
+	if err != nil {
+		return utils.InternalError(c, "تعذر بدء تسجيل الدخول عبر Facebook")
+	}
 	oauthCfg := h.svc.GetFacebookOAuthConfig()
-	url := oauthCfg.AuthCodeURL("state")
-	return c.Redirect(url)
+	authURL := oauthCfg.AuthCodeURL(state)
+	return c.Redirect(authURL)
 }
 
 // FacebookCallback handles the Facebook OAuth callback
@@ -780,6 +898,11 @@ func (h *Handler) FacebookRedirect(c *fiber.Ctx) error {
 func (h *Handler) FacebookCallback(c *fiber.Ctx) error {
 	frontendURL := strings.TrimRight(h.cfg.Frontend.URL, "/")
 	callbackBase := frontendURL + "/auth/facebook/callback"
+
+	redirectTo, stateOK := h.verifyOAuthState(c)
+	if !stateOK {
+		return c.Redirect(callbackBase + "?error=invalid_state")
+	}
 
 	code := c.Query("code")
 	if code == "" {
@@ -791,7 +914,10 @@ func (h *Handler) FacebookCallback(c *fiber.Ctx) error {
 		return c.Redirect(callbackBase + "?error=facebook_auth_failed")
 	}
 
-	user, token, err := h.svc.LoginOrRegisterFacebookUser(userInfo)
+	user, token, err := h.svc.LoginOrRegisterFacebookUser(userInfo, h.registrationAllowed(c))
+	if err == services.ErrRegistrationDisabled {
+		return c.Redirect(callbackBase + "?error=registration_disabled")
+	}
 	if err != nil || user == nil {
 		return c.Redirect(callbackBase + "?error=login_failed")
 	}
@@ -802,6 +928,9 @@ func (h *Handler) FacebookCallback(c *fiber.Ctx) error {
 	}
 	h.setAuthCookies(c, token, refreshToken)
 
+	if redirectTo != "" {
+		return c.Redirect(callbackBase + "?redirect_to=" + url.QueryEscape(redirectTo))
+	}
 	return c.Redirect(callbackBase)
 }
 
@@ -943,7 +1072,10 @@ func (h *Handler) verifyGoogleToken(token string) (*services.GoogleUserInfo, err
 }
 
 func (h *Handler) loginOrRegisterGoogleUser(c *fiber.Ctx, info *services.GoogleUserInfo) error {
-	user, token, err := h.svc.LoginOrRegisterGoogleUser(info)
+	user, token, err := h.svc.LoginOrRegisterGoogleUser(info, h.registrationAllowed(c))
+	if err == services.ErrRegistrationDisabled {
+		return utils.ForbiddenCode(c, "REGISTRATION_DISABLED", err.Error())
+	}
 	if err != nil {
 		return utils.InternalError(c, "فشل معالجة حساب Google")
 	}
@@ -1097,7 +1229,10 @@ func (h *Handler) fetchFacebookUserInfo(accessToken string) (*services.FacebookU
 }
 
 func (h *Handler) loginOrRegisterFacebookUser(c *fiber.Ctx, info *services.FacebookUserInfo) error {
-	user, token, err := h.svc.LoginOrRegisterFacebookUser(info)
+	user, token, err := h.svc.LoginOrRegisterFacebookUser(info, h.registrationAllowed(c))
+	if err == services.ErrRegistrationDisabled {
+		return utils.ForbiddenCode(c, "REGISTRATION_DISABLED", err.Error())
+	}
 	if err != nil {
 		return utils.InternalError(c, "فشل معالجة حساب Facebook")
 	}

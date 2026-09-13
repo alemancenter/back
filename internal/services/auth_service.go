@@ -38,6 +38,7 @@ var (
 	ErrInvalidVerifyToken      = errors.New("رابط التحقق غير صالح أو منتهي الصلاحية")
 	ErrAlreadyVerified         = errors.New("البريد الإلكتروني مُحقق بالفعل")
 	ErrVerificationEmailFailed = errors.New("تعذر إرسال رسالة تفعيل البريد الإلكتروني")
+	ErrRegistrationDisabled    = errors.New("تسجيل الحسابات الجديدة موقوف حاليًا")
 )
 
 // IMANJO_LOGIN_TIMING_EQUALIZATION_V2
@@ -197,9 +198,9 @@ type AuthService interface {
 	ChangeUnverifiedEmail(user *models.User, email string) (*models.User, bool, error)
 	DeleteAccount(user *models.User, password string) error
 	GetGoogleOAuthConfig() *oauth2.Config
-	LoginOrRegisterGoogleUser(info *GoogleUserInfo) (*models.User, string, error)
+	LoginOrRegisterGoogleUser(info *GoogleUserInfo, allowRegister bool) (*models.User, string, error)
 	GetFacebookOAuthConfig() *oauth2.Config
-	LoginOrRegisterFacebookUser(info *FacebookUserInfo) (*models.User, string, error)
+	LoginOrRegisterFacebookUser(info *FacebookUserInfo, allowRegister bool) (*models.User, string, error)
 	UpsertPushToken(userID uint, token, platform string) error
 	DeletePushToken(userID uint, token string) error
 	CheckEmailAvailable(email string) (bool, error)
@@ -1038,10 +1039,13 @@ func facebookAvatarURL(facebookID string) string {
 	return "https://graph.facebook.com/" + facebookID + "/picture?type=large"
 }
 
-func (s *authService) LoginOrRegisterGoogleUser(info *GoogleUserInfo) (*models.User, string, error) {
+func (s *authService) LoginOrRegisterGoogleUser(info *GoogleUserInfo, allowRegister bool) (*models.User, string, error) {
 	user, err := s.repo.FindByEmailOrGoogleID(info.Email, info.ID)
 
 	if err == gorm.ErrRecordNotFound {
+		if !allowRegister {
+			return nil, "", ErrRegistrationDisabled
+		}
 		// Register new user
 		now := time.Now()
 		user = &models.User{
@@ -1098,10 +1102,13 @@ func (s *authService) GetFacebookOAuthConfig() *oauth2.Config {
 	}
 }
 
-func (s *authService) LoginOrRegisterFacebookUser(info *FacebookUserInfo) (*models.User, string, error) {
+func (s *authService) LoginOrRegisterFacebookUser(info *FacebookUserInfo, allowRegister bool) (*models.User, string, error) {
 	user, err := s.repo.FindByEmailOrFacebookID(info.Email, info.ID)
 
 	if err == gorm.ErrRecordNotFound {
+		if !allowRegister {
+			return nil, "", ErrRegistrationDisabled
+		}
 		now := time.Now()
 		user = &models.User{
 			Name:            safeOAuthDisplayName(info.Name, info.Email),

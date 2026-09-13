@@ -127,6 +127,9 @@ func NewDependencies() *Handlers {
 	chatbotRepository := chatbotRepo.NewRepository()
 	chatbotService := chatbotSvc.NewService(chatbotRepository)
 
+	settingRepo := repositories.NewSettingRepository()
+	settingSvc := services.NewSettingService(settingRepo)
+
 	notificationRepo := repositories.NewNotificationRepository()
 	cfg := config.Load()
 	pushSvc := services.NewPushService(
@@ -137,7 +140,7 @@ func NewDependencies() *Handlers {
 		cfg.OneSignal.AppID,
 		cfg.OneSignal.APIKey,
 	)
-	notificationSvc := services.NewNotificationService(notificationRepo, userRepo, pushSvc)
+	notificationSvc := services.NewNotificationService(notificationRepo, userRepo, pushSvc, settingSvc)
 
 	redisRepo := repositories.NewRedisRepository()
 	redisSvc := services.NewRedisService(redisRepo)
@@ -149,8 +152,6 @@ func NewDependencies() *Handlers {
 	securitySvc := services.NewSecurityService(securityRepo)
 	userSvc = services.NewUserService(userRepo, securitySvc)
 
-	settingRepo := repositories.NewSettingRepository()
-	settingSvc := services.NewSettingService(settingRepo)
 	seoRepo := repositories.NewSEORepository()
 	seoSvc := services.NewSEOService(seoRepo, settingSvc, sitemapSvc)
 
@@ -195,7 +196,7 @@ func NewDependencies() *Handlers {
 
 	return &Handlers{
 		Dashboard:           dashboard.New(dashboardSvc),
-		Auth:                auth.New(authSvc),
+		Auth:                auth.New(authSvc, settingSvc),
 		Articles:            articles.New(articleSvc, notificationSvc),
 		Posts:               posts.NewWithFileService(postSvc, notificationSvc, fileSvc),
 		Users:               users.New(userSvc, notificationSvc),

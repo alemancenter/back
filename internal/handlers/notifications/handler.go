@@ -198,6 +198,9 @@ func (h *Handler) Create(c *fiber.Ctx) error {
 	dataJSON, _ := json.Marshal(dataMap)
 
 	notification, err := h.svc.Create(req.Type, recipientID, string(dataJSON))
+	if err == services.ErrNotificationsDisabled {
+		return utils.BadRequest(c, err.Error())
+	}
 	if err != nil {
 		return utils.InternalError(c, "فشل إنشاء الإشعار")
 	}
@@ -245,6 +248,9 @@ func (h *Handler) Broadcast(c *fiber.Ctx) error {
 	}
 
 	if err := h.svc.Broadcast(req.Type, req.Title, req.Message, req.ActionURL, req.Role); err != nil {
+		if err == services.ErrNotificationsDisabled {
+			return utils.BadRequest(c, err.Error())
+		}
 		return utils.InternalError(c, "فشل إرسال الإشعارات")
 	}
 

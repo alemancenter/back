@@ -1,10 +1,14 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/repositories"
 	"github.com/google/uuid"
@@ -25,6 +29,12 @@ type NotificationService interface {
 	BulkAction(action string, ids []string, userID uint) error
 }
 
+// ErrNotificationsDisabled is returned by Create/CreateBulk (and therefore Broadcast/
+// NotifyUsersWithPermissions, which both funnel through CreateBulk) while the public
+// "enable_notifications" setting is off. Previously this toggle had no enforcement anywhere —
+// every one of these call sites still created and pushed notifications regardless of its value.
+var ErrNotificationsDisabled = errors.New("الإشعارات موقوفة حاليًا")
+
 type PruneNotificationsResponse struct {
 	Deleted int64 `json:"deleted"`
 }
@@ -35,17 +45,38 @@ type LatestNotificationsResponse struct {
 }
 
 type notificationService struct {
-	repo     repositories.NotificationRepository
-	userRepo repositories.UserRepository
-	push     PushService
+	repo        repositories.NotificationRepository
+	userRepo    repositories.UserRepository
+	push        PushService
+	settingsSvc SettingService
 }
 
 func NewNotificationService(
 	repo repositories.NotificationRepository,
 	userRepo repositories.UserRepository,
 	push PushService,
+	settingsSvc SettingService,
 ) NotificationService {
-	return &notificationService{repo: repo, userRepo: userRepo, push: push}
+	return &notificationService{repo: repo, userRepo: userRepo, push: push, settingsSvc: settingsSvc}
+}
+
+// notificationsEnabled reads the public "enable_notifications" toggle. There's no per-country
+// context at any of this service's call sites (Create/CreateBulk/Broadcast/
+// NotifyUsersWithPermissions all take plain user IDs, not a country), so — like
+// maintenance_mode and enable_registration elsewhere in this codebase — this setting is treated
+// as a single site-wide switch, read from the primary (Jordan) database. GetPublic is
+// Redis-cached (settingsCacheTTL, 2h) so this adds no real per-call cost.
+func (s *notificationService) notificationsEnabled() bool {
+	settings, err := s.settingsSvc.GetPublic(context.Background(), database.CountryJordan)
+	if err != nil || settings == nil {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(settings["enable_notifications"])) {
+	case "false", "0", "no", "off":
+		return false
+	default:
+		return true
+	}
 }
 
 func (s *notificationService) List(userID uint, search, status string, offset, limit int) ([]models.Notification, int64, error) {
@@ -93,6 +124,9 @@ func (s *notificationService) MarkAllRead(userID uint) error {
 }
 
 func (s *notificationService) Create(reqType string, notifiableID uint, data string) (*models.Notification, error) {
+	if !s.notificationsEnabled() {
+		return nil, ErrNotificationsDisabled
+	}
 	notification := &models.Notification{
 		ID:             uuid.New().String(),
 		Type:           reqType,
@@ -114,6 +148,9 @@ func (s *notificationService) Create(reqType string, notifiableID uint, data str
 func (s *notificationService) CreateBulk(reqType string, userIDs []uint, data string) error {
 	if len(userIDs) == 0 {
 		return nil
+	}
+	if !s.notificationsEnabled() {
+		return ErrNotificationsDisabled
 	}
 	notifications := make([]*models.Notification, len(userIDs))
 	for i, uid := range userIDs {

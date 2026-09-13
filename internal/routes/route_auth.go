@@ -16,7 +16,7 @@ func registerAuthRoutes(api, dash fiber.Router, h *Handlers) {
 	// Auth rate limiting is applied centrally by Setup() before routing.
 	authGroup.Post("/check-email", h.Auth.CheckEmail)
 	authGroup.Post("/email/preflight", h.Auth.EmailPreflight)
-	authGroup.Post("/register", h.Auth.Register)
+	authGroup.Post("/register", middleware.FeatureFlagGate(h.SettingsSvc, "enable_registration", "REGISTRATION_DISABLED", "تسجيل الحسابات الجديدة موقوف حاليًا"), h.Auth.Register)
 	authGroup.Post("/login", h.Auth.Login)
 	authGroup.Post("/refresh", h.Auth.RefreshToken)
 	authGroup.Post("/password/forgot", h.Auth.ForgotPassword)

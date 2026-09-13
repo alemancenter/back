@@ -31,8 +31,6 @@ func NewSettingService(repo repositories.SettingRepository) SettingService {
 var publicSettingKeys = map[string]bool{
 	"adsense_client":               true,
 	"canonical_url":                true,
-	"date_format":                  true,
-	"time_format":                  true,
 	"enable_notifications":         true,
 	"enable_registration":          true,
 	"enable_teacher_subscriptions": true,

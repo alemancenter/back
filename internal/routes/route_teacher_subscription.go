@@ -25,8 +25,12 @@ func registerTeacherSubscriptionRoutes(api, dash fiber.Router, h *Handlers) {
 	secure.Post("/ai/generate", h.TeacherSubscription.GenerateAI)
 	secure.Get("/ai-generations/:id/export", h.TeacherSubscription.ExportAI)
 	secure.Get("/notifications", h.TeacherSubscription.TeacherNotifications)
-	secure.Post("/orders", h.TeacherSubscription.CreateOrder)
-	secure.Post("/orders/with-proof", h.TeacherSubscription.CreateOrderWithProof)
+	// enable_teacher_subscriptions previously only hid the /teachers subscribe button and the
+	// Astro BFF route — the backend order-creation endpoints stayed open to anyone with a valid
+	// token, so a request made directly against the API bypassed the toggle entirely.
+	subscriptionsGate := middleware.FeatureFlagGate(h.SettingsSvc, "enable_teacher_subscriptions", "TEACHER_SUBSCRIPTIONS_DISABLED", "اشتراكات المعلمين موقوفة حاليًا")
+	secure.Post("/orders", subscriptionsGate, h.TeacherSubscription.CreateOrder)
+	secure.Post("/orders/with-proof", subscriptionsGate, h.TeacherSubscription.CreateOrderWithProof)
 	secure.Get("/devices", h.TeacherSubscription.MyDevices)
 	secure.Delete("/devices/:id", h.TeacherSubscription.DeactivateMyDevice)
 

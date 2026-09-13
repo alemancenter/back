@@ -90,6 +90,49 @@ type ScanSummary struct {
 	PolicyIssueItems int `json:"policy_issue_items"`
 }
 
+// ScanResult is the full payload of one completed scan — cached in Redis so the dashboard page
+// can show the last scan again on a plain reload instead of coming back empty until the admin
+// clicks "فحص" again.
+type ScanResult struct {
+	Clusters     []Cluster         `json:"clusters"`
+	WeakContent  []WeakContentItem `json:"weak_content"`
+	PolicyIssues []PolicyIssueItem `json:"policy_issues"`
+	Summary      ScanSummary       `json:"summary"`
+	ScannedAt    time.Time         `json:"scanned_at"`
+}
+
+// scanCacheTTL is generous (not a "freshness" window — a scan only ever changes when someone
+// clicks "فحص" again) so a result survives well past any reasonable gap between dashboard
+// visits; it exists only so an abandoned scan doesn't linger in Redis forever.
+const scanCacheTTL = 30 * 24 * time.Hour
+
+func scanCacheKey(countryID database.CountryID) string {
+	return database.Redis().Key("adsense_policy", "scan", string(database.CountryCode(countryID)))
+}
+
+// GetLastScan returns the most recently completed scan for this country, or success with a nil
+// data payload if none has ever run — the dashboard page loads this on render so results
+// persist across a plain page reload instead of disappearing until "فحص" is clicked again.
+// @Summary Get the last AdSense content-policy scan result
+// @Tags AdSense Policy
+// @Produce json
+// @Security BearerAuth
+// @Security FrontendKeyAuth
+// @Param X-Country-Id header string false "Country ID"
+// @Success 200 {object} utils.APIResponse
+// @Router /dashboard/adsense-policy/scan [get]
+func (h *Handler) GetLastScan(c *fiber.Ctx) error {
+	countryID, _ := c.Locals("country_id").(database.CountryID)
+	if countryID == 0 {
+		countryID = database.CountryJordan
+	}
+	var result ScanResult
+	if !database.Redis().GetJSON(c.UserContext(), scanCacheKey(countryID), &result) {
+		return utils.Success(c, "success", nil)
+	}
+	return utils.Success(c, "success", result)
+}
+
 // ScanDuplicates runs a full deterministic content-policy scan (duplicate/near-duplicate
 // content, thin content, and corrupted-content artifacts) across every article and post in the
 // requesting country's database. Triggered on-demand (dashboard "فحص كامل" button) rather than
@@ -123,19 +166,16 @@ func (h *Handler) ScanDuplicates(c *fiber.Ctx) error {
 	clusters := buildClusters(report.Clusters, members)
 	weakItems := findWeakContent(rows, members)
 	policyIssues := findPolicyIssues(rows, members)
-
 	summary := summarize(clusters, report, weakItems, policyIssues)
 
-	return utils.Success(c, "success", fiber.Map{
-		"clusters":      clusters,
-		"weak_content":  weakItems,
-		"policy_issues": policyIssues,
-		"summary":       summary,
-		"policy": fiber.Map{
-			"human_review_required": true,
-			"automatic_changes":     false,
-		},
-	})
+	result := ScanResult{
+		Clusters: clusters, WeakContent: weakItems, PolicyIssues: policyIssues,
+		Summary: summary, ScannedAt: time.Now(),
+	}
+	// Best-effort: a cache write failure shouldn't fail a scan that already succeeded.
+	_ = database.Redis().SetJSON(c.UserContext(), scanCacheKey(countryID), result, scanCacheTTL)
+
+	return utils.Success(c, "success", result)
 }
 
 // loadDocuments returns the similarity-engine documents, a Key->Member lookup, and the raw rows

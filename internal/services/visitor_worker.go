@@ -102,22 +102,23 @@ func flushVisitorBatch(events []VisitorEvent) {
 			browser, os := parseUserAgent(ev.UserAgent)
 			geo := LookupGeoIP(ev.IPAddress)
 			records = append(records, models.VisitorTracking{
-				IPAddress:    ev.IPAddress,
-				UserAgent:    ev.UserAgent,
-				Country:      visStrPtr(geo.Country),
-				City:         visStrPtr(geo.City),
-				Latitude:     visF64Ptr(geo.Latitude),
-				Longitude:    visF64Ptr(geo.Longitude),
-				Browser:      visStrPtr(browser),
-				OS:           visStrPtr(os),
-				URL:          visStrPtr(ev.URL),
-				Referer:      visStrPtr(ev.Referer),
-				UserID:       ev.UserID,
-				StatusCode:   visIntPtr(ev.StatusCode),
-				ResponseTime: visF64Ptr(ev.ResponseTime),
-				LastActivity: ev.Timestamp,
-				CreatedAt:    ev.Timestamp,
-				UpdatedAt:    now,
+				IPAddress:     ev.IPAddress,
+				UserAgent:     ev.UserAgent,
+				Country:       visStrPtr(geo.Country),
+				City:          visStrPtr(geo.City),
+				Latitude:      visF64Ptr(geo.Latitude),
+				Longitude:     visF64Ptr(geo.Longitude),
+				Browser:       visStrPtr(browser),
+				OS:            visStrPtr(os),
+				URL:           visStrPtr(ev.URL),
+				Referer:       visStrPtr(ev.Referer),
+				UserID:        ev.UserID,
+				IsHumanPublic: !isBotUserAgent(ev.UserAgent) && isPublicHumanPath(ev.URL),
+				StatusCode:    visIntPtr(ev.StatusCode),
+				ResponseTime:  visF64Ptr(ev.ResponseTime),
+				LastActivity:  ev.Timestamp,
+				CreatedAt:     ev.Timestamp,
+				UpdatedAt:     now,
 			})
 		}
 
@@ -225,6 +226,28 @@ var botUserAgentMarkers = []string{
 	"bot", "spider", "crawl", "slurp", "facebookexternalhit", "whatsapp",
 	"headlesschrome", "phantomjs", "curl/", "wget/", "python-requests",
 	"go-http-client", "postmanruntime", "scrapy",
+}
+
+// publicHumanPathExclusions mirrors, exactly, the URL side of the old
+// repositories.humanPublicVisitorFilterSQL — internal/asset/infra routes that were never a
+// real visitor page. Evaluated once here at write time instead of on every analytics read.
+var publicHumanPathExclusions = []string{
+	"/api/", "/_server-islands", "/_astro/", "/storage/", "/backend-api/",
+	"/dashboard", "/assets/", "/fonts/", "/favicon", "/health", "/ping",
+}
+
+// isPublicHumanPath reports whether url is a real, public, content page — not an API call,
+// build asset, storage file, or dashboard/health/infra route.
+func isPublicHumanPath(url string) bool {
+	if url == "" || url == "/api" || !strings.HasPrefix(url, "/") {
+		return false
+	}
+	for _, prefix := range publicHumanPathExclusions {
+		if strings.HasPrefix(url, prefix) {
+			return false
+		}
+	}
+	return true
 }
 
 // isBotUserAgent reports whether ua identifies an automated client rather than a real visitor.

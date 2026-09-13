@@ -20,6 +20,7 @@ type AnalyticsRepository interface {
 	GetPrevTotalVisits(dbCode database.CountryID, prevSince, since time.Time) int64
 	GetTotalVisitsSince(dbCode database.CountryID, since time.Time) int64
 	PruneVisitorTracking(dbCode database.CountryID, cutoff time.Time) int64
+	BackfillIsHumanPublic(dbCode database.CountryID) (int64, error)
 
 	GetTotals(dbCode database.CountryID, fiveMinAgo time.Time) (articleCount, newsCount, userCount, onlineCount int64)
 	GetTrends(dbCode database.CountryID, thisMonthStart, lastMonthStart time.Time) (artTrend, newsTrend, userTrend TrendRow)
@@ -108,7 +109,10 @@ type PostView struct {
 
 // â”€â”€â”€ Implementations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// humanPublicVisitorFilterSQL defines the dashboard's human-audience population.
+// humanPublicVisitorFilterSQL defines the dashboard's human-audience population. It is no
+// longer evaluated on every analytics read (see models.VisitorTracking.IsHumanPublic) — its
+// only remaining job is BackfillIsHumanPublic, the one-time migration that classifies rows
+// written before that column existed.
 //
 // Bot markers intentionally mirror services.botUserAgentMarkers. Expressed as a chain of
 // case-insensitive NOT LIKE substring checks rather than one NOT REGEXP alternation: the
@@ -157,29 +161,27 @@ func (r *analyticsRepository) GetVisitorStats(
 
 	// "Active now" means unique human visitors with at least one real public page
 	// during the active window. Bots and unresolved runtime/API requests do not count.
+	// is_human_public is computed once at write time (services/visitor_worker.go) instead of
+	// re-evaluating ~15 LIKE/LOWER() conditions per row on every read — see that column's
+	// doc comment on models.VisitorTracking for why this replaced humanPublicVisitorFilterSQL.
 	db.Raw(`
 		SELECT COUNT(DISTINCT COALESCE(CAST(vt.user_id AS CHAR), vt.ip_address))
 		FROM visitors_tracking vt
-		WHERE vt.last_activity >= ?
-		  AND `+humanPublicVisitorFilterSQL,
+		WHERE vt.last_activity >= ? AND vt.is_human_public = 1`,
 		activeWindow,
 	).Scan(&currentActive)
 
 	db.Raw(`
 		SELECT COUNT(DISTINCT vt.user_id)
 		FROM visitors_tracking vt
-		WHERE vt.last_activity >= ?
-		  AND vt.user_id IS NOT NULL
-		  AND `+humanPublicVisitorFilterSQL,
+		WHERE vt.last_activity >= ? AND vt.user_id IS NOT NULL AND vt.is_human_public = 1`,
 		activeWindow,
 	).Scan(&currentMembers)
 
 	db.Raw(`
 		SELECT COUNT(DISTINCT vt.ip_address)
 		FROM visitors_tracking vt
-		WHERE vt.last_activity >= ?
-		  AND vt.user_id IS NULL
-		  AND `+humanPublicVisitorFilterSQL,
+		WHERE vt.last_activity >= ? AND vt.user_id IS NULL AND vt.is_human_public = 1`,
 		activeWindow,
 	).Scan(&currentGuests)
 
@@ -187,17 +189,14 @@ func (r *analyticsRepository) GetVisitorStats(
 	db.Raw(`
 		SELECT COUNT(*)
 		FROM visitors_tracking vt
-		WHERE vt.created_at >= ?
-		  AND `+humanPublicVisitorFilterSQL,
+		WHERE vt.created_at >= ? AND vt.is_human_public = 1`,
 		todayStart,
 	).Scan(&totalToday)
 
 	db.Raw(`
 		SELECT COUNT(*)
 		FROM visitors_tracking vt
-		WHERE vt.created_at >= ?
-		  AND vt.created_at < ?
-		  AND `+humanPublicVisitorFilterSQL,
+		WHERE vt.created_at >= ? AND vt.created_at < ? AND vt.is_human_public = 1`,
 		yesterdayStart,
 		todayStart,
 	).Scan(&totalYesterday)
@@ -238,8 +237,7 @@ func (r *analyticsRepository) GetActiveVisitors(
 				) AS rn
 			FROM visitors_tracking vt
 			LEFT JOIN users u ON u.id = vt.user_id
-			WHERE vt.last_activity >= ?
-			  AND `+humanPublicVisitorFilterSQL+`
+			WHERE vt.last_activity >= ? AND vt.is_human_public = 1
 		) ranked
 		WHERE rn = 1
 		ORDER BY last_activity DESC
@@ -275,9 +273,7 @@ func (r *analyticsRepository) GetCountryStats(
 				)
 			) AS count
 		FROM visitors_tracking vt
-		WHERE vt.created_at >= ?
-		  AND vt.country IS NOT NULL
-		  AND `+humanPublicVisitorFilterSQL+`
+		WHERE vt.created_at >= ? AND vt.country IS NOT NULL AND vt.is_human_public = 1
 		GROUP BY vt.country
 		ORDER BY count DESC
 		LIMIT 20
@@ -306,8 +302,7 @@ func (r *analyticsRepository) GetDailyChartData(
 			) AS visitors,
 			COUNT(*) AS page_views
 		FROM visitors_tracking vt
-		WHERE vt.created_at >= ?
-		  AND `+humanPublicVisitorFilterSQL+`
+		WHERE vt.created_at >= ? AND vt.is_human_public = 1
 		GROUP BY DATE_FORMAT(vt.created_at, '%Y-%m-%d')
 		ORDER BY date ASC
 	`, since).Scan(&dailyRows).Error
@@ -381,6 +376,20 @@ func (r *analyticsRepository) PruneVisitorTracking(dbCode database.CountryID, cu
 	db := database.DBForCountry(dbCode)
 	result := db.Where("created_at < ?", cutoff).Delete(&models.VisitorTracking{})
 	return result.RowsAffected
+}
+
+// BackfillIsHumanPublic classifies every row written before the is_human_public column
+// existed. One-off cost meant to run during `--migrate-only` (never on a live request path):
+// a plain UPDATE with no GROUP BY/DISTINCT/ORDER BY is far cheaper than the aggregate queries
+// that column exists to replace, but is still a full-table scan on a multi-million-row table,
+// so it stays out of the request path entirely.
+func (r *analyticsRepository) BackfillIsHumanPublic(dbCode database.CountryID) (int64, error) {
+	db := database.DBForCountry(dbCode)
+	result := db.Exec(`
+		UPDATE visitors_tracking vt
+		SET vt.is_human_public = 1
+		WHERE vt.is_human_public = 0 AND ` + humanPublicVisitorFilterSQL)
+	return result.RowsAffected, result.Error
 }
 
 func (r *analyticsRepository) GetTotals(dbCode database.CountryID, fiveMinAgo time.Time) (articleCount, newsCount, userCount, onlineCount int64) {

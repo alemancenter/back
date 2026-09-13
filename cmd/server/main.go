@@ -11,6 +11,7 @@ import (
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/middleware"
 	"github.com/imanjo/fiber-api/internal/models"
+	"github.com/imanjo/fiber-api/internal/repositories"
 	"github.com/imanjo/fiber-api/internal/routes"
 	"github.com/imanjo/fiber-api/internal/services"
 	"github.com/imanjo/fiber-api/internal/utils"
@@ -153,6 +154,19 @@ func main() {
 			if err := db.AutoMigrate(migrateTargets...); err != nil {
 				logger.Fatal("auto-migrate failed", zap.String("country", database.CountryCode(id)), zap.Error(err))
 			}
+			// One-time classification for rows written before is_human_public existed — see
+			// AnalyticsRepository.BackfillIsHumanPublic. Safe to run every --migrate-only pass:
+			// the query only ever touches is_human_public = 0 rows, so it's a no-op once caught up.
+			backfillStart := time.Now()
+			if updated, err := repositories.NewAnalyticsRepository().BackfillIsHumanPublic(id); err != nil {
+				logger.Warn("visitor analytics backfill failed", zap.String("country", database.CountryCode(id)), zap.Error(err))
+			} else if updated > 0 {
+				logger.Info("visitor analytics backfill complete",
+					zap.String("country", database.CountryCode(id)),
+					zap.Int64("rows_classified", updated),
+					zap.Duration("took", time.Since(backfillStart)),
+				)
+			}
 			if err := services.EnsureTeacherSubscriptionDatabase(db); err != nil {
 				logger.Fatal("teacher subscription database bootstrap failed", zap.String("country", database.CountryCode(id)), zap.Error(err))
 			}
@@ -216,7 +230,7 @@ func main() {
 	// Start background workers
 	services.StartViewSyncWorker(1 * time.Minute)
 	services.StartVisitorWorker(5 * time.Second)
-	services.StartAnalyticsCacheWarmer(8 * time.Minute)
+	services.StartAnalyticsCacheWarmer(15 * time.Minute)
 
 	// Periodically clean up expired revocations and stale premium-download reservations.
 	go func() {

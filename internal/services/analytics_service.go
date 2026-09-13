@@ -12,6 +12,7 @@ import (
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/repositories"
+	"golang.org/x/sync/singleflight"
 )
 
 type AnalyticsService interface {
@@ -184,7 +185,7 @@ func StartAnalyticsCacheWarmer(interval time.Duration) {
 			for _, days := range analyticsWarmerDayRanges {
 				data := svc.computeVisitorTrends(id, days)
 				key := rdb.Key("analytics", "visitor_trends", database.CountryCode(id), strconv.Itoa(days))
-				_ = rdb.SetJSON(context.Background(), key, data, 12*time.Minute)
+				_ = rdb.SetJSON(context.Background(), key, data, visitorTrendsCacheTTL)
 			}
 		}
 	}
@@ -302,8 +303,19 @@ func (s *analyticsService) GetVisitorAnalytics(dbCode database.CountryID, days i
 	}
 }
 
+// visitorTrendsCacheTTL and the warmer interval it's paired with (StartAnalyticsCacheWarmer)
+// are deliberately longer than the pre-index-fix values (was 12min TTL / 8min warmer): with
+// is_human_public now doing the filtering, computeVisitorTrends dropped from minutes to
+// low-hundreds-of-milliseconds, so there is no correctness reason to recompute this often —
+// only fewer, cheaper background passes.
+const visitorTrendsCacheTTL = 20 * time.Minute
+
+// visitorTrendsGroup collapses concurrent cache-miss calls for the same dbCode+days (e.g. a
+// warmer pass and a dashboard request landing at the same moment) into a single computation.
+var visitorTrendsGroup singleflight.Group
+
 // visitorTrends returns the multi-day aggregates, served from Redis when warm (see
-// StartAnalyticsCacheWarmer). The underlying queries scan a wide created_at window of
+// StartAnalyticsCacheWarmer). The underlying queries scan a created_at window of
 // visitors_tracking; the cache keeps the analytics page responsive while the numbers stay
 // current enough for a trend view.
 func (s *analyticsService) visitorTrends(dbCode database.CountryID, days int) visitorTrendsData {
@@ -316,9 +328,18 @@ func (s *analyticsService) visitorTrends(dbCode database.CountryID, days int) vi
 		return cached
 	}
 
-	data := s.computeVisitorTrends(dbCode, days)
-	_ = rdb.SetJSON(ctx, key, data, 12*time.Minute)
-	return data
+	v, _, _ := visitorTrendsGroup.Do(key, func() (interface{}, error) {
+		// Re-check: another caller may have just filled the cache while this one waited to
+		// enter Do() for the same key.
+		var justFilled visitorTrendsData
+		if rdb.GetJSON(ctx, key, &justFilled) {
+			return justFilled, nil
+		}
+		data := s.computeVisitorTrends(dbCode, days)
+		_ = rdb.SetJSON(ctx, key, data, visitorTrendsCacheTTL)
+		return data, nil
+	})
+	return v.(visitorTrendsData)
 }
 
 func (s *analyticsService) computeVisitorTrends(dbCode database.CountryID, days int) visitorTrendsData {

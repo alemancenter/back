@@ -156,23 +156,29 @@ func (ActivityLog) TableName() string { return "activity_log" }
 
 // VisitorTracking represents visitor analytics data
 type VisitorTracking struct {
-	ID           uint      `gorm:"primaryKey" json:"id"`
-	IPAddress    string    `gorm:"type:varchar(255);not null" json:"ip_address"`
-	UserAgent    string    `gorm:"type:text" json:"user_agent"`
-	Country      *string   `gorm:"type:varchar(255)" json:"country,omitempty"`
-	City         *string   `gorm:"type:varchar(255)" json:"city,omitempty"`
-	Browser      *string   `gorm:"type:varchar(255)" json:"browser,omitempty"`
-	OS           *string   `gorm:"type:varchar(255)" json:"os,omitempty"`
-	URL          *string   `gorm:"type:text" json:"url,omitempty"`
-	Referer      *string   `gorm:"type:text" json:"referer,omitempty"`
-	Latitude     *float64  `gorm:"type:decimal(10,8)" json:"latitude,omitempty"`
-	Longitude    *float64  `gorm:"type:decimal(11,8)" json:"longitude,omitempty"`
-	UserID       *uint     `gorm:"index" json:"user_id,omitempty"`
-	StatusCode   *int      `json:"status_code,omitempty"`
-	LastActivity time.Time `gorm:"not null;index" json:"last_activity"`
-	ResponseTime *float64  `gorm:"type:decimal(8,2)" json:"response_time,omitempty"`
-	CreatedAt    time.Time `gorm:"index" json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID        uint     `gorm:"primaryKey" json:"id"`
+	IPAddress string   `gorm:"type:varchar(255);not null" json:"ip_address"`
+	UserAgent string   `gorm:"type:text" json:"user_agent"`
+	Country   *string  `gorm:"type:varchar(255)" json:"country,omitempty"`
+	City      *string  `gorm:"type:varchar(255)" json:"city,omitempty"`
+	Browser   *string  `gorm:"type:varchar(255)" json:"browser,omitempty"`
+	OS        *string  `gorm:"type:varchar(255)" json:"os,omitempty"`
+	URL       *string  `gorm:"type:text" json:"url,omitempty"`
+	Referer   *string  `gorm:"type:text" json:"referer,omitempty"`
+	Latitude  *float64 `gorm:"type:decimal(10,8)" json:"latitude,omitempty"`
+	Longitude *float64 `gorm:"type:decimal(11,8)" json:"longitude,omitempty"`
+	UserID    *uint    `gorm:"index" json:"user_id,omitempty"`
+	// IsHumanPublic is computed once, at insert time (see services/visitor_worker.go), from
+	// the exact same bot-UA + internal-path rules the analytics queries used to re-evaluate on
+	// every single row on every read (30 non-sargable LIKE/LOWER() conditions — confirmed in
+	// production to force a ~4-minute full-table scan + disk temp table on GetCountryStats /
+	// GetDailyChartData). Reads now filter on this single indexed column instead.
+	IsHumanPublic bool      `gorm:"column:is_human_public;not null;default:false;index:idx_vt_human_created,priority:1;index:idx_vt_human_active,priority:1" json:"is_human_public"`
+	StatusCode    *int      `json:"status_code,omitempty"`
+	LastActivity  time.Time `gorm:"not null;index;index:idx_vt_human_active,priority:2" json:"last_activity"`
+	ResponseTime  *float64  `gorm:"type:decimal(8,2)" json:"response_time,omitempty"`
+	CreatedAt     time.Time `gorm:"index;index:idx_vt_human_created,priority:2" json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // TableName maps to the shared visitor tracking table. The created_at / last_activity

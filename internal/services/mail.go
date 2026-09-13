@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/imanjo/fiber-api/internal/config"
+	"github.com/imanjo/fiber-api/pkg/logger"
 	mail "github.com/wneessen/go-mail"
+	"go.uber.org/zap"
 )
 
 // MailService handles email sending
@@ -65,6 +67,19 @@ func (m *MailService) Send(to, subject, body string, isHTML bool) error {
 		msg.SetBodyString(mail.TypeTextHTML, body)
 	} else {
 		msg.SetBodyString(mail.TypeTextPlain, body)
+	}
+
+	// The dashboard's "نوع الإرسال" field offers "Log" specifically so a staging/test
+	// environment can exercise every mail-sending code path without actually dispatching real
+	// email — previously this value was never read anywhere and every send attempted a real
+	// SMTP connection regardless of what was selected.
+	if strings.EqualFold(strings.TrimSpace(m.cfg.Mailer), "log") {
+		logger.Info("mail suppressed (mail_mailer=log)",
+			zap.String("to", to),
+			zap.String("subject", subject),
+			zap.Bool("html", isHTML),
+		)
+		return nil
 	}
 
 	opts := []mail.Option{

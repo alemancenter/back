@@ -151,6 +151,10 @@ type RedisConfig struct {
 }
 
 type MailConfig struct {
+	// Mailer selects how Send() dispatches a message: "smtp" (default) performs a real SMTP
+	// send; "log" writes the message to the application log instead, for staging/testing
+	// environments where real sends aren't wanted. Empty behaves as "smtp".
+	Mailer        string
 	Host          string
 	Port          int
 	Username      string
@@ -416,6 +420,7 @@ func Load() *Config {
 				Prefix:   v.GetString("REDIS_PREFIX"),
 			},
 			Mail: MailConfig{
+				Mailer:        v.GetString("MAIL_MAILER"),
 				Host:          v.GetString("MAIL_HOST"),
 				Port:          v.GetInt("MAIL_PORT"),
 				Username:      v.GetString("MAIL_USERNAME"),

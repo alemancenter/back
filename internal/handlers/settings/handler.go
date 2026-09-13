@@ -103,6 +103,7 @@ func stripUnchangedSecrets(updates map[string]string) {
 
 // envKeyMap maps dashboard setting keys to their .env variable names.
 var envKeyMap = map[string]string{
+	"mail_mailer":          "MAIL_MAILER",
 	"mail_host":            "MAIL_HOST",
 	"mail_port":            "MAIL_PORT",
 	"mail_username":        "MAIL_USERNAME",
@@ -147,6 +148,9 @@ func applyEnvAndConfigUpdates(updates map[string]string) {
 
 	// Sync in-memory mail config.
 	cur := config.Get().Mail
+	if v, ok := updates["mail_mailer"]; ok {
+		cur.Mailer = v
+	}
 	if v, ok := updates["mail_host"]; ok {
 		cur.Host = v
 	}
@@ -236,6 +240,46 @@ func applyEnvAndConfigUpdates(updates map[string]string) {
 	config.UpdateFacebookConfig(fCur)
 }
 
+var gaMeasurementIDRe = regexp.MustCompile(`^G-[A-Za-z0-9]+$`)
+
+// validateSettingFormats rejects a handful of fields that previously saved silently with no
+// shape check at all, surfacing only much later as a runtime failure with no link back to the
+// bad save: an invalid mail_from_address/mail_bounce_address only failed once a receiving mail
+// server rejected it (DMARC/SPF hygiene issue by then), a non-numeric mail_port/bounce_imap_port
+// wrote straight to .env and silently became 0 on the next restart (config.Load's v.GetInt
+// returns 0 for anything unparseable), a malformed redirect URI only surfaced as Google/
+// Facebook's own redirect_uri_mismatch error, and google_analytics_id had no check at all despite
+// adsense_client (right next to it in the same form) already being validated.
+func validateSettingFormats(updates map[string]string) error {
+	for _, key := range []string{"mail_from_address", "mail_bounce_address"} {
+		if v := strings.TrimSpace(updates[key]); v != "" {
+			if _, err := mail.ParseAddress(v); err != nil {
+				return fmt.Errorf("%s: must be a valid email address", key)
+			}
+		}
+	}
+	for _, key := range []string{"mail_port", "bounce_imap_port"} {
+		if v := strings.TrimSpace(updates[key]); v != "" {
+			port, err := strconv.Atoi(v)
+			if err != nil || port < 1 || port > 65535 {
+				return fmt.Errorf("%s: must be a port number between 1 and 65535", key)
+			}
+		}
+	}
+	for _, key := range []string{"google_redirect_uri", "facebook_redirect_uri"} {
+		if v := strings.TrimSpace(updates[key]); v != "" {
+			parsed, err := url.ParseRequestURI(v)
+			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+				return fmt.Errorf("%s: must be a valid http(s) URL", key)
+			}
+		}
+	}
+	if v := strings.TrimSpace(updates["google_analytics_id"]); v != "" && !gaMeasurementIDRe.MatchString(v) {
+		return fmt.Errorf("google_analytics_id: invalid format, expected G-XXXXXXXXXX")
+	}
+	return nil
+}
+
 var (
 	adsenseClientRe   = regexp.MustCompile(`^ca-pub-\d+$`)
 	adSlotRe          = regexp.MustCompile(`^\d+$`)
@@ -253,18 +297,30 @@ var (
 
 // validateAdUpdates rejects any google_ads_* value that is not empty or a safe
 // JSON object containing a supported Display, In-Article, or Multiplex ad config.
-// validateNoControlChars rejects CR/LF/NUL in any setting value. Without this, a value for an
-// env-backed key (envKeyMap) that embeds "\n" survives straight through UpdateEnvFile — which
-// only quotes values containing a space/tab, so a value with no spaces (e.g.
-// "x\nJWT_SECRET=<attacker-chosen-32-byte-string>") is written to .env completely unquoted and
-// becomes its own real line. gotenv (the parser config.Load uses for .env) then reads that as a
-// second, independent KEY=VALUE assignment that takes effect on the next restart — letting
-// anyone holding "manage settings" (not necessarily a super-admin) plant an arbitrary env var,
-// up to and including overwriting JWT_SECRET to forge tokens for any account. None of the
-// env-backed settings (hosts, ports, credentials) have any legitimate reason to contain a
-// newline, so this is rejected outright rather than silently stripped.
+// validateNoControlChars rejects CR/LF/NUL in env-backed setting values (envKeyMap keys only).
+// Without this, a value for one of those keys that embeds "\n" survives straight through
+// UpdateEnvFile — which only quotes values containing a space/tab, so a value with no spaces
+// (e.g. "x\nJWT_SECRET=<attacker-chosen-32-byte-string>") is written to .env completely
+// unquoted and becomes its own real line. gotenv (the parser config.Load uses for .env) then
+// reads that as a second, independent KEY=VALUE assignment that takes effect on the next
+// restart — letting anyone holding "manage settings" (not necessarily a super-admin) plant an
+// arbitrary env var, up to and including overwriting JWT_SECRET to forge tokens for any
+// account. None of the env-backed settings (hosts, ports, credentials) have any legitimate
+// reason to contain a newline, so those specifically are rejected outright rather than
+// silently stripped.
+//
+// Scoped to envKeyMap only — NOT every setting: robots_txt, footer_text, meta_description, and
+// the rss_*_content templates are DB-only (never touch UpdateEnvFile) and are only meaningful
+// as multi-line text (a real robots.txt is nothing but newline-separated directives). An
+// earlier version of this check ran over every key in the payload, which meant saving any of
+// those fields tripped this validation and rejected the *entire* settings form in one request
+// (this form submits all tabs together) — silently blocking every other change bundled in the
+// same save, including on tabs that had nothing to do with the field that failed.
 func validateNoControlChars(updates map[string]string) error {
 	for key, value := range updates {
+		if _, envBacked := envKeyMap[key]; !envBacked {
+			continue
+		}
 		if strings.ContainsAny(value, "\r\n\x00") {
 			return fmt.Errorf("%s: value must not contain line breaks or control characters", key)
 		}
@@ -490,6 +546,10 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 		return utils.BadRequest(c, err.Error())
 	}
 
+	if err := validateSettingFormats(updates); err != nil {
+		return utils.BadRequest(c, err.Error())
+	}
+
 	var userID uint
 	if user, ok := c.Locals("user").(*models.User); ok && user != nil {
 		userID = user.ID
@@ -623,8 +683,8 @@ func (h *Handler) GetPublic(c *fiber.Ctx) error {
 // IMANJO_RECAPTCHA_SERVER_VERIFY_V2
 // verifyRecaptchaResponse validates a reCAPTCHA token with Google.
 // The Secret Key is backend-only and is never exposed to the browser.
-func verifyRecaptchaResponse(token string) (bool, error) {
-	secret := strings.TrimSpace(os.Getenv("RECAPTCHA_SECRET_KEY"))
+func verifyRecaptchaResponse(token, secret string) (bool, error) {
+	secret = strings.TrimSpace(secret)
 	if secret == "" {
 		return false, fmt.Errorf("recaptcha secret key is not configured")
 	}
@@ -749,7 +809,21 @@ func (h *Handler) Contact(c *fiber.Ctx) error {
 			return utils.BadRequest(c, "recaptcha token is required")
 		}
 
-		verified, verifyErr := verifyRecaptchaResponse(req.Recaptcha)
+		// recaptcha_secret_key is private (excluded from GetPublic by the "secret" marker in
+		// isPublicSettingKey), so it has to come from the admin-only settings map, not the
+		// public one above. Previously this read a raw RECAPTCHA_SECRET_KEY env var that the
+		// dashboard's "المفتاح السري" field never actually wrote to — an admin who configured
+		// both reCAPTCHA fields entirely through the dashboard (the only place the UI offers)
+		// got a site key that rendered the widget and a secret key that silently did nothing,
+		// so every contact-form submission failed once reCAPTCHA was turned on. The env var is
+		// kept as a fallback for any existing deployment that already set it that way.
+		allSettings, _ := h.svc.GetAll(c.Context(), countryIDFromContext(c))
+		secret := strings.TrimSpace(allSettings["recaptcha_secret_key"])
+		if secret == "" {
+			secret = os.Getenv("RECAPTCHA_SECRET_KEY")
+		}
+
+		verified, verifyErr := verifyRecaptchaResponse(req.Recaptcha, secret)
 		if verifyErr != nil {
 			return utils.InternalError(c, "تعذر التحقق من reCAPTCHA")
 		}

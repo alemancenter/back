@@ -22,6 +22,9 @@ jobs:
           --health-cmd="mysqladmin ping -h localhost -pintegration-only"
           --health-interval=10s --health-timeout=5s --health-retries=10
     env:
+      DB_HOST_JO: 127.0.0.1
+      DB_NAME_JO: test_db
+      DB_USER_JO: root
       DB_PASS_JO: integration-only
       IMANJO_TEST_MYSQL_DSN: 'root:integration-only@tcp(127.0.0.1:3306)/?parseTime=true'
     steps:

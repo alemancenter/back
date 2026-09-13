@@ -50,7 +50,7 @@ func mailConfigFromRequest(req smtpRequest) config.MailConfig {
 	if req.Username != "" {
 		base.Username = req.Username
 	}
-	if req.Password != "" {
+	if req.Password != "" && req.Password != settingsSecretMask {
 		base.Password = req.Password
 	}
 	if req.Encryption != "" {
@@ -63,6 +63,42 @@ func mailConfigFromRequest(req smtpRequest) config.MailConfig {
 		base.FromName = req.FromName
 	}
 	return base
+}
+
+// secretSettingKeys are settings whose real value must never round-trip back to the browser in
+// GetAll — they're masked there and, on Update, a submitted value equal to settingsSecretMask is
+// treated as "left unchanged" and dropped rather than overwriting the real stored secret. Without
+// this, any account with the (non-super-admin-only) "manage settings" permission could read live
+// mail/OAuth/IMAP credentials in one GET, unnecessarily widening what a compromised
+// lower-privileged account or a dashboard XSS could exfiltrate.
+var secretSettingKeys = map[string]bool{
+	"mail_password":        true,
+	"google_client_secret": true,
+	"facebook_app_secret":  true,
+	"bounce_imap_password": true,
+}
+
+const settingsSecretMask = "••••••••"
+
+// maskSecrets replaces the real value of each secretSettingKeys entry with settingsSecretMask
+// (or leaves it empty if genuinely unset, so the dashboard still shows "not configured").
+func maskSecrets(m map[string]string) {
+	for key := range secretSettingKeys {
+		if v, ok := m[key]; ok && v != "" {
+			m[key] = settingsSecretMask
+		}
+	}
+}
+
+// stripUnchangedSecrets drops any secretSettingKeys entry left as the mask placeholder — the
+// dashboard always resubmits the full form, so an admin who didn't touch a password field would
+// otherwise overwrite the real secret with the literal mask string.
+func stripUnchangedSecrets(updates map[string]string) {
+	for key := range secretSettingKeys {
+		if updates[key] == settingsSecretMask {
+			delete(updates, key)
+		}
+	}
 }
 
 // envKeyMap maps dashboard setting keys to their .env variable names.
@@ -217,6 +253,25 @@ var (
 
 // validateAdUpdates rejects any google_ads_* value that is not empty or a safe
 // JSON object containing a supported Display, In-Article, or Multiplex ad config.
+// validateNoControlChars rejects CR/LF/NUL in any setting value. Without this, a value for an
+// env-backed key (envKeyMap) that embeds "\n" survives straight through UpdateEnvFile — which
+// only quotes values containing a space/tab, so a value with no spaces (e.g.
+// "x\nJWT_SECRET=<attacker-chosen-32-byte-string>") is written to .env completely unquoted and
+// becomes its own real line. gotenv (the parser config.Load uses for .env) then reads that as a
+// second, independent KEY=VALUE assignment that takes effect on the next restart — letting
+// anyone holding "manage settings" (not necessarily a super-admin) plant an arbitrary env var,
+// up to and including overwriting JWT_SECRET to forge tokens for any account. None of the
+// env-backed settings (hosts, ports, credentials) have any legitimate reason to contain a
+// newline, so this is rejected outright rather than silently stripped.
+func validateNoControlChars(updates map[string]string) error {
+	for key, value := range updates {
+		if strings.ContainsAny(value, "\r\n\x00") {
+			return fmt.Errorf("%s: value must not contain line breaks or control characters", key)
+		}
+	}
+	return nil
+}
+
 func validateAdUpdates(updates map[string]string) error {
 	for key, value := range updates {
 		if key == "adsense_client" {
@@ -362,6 +417,7 @@ func (h *Handler) GetAll(c *fiber.Ctx) error {
 	if _, ok := m["require_login_for_download"]; !ok {
 		m["require_login_for_download"] = "true"
 	}
+	maskSecrets(m)
 	return utils.Success(c, "success", m)
 }
 
@@ -422,6 +478,12 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 
 	if len(updates) == 0 {
 		return utils.BadRequest(c, "لا توجد بيانات للحفظ")
+	}
+
+	stripUnchangedSecrets(updates)
+
+	if err := validateNoControlChars(updates); err != nil {
+		return utils.BadRequest(c, err.Error())
 	}
 
 	if err := validateAdUpdates(updates); err != nil {

@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"os"
 	"strings"
 )
@@ -8,6 +9,18 @@ import (
 // UpdateEnvFile updates the given key=value pairs in the .env file at envPath.
 // Lines with matching keys are replaced in place; the rest of the file is preserved.
 func UpdateEnvFile(envPath string, updates map[string]string) error {
+	// A value containing a raw CR/LF becomes its own physical line once written — since
+	// quoting only kicks in below for values with a space/tab, an unquoted value like
+	// "x\nSOME_KEY=attacker-value" is indistinguishable on disk from two real assignments,
+	// and the .env parser reads it as such on the next restart. Reject outright rather than
+	// stripping, so a caller who forgot to validate its own input fails loudly instead of the
+	// file silently gaining an unintended line.
+	for key, value := range updates {
+		if strings.ContainsAny(value, "\r\n\x00") {
+			return fmt.Errorf("env writer: value for %q contains a line break or control character", key)
+		}
+	}
+
 	raw, err := os.ReadFile(envPath)
 	if err != nil {
 		return err

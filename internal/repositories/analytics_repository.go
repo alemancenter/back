@@ -164,23 +164,30 @@ func (r *analyticsRepository) GetVisitorStats(
 	// is_human_public is computed once at write time (services/visitor_worker.go) instead of
 	// re-evaluating ~15 LIKE/LOWER() conditions per row on every read — see that column's
 	// doc comment on models.VisitorTracking for why this replaced humanPublicVisitorFilterSQL.
+	//
+	// FORCE INDEX is deliberate, not optional: confirmed in production that MariaDB's
+	// cardinality estimate for is_human_public (a 60/40-split boolean over ~2.7M rows) comes
+	// back as 1 even right after ANALYZE TABLE, so the optimizer ignores idx_vt_human_created /
+	// idx_vt_human_active and falls back to the old single-column created_at/last_activity
+	// index — i.e. the exact full-scan-plus-filesort this column exists to avoid. Forcing the
+	// index sidesteps that stats problem instead of depending on the optimizer trusting them.
 	db.Raw(`
 		SELECT COUNT(DISTINCT COALESCE(CAST(vt.user_id AS CHAR), vt.ip_address))
-		FROM visitors_tracking vt
+		FROM visitors_tracking vt FORCE INDEX (idx_vt_human_active)
 		WHERE vt.last_activity >= ? AND vt.is_human_public = 1`,
 		activeWindow,
 	).Scan(&currentActive)
 
 	db.Raw(`
 		SELECT COUNT(DISTINCT vt.user_id)
-		FROM visitors_tracking vt
+		FROM visitors_tracking vt FORCE INDEX (idx_vt_human_active)
 		WHERE vt.last_activity >= ? AND vt.user_id IS NOT NULL AND vt.is_human_public = 1`,
 		activeWindow,
 	).Scan(&currentMembers)
 
 	db.Raw(`
 		SELECT COUNT(DISTINCT vt.ip_address)
-		FROM visitors_tracking vt
+		FROM visitors_tracking vt FORCE INDEX (idx_vt_human_active)
 		WHERE vt.last_activity >= ? AND vt.user_id IS NULL AND vt.is_human_public = 1`,
 		activeWindow,
 	).Scan(&currentGuests)
@@ -188,14 +195,14 @@ func (r *analyticsRepository) GetVisitorStats(
 	// "Visits today" remains a page-view style metric, but only for public human traffic.
 	db.Raw(`
 		SELECT COUNT(*)
-		FROM visitors_tracking vt
+		FROM visitors_tracking vt FORCE INDEX (idx_vt_human_created)
 		WHERE vt.created_at >= ? AND vt.is_human_public = 1`,
 		todayStart,
 	).Scan(&totalToday)
 
 	db.Raw(`
 		SELECT COUNT(*)
-		FROM visitors_tracking vt
+		FROM visitors_tracking vt FORCE INDEX (idx_vt_human_created)
 		WHERE vt.created_at >= ? AND vt.created_at < ? AND vt.is_human_public = 1`,
 		yesterdayStart,
 		todayStart,
@@ -235,7 +242,7 @@ func (r *analyticsRepository) GetActiveVisitors(
 					PARTITION BY COALESCE(CAST(vt.user_id AS CHAR), vt.ip_address)
 					ORDER BY vt.last_activity DESC
 				) AS rn
-			FROM visitors_tracking vt
+			FROM visitors_tracking vt FORCE INDEX (idx_vt_human_active)
 			LEFT JOIN users u ON u.id = vt.user_id
 			WHERE vt.last_activity >= ? AND vt.is_human_public = 1
 		) ranked
@@ -272,7 +279,7 @@ func (r *analyticsRepository) GetCountryStats(
 					vt.ip_address
 				)
 			) AS count
-		FROM visitors_tracking vt
+		FROM visitors_tracking vt FORCE INDEX (idx_vt_human_created)
 		WHERE vt.created_at >= ? AND vt.country IS NOT NULL AND vt.is_human_public = 1
 		GROUP BY vt.country
 		ORDER BY count DESC
@@ -301,7 +308,7 @@ func (r *analyticsRepository) GetDailyChartData(
 				)
 			) AS visitors,
 			COUNT(*) AS page_views
-		FROM visitors_tracking vt
+		FROM visitors_tracking vt FORCE INDEX (idx_vt_human_created)
 		WHERE vt.created_at >= ? AND vt.is_human_public = 1
 		GROUP BY DATE_FORMAT(vt.created_at, '%Y-%m-%d')
 		ORDER BY date ASC

@@ -626,19 +626,6 @@ func pct(part, total int64) float64 {
 	return float64(part) / float64(total) * 100
 }
 
-func containsAny(s string, subs ...string) bool {
-	for _, sub := range subs {
-		if len(s) >= len(sub) {
-			for i := 0; i <= len(s)-len(sub); i++ {
-				if s[i:i+len(sub)] == sub {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
 func extractDomain(rawURL string) string {
 	var rest string
 	switch {

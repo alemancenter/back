@@ -2,17 +2,12 @@ package grades
 
 import (
 	"strconv"
-	"time"
 
 	"github.com/imanjo/fiber-api/internal/database"
 	_ "github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/services"
 	"github.com/imanjo/fiber-api/internal/utils"
 	"github.com/gofiber/fiber/v2"
-)
-
-const (
-	classesAndFilterTTL = 24 * time.Hour
 )
 
 // Handler handles school classes, subjects, semesters, and grade-based content

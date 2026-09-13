@@ -9,11 +9,9 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// GSCRepository stores Search Console integration state. Like
-// ContentAuditRepository, it deliberately uses the single shared
-// database.DB() connection with a country_code column, not a per-country
-// physical database — this is governance/tracking data, not content, and
-// follows the same pattern as PolicyAuditRun/ContentAIDecision.
+// GSCRepository stores Search Console integration state. It deliberately uses
+// the single shared database.DB() connection with a country_code column, not
+// a per-country physical database — this is governance/tracking data, not content.
 type GSCRepository interface {
 	ListProperties(ctx context.Context) ([]models.GSCProperty, error)
 	GetProperty(ctx context.Context, countryCode string) (*models.GSCProperty, error)

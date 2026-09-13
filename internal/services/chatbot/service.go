@@ -954,18 +954,6 @@ func defaultStep(intent string) string {
 	}
 }
 
-func countryLandingPath(countryID database.CountryID) string {
-	code := strings.TrimSpace(string(database.CountryCode(countryID)))
-	if code == "" {
-		code = "jo"
-	}
-	return "/" + code
-}
-
-func siteSearchHelpAnswer() string {
-	return "للبحث داخل الموقع استخدم صيغة واضحة:\n\nنوع الملف + المادة + الصف + الفصل\n\nأمثلة:\n- اختبار نهائي فيزياء الصف التاسع الفصل الثاني\n- أوراق عمل رياضيات الصف الخامس الفصل الأول\n- تحليل محتوى لغة عربية الصف العاشر الفصل الثاني\n\nيمكنك أيضًا استخدام الفلاتر الموجودة في البحث: الصف، نوع المحتوى، المادة، والفصل الدراسي."
-}
-
 func contextualAnswer(intent, step, message, lastIntent string) string {
 	switch intent {
 	case "unsupported_phone_feature":
@@ -1407,10 +1395,6 @@ func hasContentSearchWords(m string) bool {
 		}
 	}
 	return false
-}
-
-func shouldSearchContent(intent, message string) bool {
-	return isContentIntent(intent) || hasContentSearchWords(normalizeArabic(strings.ToLower(message)))
 }
 
 func relaxedSearchQueries(message string, e searchEntities) []string {

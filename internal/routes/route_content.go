@@ -140,12 +140,9 @@ func registerContentRoutes(api, public, dash fiber.Router, h *Handlers) {
 	dash.Post("/secure/upload-image", middleware.Can("upload files"), h.Files.SecureUploadImage)
 	dash.Post("/secure/upload-document", middleware.Can("upload files"), h.Files.SecureUploadDocument)
 
-	// AI-assisted article/post generation and drafting has been removed from the
-	// create/edit flow: manual entry only, on the user's explicit decision, after AI-generated
+	// AI-assisted article/post generation, drafting, and the whole content-audit/quality
+	// system have been removed entirely (routes, handlers, services, models): article and
+	// post creation is manual-entry only, on the user's explicit decision, after AI-generated
 	// drafts (e.g. article #2380) repeatedly shipped as thin, boilerplate content that
-	// contributed to Google AdSense rejecting the site for low-value content. The handler
-	// methods and generation pipeline (internal/services/contentaudit/grounded_generate*.go)
-	// are intentionally left in place unused rather than deleted, because they share helper
-	// functions with the unrelated content-audit AI fix pipeline (grounded_fix.go) that is
-	// NOT part of this removal — see internal/handlers/ai/handler.go.
+	// contributed to Google AdSense rejecting the site for low-value content.
 }

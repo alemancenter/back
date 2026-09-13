@@ -130,7 +130,3 @@ func IsSSRUserAgent(ua string) bool {
 	return false
 }
 
-// cleanIP remains for internal backward compatibility.
-func cleanIP(ip string) string {
-	return normalizeIP(ip)
-}

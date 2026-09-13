@@ -99,8 +99,7 @@ func (s *Service) InspectAndStore(ctx context.Context, siteURL string, target Ta
 
 // SyncBatch inspects up to URLInspectionMaxPerRun targets in the background,
 // throttled to stay under Google's per-minute quota, and records progress on a
-// GSCSyncRun row (mirrors contentaudit.Service's Start/execute pattern instead
-// of introducing a new job abstraction).
+// GSCSyncRun row.
 func (s *Service) SyncBatch(ctx context.Context, countryCode string, targets []Target, triggeredBy string) (*models.GSCSyncRun, error) {
 	if s.client == nil {
 		return nil, ErrNotConfigured

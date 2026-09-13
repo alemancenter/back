@@ -39,12 +39,7 @@ type GSCProperty struct {
 func (GSCProperty) TableName() string { return "gsc_properties" }
 
 // GSCURLStatus is Google's actual index status for one URL, sourced only from
-// the URL Inspection API. This is a separate badge from the internal readiness
-// state — it is deliberately never read by contentquality.Evaluate/Gate, the
-// same rule already applied to ContentPolicyReadiness (see
-// models/content_audit.go). Internal readiness answers "did we pass the checks
-// we can verify"; this table answers "what does Google actually show" — the two
-// must never be merged into one flag.
+// the URL Inspection API — "what does Google actually show" for a page.
 type GSCURLStatus struct {
 	ID              uint       `gorm:"primaryKey" json:"id"`
 	ContentType     string     `gorm:"type:varchar(30);not null;uniqueIndex:idx_gsc_url_status_item" json:"content_type"`
@@ -104,9 +99,7 @@ type GSCSearchQueryDaily struct {
 
 func (GSCSearchQueryDaily) TableName() string { return "gsc_search_query_daily" }
 
-// GSCSyncRun records one background sync attempt against the Search Console
-// APIs, mirroring the existing PolicyAuditRun status-row pattern
-// (models/content_audit.go) instead of introducing a new job abstraction.
+// GSCSyncRun records one background sync attempt against the Search Console APIs.
 type GSCSyncRun struct {
 	ID           uint       `gorm:"primaryKey" json:"id"`
 	CountryCode  string     `gorm:"type:varchar(10);not null;index" json:"country_code"`

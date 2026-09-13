@@ -294,6 +294,104 @@ func DetectSimilarity(documents []SimilarityDocument, options SimilarityOptions)
 	return report
 }
 
+// DuplicateMatch is one existing document that a candidate (an article/post being saved)
+// is a near- or exact-duplicate of.
+type DuplicateMatch struct {
+	Key         string  `json:"key"`
+	Title       string  `json:"title"`
+	Kind        string  `json:"kind"`
+	Similarity  float64 `json:"similarity"`
+	Containment float64 `json:"containment"`
+}
+
+// DetectDuplicateAgainstCorpus compares a single candidate document (content being saved
+// right now) against an existing corpus and reports any exact/near/template matches, sorted
+// by similarity descending. Unlike DetectSimilarity, this is O(n) in the corpus size rather
+// than O(n^2) — it never compares corpus documents against each other — so it is cheap enough
+// to run synchronously as a save-time gate (see ArticleService/PostService Create/Update).
+//
+// It intentionally skips the "rare shingle" cross-corpus confirmation DetectSimilarity uses
+// (that requires a global document-frequency pass over the whole corpus to know which
+// shingles are common boilerplate vs. distinctive text). That makes this a slightly blunter
+// instrument than the full admin similarity scan — acceptable for a fast, blocking check;
+// the periodic /dashboard/content-audit/similarity scan remains the precise, human-reviewed
+// tool for anything this quick gate lets through or a borderline "template" match.
+func DetectDuplicateAgainstCorpus(candidate SimilarityDocument, corpus []SimilarityDocument, options SimilarityOptions) []DuplicateMatch {
+	opts := normalizeSimilarityOptions(options)
+	candidateKey := strings.TrimSpace(candidate.Key)
+
+	candidateNormalized := NormalizeForSimilarity(candidate.Content)
+	candidateWords := strings.Fields(candidateNormalized)
+	if len(candidateWords) < opts.MinWords {
+		return nil
+	}
+	candidateShingles := makeShingleSet(candidateWords, opts.ShingleSize)
+	if len(candidateShingles) == 0 {
+		return nil
+	}
+	candidateFingerprint := sha256.Sum256([]byte(candidateNormalized))
+	candidateFingerprintHex := hex.EncodeToString(candidateFingerprint[:])
+	candidateTitle := NormalizeForSimilarity(candidate.Title)
+
+	matches := make([]DuplicateMatch, 0)
+	for _, doc := range corpus {
+		key := strings.TrimSpace(doc.Key)
+		if key == "" || key == candidateKey {
+			continue
+		}
+		normalized := NormalizeForSimilarity(doc.Content)
+		words := strings.Fields(normalized)
+		if len(words) < opts.MinWords {
+			continue
+		}
+		shingles := makeShingleSet(words, opts.ShingleSize)
+		if len(shingles) == 0 {
+			continue
+		}
+
+		fingerprint := sha256.Sum256([]byte(normalized))
+		if hex.EncodeToString(fingerprint[:]) == candidateFingerprintHex {
+			matches = append(matches, DuplicateMatch{
+				Key: key, Title: doc.Title, Kind: SimilarityKindExact, Similarity: 1, Containment: 1,
+			})
+			continue
+		}
+
+		intersection := setIntersectionSize(candidateShingles, shingles)
+		if intersection == 0 {
+			continue
+		}
+		union := len(candidateShingles) + len(shingles) - intersection
+		similarity := safeRatio(intersection, union)
+		minSize := len(candidateShingles)
+		if len(shingles) < minSize {
+			minSize = len(shingles)
+		}
+		containment := safeRatio(intersection, minSize)
+
+		kind := ""
+		switch {
+		case similarity >= opts.NearThreshold && containment >= 0.78:
+			kind = SimilarityKindNear
+		case similarity >= opts.TemplateThreshold && containment >= opts.TemplateContainment && NormalizeForSimilarity(doc.Title) != candidateTitle:
+			kind = SimilarityKindTemplate
+		default:
+			continue
+		}
+		matches = append(matches, DuplicateMatch{
+			Key: key, Title: doc.Title, Kind: kind, Similarity: similarity, Containment: containment,
+		})
+	}
+
+	sort.Slice(matches, func(i, j int) bool {
+		if similarityKindPriority(matches[i].Kind) != similarityKindPriority(matches[j].Kind) {
+			return similarityKindPriority(matches[i].Kind) > similarityKindPriority(matches[j].Kind)
+		}
+		return matches[i].Similarity > matches[j].Similarity
+	})
+	return matches
+}
+
 type preparedSimilarityDocument struct {
 	Key          string
 	Title        string

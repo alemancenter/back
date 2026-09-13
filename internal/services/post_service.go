@@ -218,6 +218,10 @@ func (s *postService) Create(countryID database.CountryID, countryCode string, u
 	}
 	post.Image = &imagePath
 
+	if dupErr := s.enforceUniqueContent(countryID, 0, post.Title, post.Content); dupErr != nil {
+		return nil, contentquality.ContentQualitySignal{}, dupErr
+	}
+
 	if err := s.repo.Create(countryID, post); err != nil {
 		return nil, contentquality.ContentQualitySignal{}, MapError(err)
 	}
@@ -286,6 +290,10 @@ func (s *postService) Update(countryID database.CountryID, id uint64, req *Updat
 		post.Image = sanitizedOptionalText(*req.ImagePath)
 	}
 
+	if dupErr := s.enforceUniqueContent(countryID, id, post.Title, post.Content); dupErr != nil {
+		return nil, contentquality.ContentQualitySignal{}, dupErr
+	}
+
 	if err := s.repo.Update(countryID, post); err != nil {
 		return nil, contentquality.ContentQualitySignal{}, MapError(err)
 	}
@@ -307,6 +315,35 @@ func (s *postService) Update(countryID database.CountryID, id uint64, req *Updat
 	}
 	signal := contentquality.BuildQualitySignal(metaDescription, post.Keywords != nil && *post.Keywords != "", countWords(stripHTML(post.Content)))
 	return post, signal, nil
+}
+
+// enforceUniqueContent blocks saving a post whose content is an exact- or near-duplicate of
+// another post already in this country's database. See ArticleService.enforceUniqueContent
+// for the matching article-side check and the reasoning (confirmed AdSense rejection driver).
+// excludeID is 0 on create so nothing is excluded; on update it is the post's own id.
+func (s *postService) enforceUniqueContent(countryID database.CountryID, excludeID uint64, title, content string) error {
+	corpusRows, err := s.repo.ListContentForDuplicateCheck(countryID, excludeID)
+	if err != nil {
+		// Fail open: a hiccup in this secondary check must never block every post save.
+		fmt.Printf("duplicate-content check failed to load corpus, allowing save: %v\n", err)
+		return nil
+	}
+	corpus := make([]contentquality.SimilarityDocument, 0, len(corpusRows))
+	for _, row := range corpusRows {
+		corpus = append(corpus, contentquality.SimilarityDocument{
+			Key: fmt.Sprintf("post:%d", row.ID), Title: row.Title, Content: row.Content,
+		})
+	}
+	candidate := contentquality.SimilarityDocument{Key: fmt.Sprintf("post:%d", excludeID), Title: title, Content: content}
+	matches := contentquality.DetectDuplicateAgainstCorpus(candidate, corpus, contentquality.DefaultSimilarityOptions())
+	if len(matches) == 0 {
+		return nil
+	}
+	best := matches[0]
+	if best.Kind != contentquality.SimilarityKindExact && best.Kind != contentquality.SimilarityKindNear {
+		return nil
+	}
+	return &DuplicateContentError{Kind: best.Kind, MatchKey: best.Key, MatchTitle: best.Title, Similarity: best.Similarity}
 }
 
 func (s *postService) Delete(countryID database.CountryID, id uint64, callerID uint, callerIsAdmin bool) error {

@@ -28,6 +28,16 @@ type ArticleRepository interface {
 	GetAllSemesters(countryID database.CountryID) ([]models.Semester, error)
 	GetStats(countryID database.CountryID) (total, published, drafts, views int64, err error)
 	UpdateKeywords(countryID database.CountryID, articleID uint, keywordsStr string) error
+	ListContentForDuplicateCheck(countryID database.CountryID, excludeID uint64) ([]ContentCorpusRow, error)
+}
+
+// ContentCorpusRow is the minimal shape needed to compare one piece of content against
+// another (see contentquality.DetectDuplicateAgainstCorpus). Shared between the article and
+// post repositories so ArticleService/PostService can run the same save-time duplicate check.
+type ContentCorpusRow struct {
+	ID      uint64 `gorm:"column:id"`
+	Title   string `gorm:"column:title"`
+	Content string `gorm:"column:content"`
 }
 
 // fileCategoryAliases maps each canonical slug to all values that may be stored
@@ -201,6 +211,21 @@ func (r *articleRepository) Update(countryID database.CountryID, article *models
 
 func (r *articleRepository) Delete(countryID database.CountryID, article *models.Article) error {
 	return r.GetDB(countryID).Delete(article).Error
+}
+
+// ListContentForDuplicateCheck loads id/title/content for every other article in this
+// country, for the save-time content-uniqueness gate (services.ArticleService Create/Update).
+// excludeID (0 on create) skips the article being saved so it never gets compared to itself.
+// The length filter mirrors contentquality's MinWords gate (~30 Arabic words) so obviously
+// too-short rows are never transferred just to be discarded client-side.
+func (r *articleRepository) ListContentForDuplicateCheck(countryID database.CountryID, excludeID uint64) ([]ContentCorpusRow, error) {
+	var rows []ContentCorpusRow
+	db := r.GetDB(countryID).Model(&models.Article{}).Select("id, title, content").Where("CHAR_LENGTH(content) > 150")
+	if excludeID > 0 {
+		db = db.Where("id <> ?", excludeID)
+	}
+	err := db.Find(&rows).Error
+	return rows, err
 }
 
 func (r *articleRepository) GetFileByID(countryID database.CountryID, id uint64) (*models.File, error) {

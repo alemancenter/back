@@ -24,6 +24,8 @@ type MockPostRepository struct {
 	UpdateFunc         func(countryID database.CountryID, post *models.Post) error
 	DeleteFunc         func(countryID database.CountryID, id uint64) error
 	UpdateKeywordsFunc func(countryID database.CountryID, postID uint64, keywordsStr string) error
+
+	ListContentForDuplicateCheckFunc func(countryID database.CountryID, excludeID uint64) ([]repositories.ContentCorpusRow, error)
 }
 
 func (m *MockPostRepository) ListPaginated(countryID database.CountryID, filter *models.PostFilter, limit, offset int) ([]models.Post, int64, error) {
@@ -80,6 +82,13 @@ func (m *MockPostRepository) UpdateKeywords(countryID database.CountryID, postID
 		return m.UpdateKeywordsFunc(countryID, postID, keywordsStr)
 	}
 	return nil
+}
+
+func (m *MockPostRepository) ListContentForDuplicateCheck(countryID database.CountryID, excludeID uint64) ([]repositories.ContentCorpusRow, error) {
+	if m.ListContentForDuplicateCheckFunc != nil {
+		return m.ListContentForDuplicateCheckFunc(countryID, excludeID)
+	}
+	return nil, nil
 }
 
 func TestPostService_GetByID(t *testing.T) {

@@ -105,6 +105,62 @@ func TestDetectSimilarityClustersTransitivePairs(t *testing.T) {
 	}
 }
 
+func TestDetectDuplicateAgainstCorpusFindsExact(t *testing.T) {
+	body := strings.Join(series("كلمة", 60), " ")
+	candidate := SimilarityDocument{Key: "article:0", Title: "تحضير الصف العاشر", Content: `<p>` + body + `</p>`}
+	corpus := []SimilarityDocument{
+		{Key: "article:2380", Title: "تحضير الصف السابع", Content: body},
+		{Key: "article:99", Title: "غير ذي صلة", Content: strings.Join(series("مختلف", 70), " ")},
+	}
+	matches := DetectDuplicateAgainstCorpus(candidate, corpus, DefaultSimilarityOptions())
+	if len(matches) != 1 {
+		t.Fatalf("expected exactly one match, got %+v", matches)
+	}
+	if matches[0].Kind != SimilarityKindExact || matches[0].Key != "article:2380" {
+		t.Fatalf("expected exact match against article:2380, got %+v", matches[0])
+	}
+}
+
+func TestDetectDuplicateAgainstCorpusFindsNear(t *testing.T) {
+	base := series("مشترك", 100)
+	variant := append([]string(nil), base...)
+	for i := 42; i < 49; i++ {
+		variant[i] = fmt.Sprintf("مختلف%d", i)
+	}
+	candidate := SimilarityDocument{Key: "article:0", Title: "درس العلوم للثامن", Content: strings.Join(variant, " ")}
+	corpus := []SimilarityDocument{
+		{Key: "article:10", Title: "درس العلوم للعاشر", Content: strings.Join(base, " ")},
+	}
+	matches := DetectDuplicateAgainstCorpus(candidate, corpus, DefaultSimilarityOptions())
+	if len(matches) != 1 || matches[0].Kind != SimilarityKindNear {
+		t.Fatalf("expected one near match, got %+v", matches)
+	}
+}
+
+func TestDetectDuplicateAgainstCorpusIgnoresSelfAndShort(t *testing.T) {
+	body := strings.Join(series("كلمة", 60), " ")
+	candidate := SimilarityDocument{Key: "article:5", Title: "عنوان", Content: body}
+	corpus := []SimilarityDocument{
+		{Key: "article:5", Title: "عنوان", Content: body}, // same key as candidate: must be skipped (self on edit)
+		{Key: "article:6", Title: "قصير", Content: "نص قصير جدا"},
+	}
+	matches := DetectDuplicateAgainstCorpus(candidate, corpus, DefaultSimilarityOptions())
+	if len(matches) != 0 {
+		t.Fatalf("expected no matches (self excluded, other too short), got %+v", matches)
+	}
+}
+
+func TestDetectDuplicateAgainstCorpusNoFalsePositive(t *testing.T) {
+	candidate := SimilarityDocument{Key: "article:0", Title: "أ", Content: strings.Join(series("الف", 70), " ")}
+	corpus := []SimilarityDocument{
+		{Key: "article:1", Title: "ب", Content: strings.Join(series("باء", 70), " ")},
+	}
+	matches := DetectDuplicateAgainstCorpus(candidate, corpus, DefaultSimilarityOptions())
+	if len(matches) != 0 {
+		t.Fatalf("expected no matches for unrelated content, got %+v", matches)
+	}
+}
+
 func series(prefix string, count int) []string {
 	items := make([]string, count)
 	for i := range items {

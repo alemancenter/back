@@ -28,6 +28,8 @@ type MockArticleRepository struct {
 	GetAllSubjectsFunc       func(countryID database.CountryID) ([]models.Subject, error)
 	GetAllSemestersFunc      func(countryID database.CountryID) ([]models.Semester, error)
 	UpdateKeywordsFunc       func(countryID database.CountryID, articleID uint, keywordsStr string) error
+
+	ListContentForDuplicateCheckFunc func(countryID database.CountryID, excludeID uint64) ([]repositories.ContentCorpusRow, error)
 }
 
 func (m *MockArticleRepository) List(countryID database.CountryID, pag utils.Pagination, filters *models.ArticleFilter) ([]models.Article, int64, error) {
@@ -87,6 +89,13 @@ func (m *MockArticleRepository) UpdateKeywords(countryID database.CountryID, art
 		return m.UpdateKeywordsFunc(countryID, articleID, keywordsStr)
 	}
 	return nil
+}
+
+func (m *MockArticleRepository) ListContentForDuplicateCheck(countryID database.CountryID, excludeID uint64) ([]repositories.ContentCorpusRow, error) {
+	if m.ListContentForDuplicateCheckFunc != nil {
+		return m.ListContentForDuplicateCheckFunc(countryID, excludeID)
+	}
+	return nil, nil
 }
 
 func (m *MockArticleRepository) GetFileByID(countryID database.CountryID, fileID uint64) (*models.File, error) {

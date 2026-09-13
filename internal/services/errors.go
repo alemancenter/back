@@ -2,7 +2,9 @@ package services
 
 import (
 	"errors"
+	"fmt"
 
+	"github.com/imanjo/fiber-api/internal/contentquality"
 	"gorm.io/gorm"
 )
 
@@ -14,6 +16,42 @@ var ErrForbidden = errors.New("forbidden")
 
 // ErrProtectedRole prevents destructive changes to the platform's root access roles.
 var ErrProtectedRole = errors.New("protected role")
+
+// DuplicateContentError blocks saving an article/post whose content is an exact- or
+// near-duplicate of another existing article/post (see
+// contentquality.DetectDuplicateAgainstCorpus). This is the content-uniqueness gate: reused
+// explanations across grades/subjects (only the title/attachment changed) were a confirmed
+// AdSense "low-value content" rejection cause for this site, so duplication is refused at
+// save time instead of only being flagged later in the admin similarity report.
+type DuplicateContentError struct {
+	// Kind is contentquality.SimilarityKindExact or SimilarityKindNear.
+	Kind string
+	// MatchKey identifies the existing content, e.g. "article:2380" or "post:41".
+	MatchKey   string
+	MatchTitle string
+	Similarity float64
+}
+
+func (e *DuplicateContentError) Error() string {
+	return fmt.Sprintf("duplicate content (%s, %.0f%% similar to %s)", e.Kind, e.Similarity*100, e.MatchKey)
+}
+
+// UserMessage is the Arabic message shown to the editor in the dashboard, explaining exactly
+// which existing item the new content duplicates so they can rewrite it instead of guessing.
+func (e *DuplicateContentError) UserMessage() string {
+	verb := "يتطابق تمامًا مع"
+	if e.Kind == contentquality.SimilarityKindNear {
+		verb = fmt.Sprintf("يتشابه بنسبة %.0f%% تقريبًا مع", e.Similarity*100)
+	}
+	title := e.MatchTitle
+	if title == "" {
+		title = e.MatchKey
+	}
+	return fmt.Sprintf(
+		"تعذّر الحفظ: محتوى هذه الصفحة %s «%s». يجب أن يكون الشرح مخصصًا وفريدًا لهذا الصف/المادة، وليس نسخًا من محتوى آخر — Google يرفض المواقع بسبب المحتوى المكرر.",
+		verb, title,
+	)
+}
 
 // MapError translates data layer errors to service layer errors.
 func MapError(err error) error {

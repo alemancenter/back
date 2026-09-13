@@ -349,6 +349,10 @@ func (s *articleService) CreateArticle(countryID database.CountryID, req *Articl
 		article.AuthorID = authorID
 	}
 
+	if dupErr := s.enforceUniqueContent(countryID, 0, article.Title, article.Content); dupErr != nil {
+		return nil, contentquality.ContentQualitySignal{}, dupErr
+	}
+
 	err := s.repo.Create(countryID, article)
 	if err != nil {
 		return nil, contentquality.ContentQualitySignal{}, MapError(err)
@@ -410,6 +414,10 @@ func (s *articleService) UpdateArticle(countryID database.CountryID, id uint64, 
 	// Captured before Update/UpdateKeywords so a bare status-only edit still reports
 	// whether keywords already existed, instead of always reading as "missing".
 	hadExistingKeywords := len(article.KeywordsRel) > 0
+
+	if dupErr := s.enforceUniqueContent(countryID, id, article.Title, article.Content); dupErr != nil {
+		return nil, contentquality.ContentQualitySignal{}, dupErr
+	}
 
 	err = s.repo.Update(countryID, article)
 	if err != nil {
@@ -485,6 +493,41 @@ func (s *articleService) SetArticleStatus(countryID database.CountryID, id uint6
 	}
 
 	return article, MapError(err)
+}
+
+// enforceUniqueContent blocks saving an article whose content is an exact- or near-duplicate
+// of another article already in this country's database — the recurring pattern found in
+// production was the same explanation reused across grade levels with only the title/attachment
+// swapped, which reads to Google as low-value/duplicate content. excludeID is 0 on create so
+// nothing is excluded; on update it is the article's own id so a save never flags itself.
+//
+// This compares against articles only (same content type) — it is O(corpus size), cheap enough
+// to run inline on every save. Cross-type (article vs. post) duplication is still caught by the
+// periodic /dashboard/content-audit/similarity admin scan, which compares both content types
+// together but is too heavy (O(n^2) over the whole site) to run on every keystroke-driven save.
+func (s *articleService) enforceUniqueContent(countryID database.CountryID, excludeID uint64, title, content string) error {
+	corpusRows, err := s.repo.ListContentForDuplicateCheck(countryID, excludeID)
+	if err != nil {
+		// Fail open: a hiccup in this secondary check must never block every article save.
+		fmt.Printf("duplicate-content check failed to load corpus, allowing save: %v\n", err)
+		return nil
+	}
+	corpus := make([]contentquality.SimilarityDocument, 0, len(corpusRows))
+	for _, row := range corpusRows {
+		corpus = append(corpus, contentquality.SimilarityDocument{
+			Key: fmt.Sprintf("article:%d", row.ID), Title: row.Title, Content: row.Content,
+		})
+	}
+	candidate := contentquality.SimilarityDocument{Key: fmt.Sprintf("article:%d", excludeID), Title: title, Content: content}
+	matches := contentquality.DetectDuplicateAgainstCorpus(candidate, corpus, contentquality.DefaultSimilarityOptions())
+	if len(matches) == 0 {
+		return nil
+	}
+	best := matches[0]
+	if best.Kind != contentquality.SimilarityKindExact && best.Kind != contentquality.SimilarityKindNear {
+		return nil
+	}
+	return &DuplicateContentError{Kind: best.Kind, MatchKey: best.Key, MatchTitle: best.Title, Similarity: best.Similarity}
 }
 
 func (s *articleService) GetDashboardStats(countryID database.CountryID) (*ArticleDashboardStats, error) {

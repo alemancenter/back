@@ -446,6 +446,9 @@ func (h *Handler) DashboardCreate(c *fiber.Ctx) error {
 
 	article, qualitySignal, err := h.svc.CreateArticle(countryID, &req, authorID)
 	if err != nil {
+		if dupErr, ok := err.(*services.DuplicateContentError); ok {
+			return utils.BadRequest(c, dupErr.UserMessage())
+		}
 		return utils.InternalError(c, "فشل إنشاء المقالة")
 	}
 
@@ -508,6 +511,9 @@ func (h *Handler) DashboardUpdate(c *fiber.Ctx) error {
 	if err != nil {
 		if err == services.ErrNotFound {
 			return utils.NotFound(c)
+		}
+		if dupErr, ok := err.(*services.DuplicateContentError); ok {
+			return utils.BadRequest(c, dupErr.UserMessage())
 		}
 		return utils.InternalError(c, "فشل تحديث المقالة")
 	}

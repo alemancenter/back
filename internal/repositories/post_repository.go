@@ -18,6 +18,7 @@ type PostRepository interface {
 	Delete(countryID database.CountryID, id uint64) error
 	UpdateKeywords(countryID database.CountryID, postID uint64, keywordsStr string) error
 	GetFileByID(countryID database.CountryID, id uint64) (*models.File, error)
+	ListContentForDuplicateCheck(countryID database.CountryID, excludeID uint64) ([]ContentCorpusRow, error)
 }
 
 type postRepository struct{}
@@ -130,6 +131,19 @@ func (r *postRepository) Delete(countryID database.CountryID, id uint64) error {
 
 func (r *postRepository) GetFileByID(countryID database.CountryID, id uint64) (*models.File, error) {
 	return PublicFileByID(r.getDB(countryID), id, "post")
+}
+
+// ListContentForDuplicateCheck loads id/title/content for every other post in this country,
+// for the save-time content-uniqueness gate (services.PostService Create/Update). See
+// ArticleRepository.ListContentForDuplicateCheck for the matching article-side query.
+func (r *postRepository) ListContentForDuplicateCheck(countryID database.CountryID, excludeID uint64) ([]ContentCorpusRow, error) {
+	var rows []ContentCorpusRow
+	db := r.getDB(countryID).Model(&models.Post{}).Select("id, title, content").Where("CHAR_LENGTH(content) > 150")
+	if excludeID > 0 {
+		db = db.Where("id <> ?", excludeID)
+	}
+	err := db.Find(&rows).Error
+	return rows, err
 }
 
 func (r *postRepository) UpdateKeywords(countryID database.CountryID, postID uint64, keywordsStr string) error {

@@ -43,6 +43,11 @@ type SimilarityPair struct {
 	RareSimilarity float64 `json:"rare_similarity"`
 	SharedShingles int     `json:"shared_shingles"`
 	Fingerprint    string  `json:"fingerprint,omitempty"`
+	// MatchedOn says what an "exact" pair matched on: "content", "title", or both. Content and
+	// title fingerprints are compared independently of MinWords — an exact text match is exact
+	// regardless of length, unlike near/template similarity which genuinely needs enough words
+	// for shingling to mean anything.
+	MatchedOn []string `json:"matched_on,omitempty"`
 }
 
 type SimilarityCluster struct {
@@ -132,6 +137,20 @@ func DetectSimilarity(documents []SimilarityDocument, options SimilarityOptions)
 	prepared := make([]preparedSimilarityDocument, 0, len(documents))
 	ignored := 0
 	seenKeys := make(map[string]struct{}, len(documents))
+
+	// Exact-match candidates are collected for every document that has *any* normalized
+	// content or title, independent of MinWords/shingling below — a word-for-word or
+	// title-for-title match is exact regardless of length, so a pair of very short pages
+	// (exactly the kind of thin, templated content that risks an AdSense duplicate-content
+	// rejection) must not be silently excluded just because they are too short to shingle.
+	type exactCandidate struct {
+		Key          string
+		ContentHash  string
+		TitleHash    string
+		ShingleCount int
+	}
+	exactCandidates := make([]exactCandidate, 0, len(documents))
+
 	for _, document := range documents {
 		key := strings.TrimSpace(document.Key)
 		if key == "" {
@@ -143,28 +162,103 @@ func DetectSimilarity(documents []SimilarityDocument, options SimilarityOptions)
 			continue
 		}
 		seenKeys[key] = struct{}{}
-		normalized := NormalizeForSimilarity(document.Content)
-		words := strings.Fields(normalized)
-		if len(words) < opts.MinWords {
-			ignored++
-			continue
+
+		normalizedContent := NormalizeForSimilarity(document.Content)
+		normalizedTitle := NormalizeForSimilarity(document.Title)
+
+		candidate := exactCandidate{Key: key}
+		if normalizedContent != "" {
+			hash := sha256.Sum256([]byte(normalizedContent))
+			candidate.ContentHash = hex.EncodeToString(hash[:])
 		}
+		if normalizedTitle != "" {
+			hash := sha256.Sum256([]byte(normalizedTitle))
+			candidate.TitleHash = hex.EncodeToString(hash[:])
+		}
+
+		words := strings.Fields(normalizedContent)
 		allShingles := makeShingleSet(words, opts.ShingleSize)
-		if len(allShingles) == 0 {
+		candidate.ShingleCount = len(allShingles)
+		if candidate.ContentHash != "" || candidate.TitleHash != "" {
+			exactCandidates = append(exactCandidates, candidate)
+		}
+
+		if len(words) < opts.MinWords || len(allShingles) == 0 {
 			ignored++
 			continue
 		}
-		hash := sha256.Sum256([]byte(normalized))
 		prepared = append(prepared, preparedSimilarityDocument{
 			Key:         key,
-			Title:       NormalizeForSimilarity(document.Title),
-			Fingerprint: hex.EncodeToString(hash[:]),
+			Title:       normalizedTitle,
+			Fingerprint: candidate.ContentHash,
 			Shingles:    allShingles,
 		})
 	}
 
 	report := SimilarityReport{ScannedDocuments: len(prepared), IgnoredDocuments: ignored}
+
+	pairs := make([]SimilarityPair, 0)
+	exactPairs := make(map[indexPair]struct{}) // indexes into exactCandidates, deduped below
+	keyIndex := make(map[string]int, len(exactCandidates))
+	for i, candidate := range exactCandidates {
+		keyIndex[candidate.Key] = i
+	}
+	contentGroups := make(map[string][]int)
+	titleGroups := make(map[string][]int)
+	for i, candidate := range exactCandidates {
+		if candidate.ContentHash != "" {
+			contentGroups[candidate.ContentHash] = append(contentGroups[candidate.ContentHash], i)
+		}
+		if candidate.TitleHash != "" {
+			titleGroups[candidate.TitleHash] = append(titleGroups[candidate.TitleHash], i)
+		}
+	}
+	matchedOn := make(map[indexPair]map[string]bool)
+	recordExact := func(indexes []int, on string) {
+		if len(indexes) < 2 {
+			return
+		}
+		for x := 0; x < len(indexes); x++ {
+			for y := x + 1; y < len(indexes); y++ {
+				pairIndex := orderedIndexPair(indexes[x], indexes[y])
+				exactPairs[pairIndex] = struct{}{}
+				if matchedOn[pairIndex] == nil {
+					matchedOn[pairIndex] = make(map[string]bool)
+				}
+				matchedOn[pairIndex][on] = true
+			}
+		}
+	}
+	for _, indexes := range contentGroups {
+		recordExact(indexes, "content")
+	}
+	for _, indexes := range titleGroups {
+		recordExact(indexes, "title")
+	}
+	for pairIndex, reasons := range matchedOn {
+		left := exactCandidates[pairIndex.A]
+		right := exactCandidates[pairIndex.B]
+		on := make([]string, 0, 2)
+		if reasons["content"] {
+			on = append(on, "content")
+		}
+		if reasons["title"] {
+			on = append(on, "title")
+		}
+		sharedShingles := left.ShingleCount
+		if right.ShingleCount < sharedShingles {
+			sharedShingles = right.ShingleCount
+		}
+		pairs = append(pairs, SimilarityPair{
+			LeftKey: left.Key, RightKey: right.Key, Kind: SimilarityKindExact,
+			Similarity: 1, Containment: 1, RareSimilarity: 1,
+			SharedShingles: sharedShingles, Fingerprint: left.ContentHash, MatchedOn: on,
+		})
+	}
+
 	if len(prepared) < 2 {
+		report.Pairs = pairs
+		report.Clusters = clusterSimilarityPairs(pairs)
 		return report
 	}
 
@@ -183,34 +277,6 @@ func DetectSimilarity(documents []SimilarityDocument, options SimilarityOptions)
 		for shingle := range prepared[i].Shingles {
 			if docFrequency[shingle] <= commonCutoff {
 				prepared[i].RareShingles[shingle] = struct{}{}
-			}
-		}
-	}
-
-	pairs := make([]SimilarityPair, 0)
-	exactPairs := make(map[indexPair]struct{})
-	fingerprints := make(map[string][]int)
-	for i, document := range prepared {
-		fingerprints[document.Fingerprint] = append(fingerprints[document.Fingerprint], i)
-	}
-	for fingerprint, indexes := range fingerprints {
-		if len(indexes) < 2 {
-			continue
-		}
-		for x := 0; x < len(indexes); x++ {
-			for y := x + 1; y < len(indexes); y++ {
-				pairIndex := orderedIndexPair(indexes[x], indexes[y])
-				exactPairs[pairIndex] = struct{}{}
-				pairs = append(pairs, SimilarityPair{
-					LeftKey:        prepared[pairIndex.A].Key,
-					RightKey:       prepared[pairIndex.B].Key,
-					Kind:           SimilarityKindExact,
-					Similarity:     1,
-					Containment:    1,
-					RareSimilarity: 1,
-					SharedShingles: len(prepared[pairIndex.A].Shingles),
-					Fingerprint:    fingerprint,
-				})
 			}
 		}
 	}
@@ -237,11 +303,15 @@ func DetectSimilarity(documents []SimilarityDocument, options SimilarityOptions)
 		if rareShared < opts.MinSharedRareShingles {
 			continue
 		}
-		if _, exact := exactPairs[pairIndex]; exact {
-			continue
-		}
 		left := prepared[pairIndex.A]
 		right := prepared[pairIndex.B]
+		if leftIdx, ok := keyIndex[left.Key]; ok {
+			if rightIdx, ok := keyIndex[right.Key]; ok {
+				if _, exact := exactPairs[orderedIndexPair(leftIdx, rightIdx)]; exact {
+					continue
+				}
+			}
+		}
 		intersection := setIntersectionSize(left.Shingles, right.Shingles)
 		if intersection == 0 {
 			continue

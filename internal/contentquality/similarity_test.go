@@ -161,6 +161,48 @@ func TestDetectDuplicateAgainstCorpusNoFalsePositive(t *testing.T) {
 	}
 }
 
+// Two identical short pages (well below MinWords) must still be flagged as an exact content
+// match — a word-for-word duplicate is exact regardless of length, and short+duplicated is
+// exactly the thin/templated-content pattern this scan exists to catch.
+func TestDetectSimilarityExactMatchIgnoresMinWords(t *testing.T) {
+	report := DetectSimilarity([]SimilarityDocument{
+		{Key: "article:1", Title: "عنوان أول", Content: "نص قصير جدا للاختبار"},
+		{Key: "post:2", Title: "عنوان مختلف", Content: "نص قصير جدا للاختبار"},
+	}, DefaultSimilarityOptions())
+	if len(report.Pairs) != 1 {
+		t.Fatalf("expected one exact pair for identical short content, got %+v", report.Pairs)
+	}
+	pair := report.Pairs[0]
+	if pair.Kind != SimilarityKindExact || pair.Similarity != 1 {
+		t.Fatalf("unexpected pair: %+v", pair)
+	}
+	if len(pair.MatchedOn) != 1 || pair.MatchedOn[0] != "content" {
+		t.Fatalf("expected MatchedOn=[content], got %+v", pair.MatchedOn)
+	}
+}
+
+// An identical title with otherwise-unrelated content must also be flagged exact — a strong
+// duplicate-content signal by itself (the same "لغة عربية الصف العاشر" style template titles
+// that originally drove the AdSense rejection), independent of the content-text comparison.
+func TestDetectSimilarityExactTitleMatch(t *testing.T) {
+	report := DetectSimilarity([]SimilarityDocument{
+		{Key: "article:1", Title: "نفس العنوان تمامًا", Content: strings.Join(series("الف", 70), " ")},
+		{Key: "article:2", Title: "نفس العنوان تمامًا", Content: strings.Join(series("باء", 70), " ")},
+	}, DefaultSimilarityOptions())
+	var titleMatch *SimilarityPair
+	for i := range report.Pairs {
+		if report.Pairs[i].Kind == SimilarityKindExact {
+			titleMatch = &report.Pairs[i]
+		}
+	}
+	if titleMatch == nil {
+		t.Fatalf("expected an exact pair from matching titles, got %+v", report.Pairs)
+	}
+	if len(titleMatch.MatchedOn) != 1 || titleMatch.MatchedOn[0] != "title" {
+		t.Fatalf("expected MatchedOn=[title], got %+v", titleMatch.MatchedOn)
+	}
+}
+
 func series(prefix string, count int) []string {
 	items := make([]string, count)
 	for i := range items {

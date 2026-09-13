@@ -15,8 +15,7 @@ import (
 	"github.com/imanjo/fiber-api/internal/utils"
 )
 
-// Content quality batch processing is preview-first for title/body/policy work.
-// A narrowly guarded metadata repair may be applied automatically.
+// Content quality batches analyze or create suggestions; they never publish text.
 func (h *Handler) StartQualityBatch(c *fiber.Ctx) error {
 	var req contentQualityBatchRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -232,57 +231,25 @@ func (h *Handler) processQualityBatchItem(jobID string, itemIndex int) {
 	decisionID := decision.ID
 	previewID := uint(0)
 	message := "تم إنشاء تحليل الجودة والسياسات"
-	if mode == "auto_apply" {
-		if preset != readinessProblemMetaDescription {
-			finishQualityBatchItem(jobID, itemIndex, models.ContentAIJobItemStatusFailed, "تم رفض الإصلاح التلقائي: هذا المسار مسموح للوصف التعريفي فقط", &decisionID, nil, decision.Score)
-			return
+	// Also covers legacy persisted jobs; workers never apply generated text.
+	if mode == "auto_apply" || mode == "fix_preview" || mode == "full_review" {
+		var preview *models.ContentAIFixPreview
+		var previewErr error
+		if preset == readinessProblemMetaDescription {
+			preview, previewErr = h.svc.CreateMetadataFixPreview(ctx, uint64(decision.ID))
+		} else {
+			preview, previewErr = h.svc.CreateGroundedFixPreview(ctx, uint64(decision.ID))
 		}
-		preview, repairErr := h.svc.AutoRepairMetaDescription(ctx, uint64(decision.ID), userID)
-		if repairErr != nil && !errors.Is(repairErr, auditservice.ErrMetadataNoRepairNeeded) {
-			finishQualityBatchItem(jobID, itemIndex, models.ContentAIJobItemStatusFailed, fmt.Sprintf("تم التحليل لكن فشل إصلاح الوصف التعريفي الآمن: %v", repairErr), &decisionID, nil, decision.Score)
+		if previewErr != nil && !errors.Is(previewErr, auditservice.ErrMetadataNoRepairNeeded) {
+			finishQualityBatchItem(jobID, itemIndex, models.ContentAIJobItemStatusFailed, fmt.Sprintf("تم التحليل لكن تعذّر إنشاء المعاينة: %v", previewErr), &decisionID, nil, decision.Score)
 			return
 		}
 		if preview != nil {
 			previewID = preview.ID
+			message = "تم إنشاء اقتراح بانتظار المراجعة والاعتماد الفردي"
+		} else {
+			message = "الوصف الحالي لا يحتاج اقتراحًا جديدًا"
 		}
-
-		rechecked, recheckErr := h.svc.AnalyzeWithAI(ctx, auditservice.AIAnalyzeRequest{
-			ModelStrategy: modelStrategy,
-			ContentType:   item.ContentType,
-			ContentID:     strconv.FormatUint(uint64(item.ContentID), 10),
-			CountryCode:   item.CountryCode,
-			Title:         item.Title,
-			URL:           item.URL,
-		}, userID)
-		if recheckErr != nil {
-			finishQualityBatchItem(jobID, itemIndex, models.ContentAIJobItemStatusFailed, fmt.Sprintf("تم إصلاح الوصف لكن تعذّرت إعادة فحص الجاهزية: %v", recheckErr), &decisionID, optionalUint(previewID), decision.Score)
-			return
-		}
-		decisionID = rechecked.ID
-		gate, gateErr := h.svc.QualityGate(ctx, item.ContentType, strconv.FormatUint(uint64(item.ContentID), 10), item.CountryCode)
-		if gateErr != nil {
-			finishQualityBatchItem(jobID, itemIndex, models.ContentAIJobItemStatusFailed, fmt.Sprintf("تم إصلاح الوصف وإعادة التحليل لكن تعذّر حساب بوابة الجاهزية: %v", gateErr), &decisionID, optionalUint(previewID), rechecked.Score)
-			return
-		}
-		switch {
-		case gate.AdsEligible:
-			message = "تم إصلاح الوصف التعريفي وإعادة الفحص؛ الصفحة مؤهلة داخليًا للإعلانات ومفهرسة"
-		case gate.Indexable:
-			message = "تم إصلاح الوصف التعريفي وإعادة الفحص؛ الصفحة مفهرسة لكن ما زالت لديها شروط أخرى قبل أهلية الإعلانات"
-		default:
-			message = "تم إصلاح الوصف التعريفي وإعادة الفحص؛ ما زال حظر الفهرسة/السياسة قائمًا ويحتاج مراجعة"
-		}
-		finishQualityBatchItem(jobID, itemIndex, models.ContentAIJobItemStatusCompleted, message, &decisionID, optionalUint(previewID), rechecked.Score)
-		return
-	}
-	if mode == "fix_preview" || mode == "full_review" {
-		preview, previewErr := h.svc.CreateGroundedFixPreview(ctx, uint64(decision.ID))
-		if previewErr != nil {
-			finishQualityBatchItem(jobID, itemIndex, models.ContentAIJobItemStatusFailed, fmt.Sprintf("تم التحليل لكن فشل إنشاء معاينة التحسين الموثق: %v", previewErr), &decisionID, nil, decision.Score)
-			return
-		}
-		previewID = preview.ID
-		message = "تم إنشاء تحليل ومعاينة تحسين موثقة بالأدلة بانتظار المراجعة البشرية"
 	}
 	finishQualityBatchItem(jobID, itemIndex, models.ContentAIJobItemStatusCompleted, message, &decisionID, optionalUint(previewID), decision.Score)
 }

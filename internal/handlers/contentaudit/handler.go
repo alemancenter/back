@@ -8,11 +8,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
+	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	auditservice "github.com/imanjo/fiber-api/internal/services/contentaudit"
 	"github.com/imanjo/fiber-api/internal/utils"
 	"github.com/imanjo/fiber-api/pkg/logger"
-	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -234,9 +235,21 @@ func (h *Handler) ApplyFix(c *fiber.Ctx) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
+	proposal, err := h.svc.GetFixPreview(ctx, req.FixPreviewID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return utils.NotFound(c)
+	}
+	if err != nil {
+		return utils.InternalError(c, "failed to load AI fix preview")
+	}
+	user, _ := c.Locals("user").(*models.User)
+	countryID, _ := c.Locals("country_id").(database.CountryID)
+	if !canApplyEditorialPreview(user, countryID, proposal) {
+		return utils.Forbidden(c)
+	}
 	preview, err := h.svc.ApplyGroundedFix(ctx, req.FixPreviewID, currentUserID(c), req.Note)
 	if err != nil {
-		if errors.Is(err, auditservice.ErrFixAlreadyClosed) || errors.Is(err, auditservice.ErrUnsupportedContentType) || errors.Is(err, auditservice.ErrUngroundedFixPreview) || errors.Is(err, auditservice.ErrGroundedValidationFailed) || errors.Is(err, auditservice.ErrGroundedSourceChanged) {
+		if errors.Is(err, auditservice.ErrSafeMetadataStale) || errors.Is(err, auditservice.ErrSafeMetadataValidation) || errors.Is(err, auditservice.ErrFixAlreadyClosed) || errors.Is(err, auditservice.ErrUnsupportedContentType) || errors.Is(err, auditservice.ErrUngroundedFixPreview) || errors.Is(err, auditservice.ErrGroundedValidationFailed) || errors.Is(err, auditservice.ErrGroundedSourceChanged) {
 			return utils.BadRequest(c, err.Error())
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -273,4 +286,19 @@ func currentUserID(c *fiber.Ctx) *uint {
 		return &id
 	}
 	return nil
+}
+
+// Content-audit access alone must not grant permission to overwrite articles/posts.
+func canApplyEditorialPreview(user *models.User, countryID database.CountryID, preview *models.ContentAIFixPreview) bool {
+	if user == nil || user.ID == 0 || preview == nil || countryID < database.CountryJordan || countryID > database.CountryPalestine || preview.CountryCode != database.CountryCode(countryID) {
+		return false
+	}
+	switch preview.ContentType {
+	case "article":
+		return user.IsAdmin() || user.HasPermission("manage articles")
+	case "post":
+		return user.IsAdmin() || user.HasPermission("manage posts")
+	default:
+		return false
+	}
 }

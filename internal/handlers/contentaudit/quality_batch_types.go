@@ -6,19 +6,18 @@ import (
 	"time"
 )
 
-// Content quality batch processing is preview-first for substantive content.
-// The sole auto-apply exception is the guarded meta_description repair path.
+// Content quality batches only analyze or create previews, including metadata.
 type contentQualityBatchRequest struct {
-	CountryCode   string `json:"country_code"`
-	ContentType   string `json:"content_type"`
-	Level         string `json:"level"`
-	Query         string `json:"q"`
-	Limit         int    `json:"limit"`
-	Concurrency   int    `json:"concurrency"`
-	Mode          string `json:"mode"`
-	ModelStrategy string `json:"model_strategy"`
-	Source        string `json:"source"`
-	Preset        string `json:"preset"`
+	CountryCode   string                      `json:"country_code"`
+	ContentType   string                      `json:"content_type"`
+	Level         string                      `json:"level"`
+	Query         string                      `json:"q"`
+	Limit         int                         `json:"limit"`
+	Concurrency   int                         `json:"concurrency"`
+	Mode          string                      `json:"mode"`
+	ModelStrategy string                      `json:"model_strategy"`
+	Source        string                      `json:"source"`
+	Preset        string                      `json:"preset"`
 	Targets       []contentQualityBatchTarget `json:"targets,omitempty"`
 }
 
@@ -201,10 +200,9 @@ func normalizeQualityBatchRequest(req contentQualityBatchRequest) contentQuality
 		}
 	}
 
-	// Auto-apply is deliberately allowlisted to metadata. Any malformed or future
-	// request attempting to auto-apply title/body/policy work is downgraded to a
-	// human-reviewed preview.
-	if req.Mode == "auto_apply" && req.Preset != readinessProblemMetaDescription {
+	// Legacy clients may still request auto_apply. All generated changes now
+	// remain previews until an editor reviews and approves one item.
+	if req.Mode == "auto_apply" {
 		req.Mode = "fix_preview"
 	}
 

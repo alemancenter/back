@@ -21,7 +21,7 @@ import (
 var (
 	ErrSafeMetadataValidation = errors.New("فشل التحقق من الوصف التعريفي المقترح")
 	ErrSafeMetadataStale      = errors.New("تغيّر المحتوى بعد إنشاء معاينة الوصف؛ أعد تشغيل الإصلاح")
-	ErrMetadataNoRepairNeeded = errors.New("الوصف التعريفي الحالي يستوفي الحد الداخلي ولا يحتاج إصلاحًا تلقائيًا")
+	ErrMetadataNoRepairNeeded = errors.New("الوصف التعريفي الحالي يستوفي الحد الداخلي ولا يحتاج اقتراحًا جديدًا")
 )
 
 const (
@@ -33,10 +33,9 @@ const (
 
 var safeMetadataURLPattern = regexp.MustCompile(`(?i)(https?://|www\.)`)
 
-// AutoRepairMetaDescription creates a persisted, auditable preview and applies
-// only its meta_description field. Title, body, keywords and publication state
-// are guarded against mutation by this path.
-func (s *Service) AutoRepairMetaDescription(ctx context.Context, decisionID uint64, userID *uint) (*models.ContentAIFixPreview, error) {
+// CreateMetadataFixPreview persists a suggestion without changing published content.
+// An authenticated editor must review and apply it through ApplyGroundedFix.
+func (s *Service) CreateMetadataFixPreview(ctx context.Context, decisionID uint64) (*models.ContentAIFixPreview, error) {
 	decision, err := s.repo.GetAIDecision(ctx, decisionID)
 	if err != nil {
 		return nil, err
@@ -83,7 +82,7 @@ func (s *Service) AutoRepairMetaDescription(ctx context.Context, decisionID uint
 	if err := s.repo.SaveFixPreview(ctx, preview); err != nil {
 		return nil, fmt.Errorf("save safe metadata preview failed: %w", err)
 	}
-	return s.applySafeMetadataFix(ctx, preview, userID)
+	return preview, nil
 }
 
 func (s *Service) generateSafeMetaDescription(ctx context.Context, content *loadedContent) (string, string, error) {
@@ -127,7 +126,10 @@ func (s *Service) generateSafeMetaDescription(ctx context.Context, content *load
 	return candidate, "extractive_fallback", nil
 }
 
-func (s *Service) applySafeMetadataFix(ctx context.Context, preview *models.ContentAIFixPreview, userID *uint) (*models.ContentAIFixPreview, error) {
+func (s *Service) applySafeMetadataFix(ctx context.Context, preview *models.ContentAIFixPreview, userID *uint, note string) (*models.ContentAIFixPreview, error) {
+	if userID == nil || *userID == 0 {
+		return nil, ErrHumanReviewRequired
+	}
 	if preview == nil || preview.Status != models.AIFixStatusPreviewed {
 		return nil, ErrFixAlreadyClosed
 	}
@@ -192,7 +194,7 @@ func (s *Service) applySafeMetadataFix(ctx context.Context, preview *models.Cont
 		DecisionID:   preview.DecisionID,
 		Action:       models.AIFixStatusApplied,
 		UserID:       userID,
-		Note:         "إصلاح تلقائي آمن للوصف التعريفي فقط؛ لم يُغيّر العنوان أو المحتوى أو الكلمات المفتاحية.",
+		Note:         "اعتماد فردي للوصف التعريفي بعد المراجعة. " + strings.TrimSpace(note),
 	})
 	return preview, nil
 }

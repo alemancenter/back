@@ -46,7 +46,8 @@ func atomicTestDB(t *testing.T) *gorm.DB {
 }
 func TestAtomicOrderApproval(t *testing.T) {
 	db := atomicTestDB(t)
-	plan := models.SubscriptionPlan{Code: "test", Name: "Test", DurationDays: 30}
+	// MySQL JSON columns require valid JSON even in a minimal fixture.
+	plan := models.SubscriptionPlan{Code: "test", Name: "Test", DurationDays: 30, FeaturesJSON: "[]", PermissionsJSON: "[]", LimitsJSON: "{}"}
 	if err := db.Create(&plan).Error; err != nil {
 		t.Fatal(err)
 	}

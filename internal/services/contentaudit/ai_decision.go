@@ -15,7 +15,6 @@ import (
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	coreai "github.com/imanjo/fiber-api/internal/services"
-	"github.com/imanjo/fiber-api/internal/utils"
 	"github.com/imanjo/fiber-api/pkg/logger"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -61,6 +60,7 @@ func shortNotificationTitle(title string, max int) string {
 }
 
 var ErrUnsupportedContentType = errors.New("unsupported content type")
+var ErrHumanReviewRequired = errors.New("يلزم اعتماد محرر مسجل لكل اقتراح")
 var ErrFixAlreadyClosed = errors.New("fix preview is already applied or rejected")
 var ErrAIAnalysisInProgress = errors.New("AI analysis is already running for this content")
 
@@ -368,92 +368,10 @@ func (s *Service) CreateFixPreview(ctx context.Context, decisionID uint64) (*mod
 	return preview, nil
 }
 
+// ApplyFix is retained for callers of the older service API. It shares the same
+// reviewer, source-snapshot and grounding checks as the current endpoint.
 func (s *Service) ApplyFix(ctx context.Context, previewID uint64, userID *uint, note string) (*models.ContentAIFixPreview, error) {
-	preview, err := s.repo.GetFixPreview(ctx, previewID)
-	if err != nil {
-		return nil, err
-	}
-	if preview.Status != models.AIFixStatusPreviewed {
-		return nil, ErrFixAlreadyClosed
-	}
-	if aiWordCount(normalizePlainText(preview.FixedContent)) < minFixWords(preview.ContentType) {
-		return nil, fmt.Errorf("لا يمكن اعتماد تحسين أقل من %d كلمة تعليمية", minFixWords(preview.ContentType))
-	}
-
-	_, _, id := normalizeContentReference(preview.ContentID, preview.CountryCode)
-	db := database.GetManager().GetByCode(preview.CountryCode).WithContext(ctx)
-
-	var notifType, notifTitle, notifMsg, notifURL string
-	var authorID *uint
-
-	switch normalizeContentType(preview.ContentType) {
-	case "article":
-		var item models.Article
-		if err := db.Preload("Subject").Preload("Subject.SchoolClass").Preload("Semester").Preload("Semester.SchoolClass").First(&item, id).Error; err != nil {
-			return nil, err
-		}
-		// normalizeFixedHTML (applied earlier, at preview-generation time) is a formatting
-		// helper, not a security boundary — its regex-based script/iframe/on*= stripping is
-		// the same denylist approach OWASP explicitly warns against, unlike the bluemonday
-		// allowlist every other article/post write path goes through (ArticleService.
-		// CreateArticle/UpdateArticle). This is the actual persistence point for
-		// AI-generated content, so it must pass through the same trusted sanitizer,
-		// regardless of what ran upstream.
-		item.Title = utils.SanitizeInput(preview.FixedTitle)
-		item.Content = utils.SanitizeHTML(preview.FixedContent)
-		if err := db.Save(&item).Error; err != nil {
-			return nil, err
-		}
-		authorID = item.AuthorID
-		notifType = `App\Notifications\ArticleUpdatedByAI`
-		notifTitle = fmt.Sprintf("تم تحديث المقالة: %s", shortNotificationTitle(item.Title, 70))
-		notifMsg = fmt.Sprintf("تم اعتماد تحسين الذكاء الاصطناعي وتحديث المقالة: %s", item.Title)
-		notifURL = contentAuditEditURL("article", item.ID, preview.CountryCode)
-	case "post":
-		var item models.Post
-		if err := db.Preload("Category").First(&item, id).Error; err != nil {
-			return nil, err
-		}
-		// Same reasoning as the article branch above; StripBlockedLinks order matches
-		// PostService.Create/Update (it must run after sanitization, never before).
-		item.Title = utils.SanitizeInput(preview.FixedTitle)
-		item.Content = utils.StripBlockedLinks(utils.SanitizeHTML(preview.FixedContent))
-		if err := db.Save(&item).Error; err != nil {
-			return nil, err
-		}
-		authorID = item.AuthorID
-		notifType = `App\Notifications\PostUpdatedByAI`
-		notifTitle = fmt.Sprintf("تم تحديث المنشور: %s", shortNotificationTitle(item.Title, 70))
-		notifMsg = fmt.Sprintf("تم اعتماد تحسين الذكاء الاصطناعي وتحديث المنشور: %s", item.Title)
-		notifURL = contentAuditEditURL("post", item.ID, preview.CountryCode)
-	default:
-		return nil, ErrUnsupportedContentType
-	}
-
-	now := time.Now()
-	preview.Status = models.AIFixStatusApplied
-	preview.AppliedByUserID = userID
-	preview.AppliedAt = &now
-	if err := s.repo.UpdateFixPreview(ctx, preview); err != nil {
-		return nil, err
-	}
-	_ = s.repo.CreateApprovalLog(ctx, &models.ContentAIApprovalLog{FixPreviewID: preview.ID, DecisionID: preview.DecisionID, Action: models.AIFixStatusApplied, UserID: userID, Note: note})
-
-	if s.notification != nil {
-		includeIDs := []uint{}
-		if userID != nil {
-			includeIDs = append(includeIDs, *userID)
-		}
-		if authorID != nil && (userID == nil || *authorID != *userID) {
-			includeIDs = append(includeIDs, *authorID)
-		}
-		permissions := []string{"manage content audit", "manage articles", "manage posts"}
-		go func() {
-			_ = s.notification.NotifyUsersWithPermissions(notifType, notifTitle, notifMsg, notifURL, permissions, includeIDs...)
-		}()
-	}
-
-	return preview, nil
+	return s.ApplyGroundedFix(ctx, previewID, userID, note)
 }
 
 func (s *Service) RejectFix(ctx context.Context, previewID uint64, userID *uint, note string) (*models.ContentAIFixPreview, error) {

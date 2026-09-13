@@ -160,6 +160,33 @@ func sanitizeValue(v reflect.Value) {
 	}
 }
 
+// keywordInvisibleCharsRe strips zero-width and bidi-control characters (zero-width
+// space/joiner/non-joiner, LTR/RTL marks and embeddings, BOM) that are invisible in the
+// dashboard UI but make two keywords that *look* identical compare as different strings —
+// confirmed in production: AI-generated keyword lists occasionally carried these on some
+// occurrences of an otherwise-repeated phrase, so the exact-string dedup below let visually
+// identical duplicates slip through as separate keyword rows.
+var keywordInvisibleCharsRe = regexp.MustCompile(`[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{FEFF}]`)
+
+// keywordWhitespaceRe collapses any run of whitespace (including non-breaking space) to a
+// single regular space, so "a  b" and "a b" (or a stray NBSP from pasted content) dedupe together.
+var keywordWhitespaceRe = regexp.MustCompile(`[\s\x{00A0}]+`)
+
+// keywordMaxChars and keywordMaxWords bound a single "keyword" entry. This field is meant for
+// short internal classification tags ("علوم", "الصف العاشر"), not a restated sentence — a
+// full-title-length "keyword" (confirmed in production, e.g. a 13-word exam-record title saved
+// verbatim as a keyword, repeated across several entries) makes internal search/filtering by
+// keyword useless and is a symptom of unreviewed AI-generated output, not a real tag.
+const (
+	keywordMaxChars = 60
+	keywordMaxWords = 6
+)
+
+func normalizeKeywordToken(raw string) string {
+	trimmed := strings.TrimSpace(keywordInvisibleCharsRe.ReplaceAllString(raw, ""))
+	return strings.TrimSpace(keywordWhitespaceRe.ReplaceAllString(trimmed, " "))
+}
+
 func SplitKeywords(keywordsStr string) []string {
 	if keywordsStr == "" {
 		return nil
@@ -170,11 +197,19 @@ func SplitKeywords(keywordsStr string) []string {
 	var result []string
 	seen := make(map[string]bool)
 	for _, p := range parts {
-		trimmed := strings.TrimSpace(p)
+		trimmed := normalizeKeywordToken(p)
+		if trimmed == "" {
+			continue
+		}
+		// A "keyword" that is actually a full sentence/title is dropped rather than
+		// truncated — a truncated sentence is a worse, garbled tag than no tag at all.
+		if len([]rune(trimmed)) > keywordMaxChars || len(strings.Fields(trimmed)) > keywordMaxWords {
+			continue
+		}
 		// Deduplicate: a repeated keyword string was creating one join row per
 		// occurrence (e.g. the same phrase associated dozens of times), which the
 		// edit form then reloaded and re-sent, compounding on every save.
-		if trimmed != "" && !seen[trimmed] {
+		if !seen[trimmed] {
 			seen[trimmed] = true
 			result = append(result, trimmed)
 		}

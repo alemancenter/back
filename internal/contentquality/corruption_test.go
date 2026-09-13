@@ -31,20 +31,3 @@ func TestDetectReplacementArtifactsDoesNotFlagLargerDollarAmounts(t *testing.T) 
 	}
 }
 
-func TestApplyReplacementArtifactGuard(t *testing.T) {
-	gate := Gate{Indexable: true, AdsEligible: true, Audited: true, Decision: "approved", Risk: "low", Score: 95}
-	artifacts := []ReplacementArtifact{{Token: "$1", Field: "content", Offset: 3}}
-	guarded := ApplyReplacementArtifactGuard(gate, artifacts)
-	if guarded.Indexable {
-		t.Fatal("corrupted content must not remain indexable")
-	}
-	if guarded.AdsEligible {
-		t.Fatal("corrupted content must not remain ad eligible")
-	}
-	if guarded.Risk != "critical" {
-		t.Fatalf("expected critical risk, got %q", guarded.Risk)
-	}
-	if len(guarded.Reasons) == 0 {
-		t.Fatal("expected corruption reason")
-	}
-}

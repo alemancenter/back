@@ -15,6 +15,12 @@ import (
 	"github.com/imanjo/fiber-api/internal/utils"
 )
 
+// userMessageError is implemented by save-time content-policy errors
+// (services.DuplicateContentError, services.ThinContentError) that carry an
+// editor-facing Arabic explanation, so the dashboard shows the specific reason a
+// save was refused instead of a generic failure message.
+type userMessageError interface{ UserMessage() string }
+
 // Handler contains articles route handlers
 type Handler struct {
 	svc          services.ArticleService
@@ -446,8 +452,8 @@ func (h *Handler) DashboardCreate(c *fiber.Ctx) error {
 
 	article, qualitySignal, err := h.svc.CreateArticle(countryID, &req, authorID)
 	if err != nil {
-		if dupErr, ok := err.(*services.DuplicateContentError); ok {
-			return utils.BadRequest(c, dupErr.UserMessage())
+		if umErr, ok := err.(userMessageError); ok {
+			return utils.BadRequest(c, umErr.UserMessage())
 		}
 		return utils.InternalError(c, "فشل إنشاء المقالة")
 	}
@@ -512,8 +518,8 @@ func (h *Handler) DashboardUpdate(c *fiber.Ctx) error {
 		if err == services.ErrNotFound {
 			return utils.NotFound(c)
 		}
-		if dupErr, ok := err.(*services.DuplicateContentError); ok {
-			return utils.BadRequest(c, dupErr.UserMessage())
+		if umErr, ok := err.(userMessageError); ok {
+			return utils.BadRequest(c, umErr.UserMessage())
 		}
 		return utils.InternalError(c, "فشل تحديث المقالة")
 	}

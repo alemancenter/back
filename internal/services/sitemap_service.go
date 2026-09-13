@@ -12,8 +12,6 @@ import (
 	"time"
 
 	"github.com/imanjo/fiber-api/internal/config"
-	"github.com/imanjo/fiber-api/internal/contentquality"
-	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/repositories"
 	"github.com/imanjo/fiber-api/pkg/logger"
 	"go.uber.org/zap"
@@ -175,18 +173,6 @@ func (s *sitemapService) fileInfo(path string) (exists bool, lastMod string, siz
 	return true, info.ModTime().UTC().Format(time.RFC3339), info.Size(), entries
 }
 
-func sitemapQualityIndexable(decision *models.ContentAIDecision) bool {
-	return contentquality.Evaluate(decision).Indexable
-}
-
-func qualityDecisionForSitemap(decisions map[uint]models.ContentAIDecision, id uint) *models.ContentAIDecision {
-	decision, ok := decisions[id]
-	if !ok {
-		return nil
-	}
-	return &decision
-}
-
 func (s *sitemapService) GetStatus(dbCode string) map[string]SitemapInfo {
 	types := []string{"articles", "post", "static", "images", "videos", "news", "index"}
 	baseURL := s.siteURL()
@@ -232,11 +218,6 @@ func (s *sitemapService) GenerateAll(dbCode string) []error {
 			errs[0] = err
 			return
 		}
-		decisions, err := s.repo.GetLatestQualityDecisions(dbCode, "article")
-		if err != nil {
-			errs[0] = err
-			return
-		}
 		corrupted, err := s.repo.GetCorruptedContentIDs(dbCode, "article")
 		if err != nil {
 			errs[0] = err
@@ -244,9 +225,6 @@ func (s *sitemapService) GenerateAll(dbCode string) []error {
 		}
 		set := urlSet{Xmlns: "http://www.sitemaps.org/schemas/sitemap/0.9"}
 		for _, r := range rows {
-			if !sitemapQualityIndexable(qualityDecisionForSitemap(decisions, r.ID)) {
-				continue
-			}
 			if _, blocked := corrupted[r.ID]; blocked {
 				continue
 			}
@@ -269,11 +247,6 @@ func (s *sitemapService) GenerateAll(dbCode string) []error {
 			errs[1] = err
 			return
 		}
-		decisions, err := s.repo.GetLatestQualityDecisions(dbCode, "post")
-		if err != nil {
-			errs[1] = err
-			return
-		}
 		corrupted, err := s.repo.GetCorruptedContentIDs(dbCode, "post")
 		if err != nil {
 			errs[1] = err
@@ -281,9 +254,6 @@ func (s *sitemapService) GenerateAll(dbCode string) []error {
 		}
 		set := urlSet{Xmlns: "http://www.sitemaps.org/schemas/sitemap/0.9"}
 		for _, r := range rows {
-			if !sitemapQualityIndexable(qualityDecisionForSitemap(decisions, r.ID)) {
-				continue
-			}
 			if _, blocked := corrupted[r.ID]; blocked {
 				continue
 			}
@@ -505,10 +475,6 @@ func (s *sitemapService) GenerateAll(dbCode string) []error {
 func (s *sitemapService) indexableContentIDs(dbCode string) (map[string]bool, error) {
 	allowed := make(map[string]bool)
 	for _, contentType := range []string{"article", "post"} {
-		decisions, err := s.repo.GetLatestQualityDecisions(dbCode, contentType)
-		if err != nil {
-			return nil, err
-		}
 		corrupted, err := s.repo.GetCorruptedContentIDs(dbCode, contentType)
 		if err != nil {
 			return nil, err
@@ -519,10 +485,8 @@ func (s *sitemapService) indexableContentIDs(dbCode string) (map[string]bool, er
 				return nil, err
 			}
 			for _, row := range rows {
-				if sitemapQualityIndexable(qualityDecisionForSitemap(decisions, row.ID)) {
-					if _, blocked := corrupted[row.ID]; !blocked {
-						allowed[fmt.Sprintf("article:%d", row.ID)] = true
-					}
+				if _, blocked := corrupted[row.ID]; !blocked {
+					allowed[fmt.Sprintf("article:%d", row.ID)] = true
 				}
 			}
 		} else {
@@ -531,10 +495,8 @@ func (s *sitemapService) indexableContentIDs(dbCode string) (map[string]bool, er
 				return nil, err
 			}
 			for _, row := range rows {
-				if sitemapQualityIndexable(qualityDecisionForSitemap(decisions, row.ID)) {
-					if _, blocked := corrupted[row.ID]; !blocked {
-						allowed[fmt.Sprintf("post:%d", row.ID)] = true
-					}
+				if _, blocked := corrupted[row.ID]; !blocked {
+					allowed[fmt.Sprintf("post:%d", row.ID)] = true
 				}
 			}
 		}

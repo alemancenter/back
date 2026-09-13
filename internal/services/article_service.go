@@ -85,9 +85,6 @@ func (s *articleService) scheduleSitemapRefresh(countryID database.CountryID) {
 	if s.sitemap != nil {
 		s.sitemap.ScheduleGenerate(database.CountryCode(countryID))
 	}
-	// Same trigger set as the sitemap refresh: an article changed, so the cached
-	// content-quality scan for this country is now stale.
-	InvalidateContentHealthCache(countryID)
 }
 
 func applyPendingArticleViews(countryID database.CountryID, articles []models.Article) []models.Article {
@@ -352,6 +349,9 @@ func (s *articleService) CreateArticle(countryID database.CountryID, req *Articl
 	if dupErr := s.enforceUniqueContent(countryID, 0, article.Title, article.Content); dupErr != nil {
 		return nil, contentquality.ContentQualitySignal{}, dupErr
 	}
+	if thinErr := enforceMinimumDepthForPublish(article.Status == 1, article.Content); thinErr != nil {
+		return nil, contentquality.ContentQualitySignal{}, thinErr
+	}
 
 	err := s.repo.Create(countryID, article)
 	if err != nil {
@@ -417,6 +417,9 @@ func (s *articleService) UpdateArticle(countryID database.CountryID, id uint64, 
 
 	if dupErr := s.enforceUniqueContent(countryID, id, article.Title, article.Content); dupErr != nil {
 		return nil, contentquality.ContentQualitySignal{}, dupErr
+	}
+	if thinErr := enforceMinimumDepthForPublish(article.Status == 1, article.Content); thinErr != nil {
+		return nil, contentquality.ContentQualitySignal{}, thinErr
 	}
 
 	err = s.repo.Update(countryID, article)

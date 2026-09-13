@@ -98,8 +98,8 @@ func registerSystemRoutes(api, public, dash fiber.Router, h *Handlers) {
 	// the dedicated manage-seo permission below.
 	dashSEOEditor := dash.Group("/seo")
 	dashSEOEditor.Post("/analyze", h.SEO.Analyze)
-	dashSEOEditor.Post("/optimize", h.SEO.Optimize)
-	dashSEOEditor.Post("/optimize-save/:content_type/:id", h.SEO.OptimizeAndSave)
+	// "/optimize" and "/optimize-save" (AI-assisted SEO rewrite) removed along with the rest
+	// of the AI/content-audit subsystem — see the removal note above registerContentRoutes.
 	dashSEOEditor.Get("/metadata/:content_type/:id", h.SEO.Metadata)
 	dashSEOEditor.Put("/metadata/:content_type/:id", h.SEO.SaveMetadata)
 	dashSEOEditor.Get("/metadata/:content_type/:id/revisions", h.SEO.Revisions)
@@ -124,35 +124,14 @@ func registerSystemRoutes(api, public, dash fiber.Router, h *Handlers) {
 	dashSEO.Put("/authors", h.SEO.SaveAuthor)
 	dashSEO.Post("/indexnow", h.SEO.IndexNow)
 
-	// Unified "Content Health" — one simple verdict per article/post (status +
-	// issues + fix action), replacing the ImanSEO + content-audit page sprawl.
-	// Cached per country; open to either the SEO or the content-audit permission.
-	dash.Get("/content-quality", middleware.CanAny("manage content audit", "manage seo"), h.ContentAudit.ContentHealth)
-	dash.Post("/content-quality/audit/:content_type/:id", middleware.CanAny("manage content audit", "manage seo"), h.ContentAudit.ContentHealthAudit)
-
-	// Content policy audit
-	dashContentAudit := dash.Group("/content-audit", middleware.Can("manage content audit"))
-	dashContentAudit.Post("/run", h.ContentAudit.Start)
-	dashContentAudit.Get("/runs", h.ContentAudit.ListRuns)
-	dashContentAudit.Get("/runs/:id", h.ContentAudit.ShowRun)
-	dashContentAudit.Get("/runs/:id/findings", h.ContentAudit.ListFindings)
-	dashContentAudit.Get("/runs/:id/export", h.ContentAudit.ExportCSV)
-	dashContentAudit.Get("/adsense-readiness", h.ContentAudit.AdsenseReadinessUnified)
-	dashContentAudit.Get("/quality-rules", h.ContentAudit.ListQualityRules)
-	dashContentAudit.Post("/ai/batch-jobs", h.ContentAudit.StartQualityBatch)
-	dashContentAudit.Get("/ai/batch-jobs", h.ContentAudit.ListQualityBatches)
-	dashContentAudit.Get("/ai/batch-jobs/:id", h.ContentAudit.ShowQualityBatch)
-	dashContentAudit.Post("/ai/batch-jobs/:id/cancel", h.ContentAudit.CancelQualityBatch)
-	dashContentAudit.Get("/ai/review-queue", h.ContentAudit.ListReviewQueue)
-	dashContentAudit.Get("/ai/model-costs", h.ContentAudit.ModelCostSummary)
-	dashContentAudit.Post("/ai/analyze", h.ContentAudit.AnalyzeWithAI)
-	dashContentAudit.Get("/ai/decisions/:id", h.ContentAudit.ShowAIDecision)
-	dashContentAudit.Get("/ai/decision/:type/:content_id", h.ContentAudit.LatestAIDecision)
-	dashContentAudit.Post("/ai/fix-preview", h.ContentAudit.CreateFixPreview)
-	dashContentAudit.Get("/ai/fix-preview/:id", h.ContentAudit.ShowFixPreview)
-	dashContentAudit.Post("/ai/apply-fix", h.ContentAudit.ApplyFix)
-	dashContentAudit.Post("/ai/reject-fix", h.ContentAudit.RejectFix)
-	dashContentAudit.Post("/ai/bulk-review", h.ContentAudit.BulkReviewFixes)
+	// The content-audit / content-quality subsystem (AI-assisted analysis, batch fixes,
+	// readiness reports, corruption/similarity/inventory scans) has been removed entirely —
+	// on the user's explicit decision, after AI-generated drafts repeatedly shipped thin,
+	// duplicated content that contributed to a Google AdSense rejection. Google Search
+	// Console below is kept as a standalone feature (it reports real Google data, no AI).
+	// The article/post save-time uniqueness and minimum-length gates (article_service.go /
+	// post_service.go, backed by internal/contentquality) are unaffected — they never
+	// depended on this subsystem.
 
 	// Google Search Console integration — separate from the readiness gate
 	// above by design: this reports what Google actually shows (index status,
@@ -167,28 +146,6 @@ func registerSystemRoutes(api, public, dash fiber.Router, h *Handlers) {
 	dashGSC.Get("/keywords", h.SearchConsole.Keywords)
 	dashGSC.Get("/status/:content_type/:id", h.SearchConsole.Status)
 	dashGSC.Get("/test", h.SearchConsole.TestConnection)
-
-	// Deterministic corruption operations are intentionally stricter than the
-	// generic content-audit permission. Only Admin and Super Admin may scan,
-	// inspect, or launch remediation analysis for source-corruption findings.
-	dashCorruption := dashContentAudit.Group("/corruption", middleware.AdminOnly())
-	dashCorruption.Get("", h.ContentAudit.ListCorruption)
-	dashCorruption.Get("/:type/:id", h.ContentAudit.ShowCorruption)
-	dashCorruption.Post("/:type/:id/analyze", h.ContentAudit.AnalyzeCorruption)
-
-	// Duplicate/near-duplicate/template detection is a review-only operation.
-	// It never deletes, redirects, or changes SEO automatically, so the scan is
-	// exposed only to Admin and Super Admin for human editorial decisions.
-	dashSimilarity := dashContentAudit.Group("/similarity", middleware.AdminOnly())
-	dashSimilarity.Get("", h.ContentAudit.ListSimilarity)
-
-	// Phase 3 inventory combines quality, corruption and similarity evidence into
-	// one human review queue. NOINDEX is a safe explicit override; MERGE_301 stays
-	// a plan until a redirect target is separately executed and verified.
-	dashInventory := dashContentAudit.Group("/inventory", middleware.AdminOnly())
-	dashInventory.Get("", h.ContentAudit.ListInventory)
-	dashInventory.Post("/:type/:id/classify", h.ContentAudit.ClassifyInventoryItem)
-	dashInventory.Get("/:type/:id/history", h.ContentAudit.InventoryHistory)
 
 	// Security
 	dashSecurity := dash.Group("/security", middleware.Can("manage security"))

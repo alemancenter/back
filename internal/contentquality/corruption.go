@@ -1,7 +1,6 @@
 package contentquality
 
 import (
-	"fmt"
 	"strings"
 	"unicode/utf8"
 )
@@ -68,30 +67,6 @@ func DetectReplacementArtifacts(fields ...TextField) []ReplacementArtifact {
 
 func ContainsReplacementArtifact(value string) bool {
 	return len(DetectReplacementArtifacts(TextField{Name: "content", Value: value})) > 0
-}
-
-// ApplyReplacementArtifactGuard is a deterministic hard guard layered on top of
-// the AI/content-audit decision. AI can never approve content while a literal
-// replacement artifact is still present in the current source text.
-func ApplyReplacementArtifactGuard(gate Gate, artifacts []ReplacementArtifact) Gate {
-	if len(artifacts) == 0 {
-		return gate
-	}
-
-	gate.Indexable = false
-	gate.AdsEligible = false
-	gate.Risk = "critical"
-	reason := fmt.Sprintf("تم اكتشاف %d رمز استبدال غير محلول في المحتوى؛ الأرشفة والإعلانات متوقفتان حتى الإصلاح.", len(artifacts))
-	for _, existing := range gate.Reasons {
-		if existing == reason {
-			return gate
-		}
-	}
-	gate.Reasons = append([]string{reason}, gate.Reasons...)
-	if len(gate.Reasons) > 6 {
-		gate.Reasons = gate.Reasons[:6]
-	}
-	return gate
 }
 
 func replacementArtifactSnippet(value string, byteOffset, tokenLen int) string {

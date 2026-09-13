@@ -29,6 +29,31 @@ func TestSanitizeHTML_AllowsColorStyle(t *testing.T) {
 	assert.Regexp(t, `style="color:\s*#ff0000"`, got)
 }
 
+// Regression guard: an AI-generated keyword list occasionally repeated the same phrase with
+// an invisible zero-width/bidi-control character on some occurrences, which made the naive
+// exact-string dedup treat visually identical duplicates as distinct — they'd survive as
+// separate keyword rows the dashboard then displayed as the same text repeated. See
+// article_repository.go's UpdateKeywords, the only caller of SplitKeywords.
+func TestSplitKeywords_DedupesInvisibleCharacterVariants(t *testing.T) {
+	// U+200F (RTL mark) and a non-breaking space (U+00A0) hidden inside otherwise-identical text.
+	got := SplitKeywords("العلوم‏،  العلوم ،علوم إضافي")
+	assert.Equal(t, []string{"العلوم", "علوم إضافي"}, got)
+}
+
+// Regression guard for the confirmed production symptom: a full sentence/title (13 words,
+// restating the article) saved verbatim as a single "keyword" three times. A classification
+// keyword field must reject sentence-length entries instead of storing them.
+func TestSplitKeywords_RejectsSentenceLengthEntries(t *testing.T) {
+	sentence := "السجل الجانبي والأدائي الجديد لمادة العلوم للفصل الدراسي الأول حسب اسس النجاح والرسوب"
+	got := SplitKeywords(sentence + "، " + sentence + "، علوم")
+	assert.Equal(t, []string{"علوم"}, got)
+}
+
+func TestSplitKeywords_PlainCase(t *testing.T) {
+	got := SplitKeywords("علوم، الصف العاشر ,, تربية إسلامية")
+	assert.Equal(t, []string{"علوم", "الصف العاشر", "تربية إسلامية"}, got)
+}
+
 // A style property that is not on the allowlist must still be stripped — "width" specifically,
 // since that's the exact property the dashboard's image-resize preset buttons would emit
 // (identified during a frontend audit as a real, would-be-silent data-loss path if the

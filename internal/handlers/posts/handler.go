@@ -44,6 +44,12 @@ func isAdminUser(user *models.User) bool {
 	return false
 }
 
+// userMessageError is implemented by save-time content-policy errors
+// (services.DuplicateContentError, services.ThinContentError) that carry an
+// editor-facing Arabic explanation, so the dashboard shows the specific reason a
+// save was refused instead of a generic failure message.
+type userMessageError interface{ UserMessage() string }
+
 // Handler contains posts route handlers
 type Handler struct {
 	svc          services.PostService
@@ -310,8 +316,8 @@ func (h *Handler) DashboardCreate(c *fiber.Ctx) error {
 
 	post, qualitySignal, err := h.svc.Create(countryID, countryCode, userID, &req, imagePath)
 	if err != nil {
-		if dupErr, ok := err.(*services.DuplicateContentError); ok {
-			return utils.BadRequest(c, dupErr.UserMessage())
+		if umErr, ok := err.(userMessageError); ok {
+			return utils.BadRequest(c, umErr.UserMessage())
 		}
 		return utils.InternalError(c, "فشل إنشاء المنشور")
 	}
@@ -420,8 +426,8 @@ func (h *Handler) DashboardUpdate(c *fiber.Ctx) error {
 
 	post, qualitySignal, err := h.svc.Update(countryID, id, &req, callerID, isAdminUser(caller))
 	if err != nil {
-		if dupErr, ok := err.(*services.DuplicateContentError); ok {
-			return utils.BadRequest(c, dupErr.UserMessage())
+		if umErr, ok := err.(userMessageError); ok {
+			return utils.BadRequest(c, umErr.UserMessage())
 		}
 		switch err {
 		case services.ErrNotFound:

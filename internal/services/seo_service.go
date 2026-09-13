@@ -328,7 +328,6 @@ func (s *seoService) SaveMetadata(ctx context.Context, countryID database.Countr
 	if s.sitemap != nil {
 		s.sitemap.ScheduleGenerate(database.CountryCode(countryID))
 	}
-	InvalidateContentHealthCache(countryID)
 	if content.Published {
 		go s.submitIndexNowBackground(countryID, contentType, contentID)
 	}
@@ -463,7 +462,6 @@ func (s *seoService) RestoreRevision(ctx context.Context, countryID database.Cou
 	if s.sitemap != nil {
 		s.sitemap.ScheduleGenerate(database.CountryCode(countryID))
 	}
-	InvalidateContentHealthCache(countryID)
 	if content.Published {
 		go s.submitIndexNowBackground(countryID, contentType, contentID)
 	}

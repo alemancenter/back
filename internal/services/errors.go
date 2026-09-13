@@ -53,6 +53,46 @@ func (e *DuplicateContentError) UserMessage() string {
 	)
 }
 
+// ThinContentError blocks *publishing* (never drafting) an article/post whose body falls
+// below the site's own established "thin content" bar (contentquality.DiagnosticReviewMinWords
+// — the same 120-word cutoff already used for the readiness dashboard's "thin_content" problem
+// and the informational ContentQualitySignal). A two-sentence AI-generated draft that only
+// restates the title (confirmed in production, e.g. article #2380) must never reach a public,
+// crawlable, "منشور" URL — that is exactly the "low-value content" pattern Google's AdSense
+// review rejected this site for. Saving as a draft (status=0 / is_active=false) is never
+// affected: editors can still save work-in-progress and keep iterating.
+type ThinContentError struct {
+	WordCount int
+	MinWords  int
+}
+
+func (e *ThinContentError) Error() string {
+	return fmt.Sprintf("thin content (%d words, minimum %d to publish)", e.WordCount, e.MinWords)
+}
+
+// UserMessage is the Arabic message shown to the editor in the dashboard.
+func (e *ThinContentError) UserMessage() string {
+	return fmt.Sprintf(
+		"تعذّر النشر: عدد كلمات المحتوى الحالي (%d كلمة) أقل من الحد الأدنى المطلوب للنشر (%d كلمة). "+
+			"هذا بالضبط نوع المحتوى الذي ترفضه Google كـ«محتوى منخفض القيمة». احفظ كمسودة وأكمل الشرح، أو استخدم «توليد بالذكاء الاصطناعي» ثم راجعه وأثرِه قبل النشر.",
+		e.WordCount, e.MinWords,
+	)
+}
+
+// enforceMinimumDepthForPublish is the shared gate ArticleService and PostService call before
+// persisting a Create/Update whose final state is published (published=true — status=1 for
+// articles, is_active=true for posts). It never affects saving as a draft. See ThinContentError.
+func enforceMinimumDepthForPublish(published bool, content string) error {
+	if !published {
+		return nil
+	}
+	words := countWords(stripHTML(content))
+	if words >= contentquality.DiagnosticReviewMinWords {
+		return nil
+	}
+	return &ThinContentError{WordCount: words, MinWords: contentquality.DiagnosticReviewMinWords}
+}
+
 // MapError translates data layer errors to service layer errors.
 func MapError(err error) error {
 	if err == gorm.ErrRecordNotFound {

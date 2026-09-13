@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -13,11 +11,8 @@ import (
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/middleware"
 	"github.com/imanjo/fiber-api/internal/models"
-	"github.com/imanjo/fiber-api/internal/repositories"
 	"github.com/imanjo/fiber-api/internal/routes"
-	"github.com/imanjo/fiber-api/internal/rulesregistry"
 	"github.com/imanjo/fiber-api/internal/services"
-	contentauditService "github.com/imanjo/fiber-api/internal/services/contentaudit"
 	"github.com/imanjo/fiber-api/internal/utils"
 	"github.com/imanjo/fiber-api/pkg/logger"
 
@@ -96,7 +91,7 @@ func main() {
 		// Authentication/session state belongs to the Jordan primary user database.
 		// Do not put User in the per-country migrateTargets loop below.
 		primaryDB := database.DB()
-		if err := primaryDB.AutoMigrate(&models.AccessTokenRevocation{}, &models.ContactMessage{}, &models.ContentAIJob{}, &models.ContentAIJobItem{}, &models.ContentAIModelRun{}); err != nil {
+		if err := primaryDB.AutoMigrate(&models.AccessTokenRevocation{}, &models.ContactMessage{}, &models.ContentAIModelRun{}); err != nil {
 			logger.Fatal("revocation migration failed", zap.Error(err))
 		}
 		if !primaryDB.Migrator().HasColumn(&models.User{}, "AuthVersion") {
@@ -120,16 +115,6 @@ func main() {
 			&models.VisitorSession{},
 			&models.Comment{},
 			&models.Permission{},
-			&models.PolicyAuditRun{},
-			&models.PolicyAuditFinding{},
-			&models.ContentPolicyReadiness{},
-			&models.ContentAIDecision{},
-			&models.ContentAIIssue{},
-			&models.ContentAISuggestion{},
-			&models.ContentAIFixPreview{},
-			&models.ContentAIApprovalLog{},
-			&models.ContentEditorialDecision{},
-			&models.ContentQualityRule{},
 			&models.GSCProperty{},
 			&models.GSCURLStatus{},
 			&models.GSCSearchAnalyticsDaily{},
@@ -168,15 +153,10 @@ func main() {
 			if err := db.AutoMigrate(migrateTargets...); err != nil {
 				logger.Fatal("auto-migrate failed", zap.String("country", database.CountryCode(id)), zap.Error(err))
 			}
-			ensureContentAISchema(db, database.CountryCode(id))
-			if err := rulesregistry.Seed(db); err != nil {
-				logger.Warn("content quality rule registry seed failed", zap.String("country", database.CountryCode(id)), zap.Error(err))
-			}
 			if err := services.EnsureTeacherSubscriptionDatabase(db); err != nil {
 				logger.Fatal("teacher subscription database bootstrap failed", zap.String("country", database.CountryCode(id)), zap.Error(err))
 			}
 		}
-		ensurePermission("manage content audit")
 		ensurePermission("manage seo")
 		ensurePermission("manage teacher subscriptions")
 		ensurePermission("teacher.subscription.plans.view")
@@ -237,14 +217,12 @@ func main() {
 	services.StartViewSyncWorker(1 * time.Minute)
 	services.StartVisitorWorker(5 * time.Second)
 	services.StartAnalyticsCacheWarmer(8 * time.Minute)
-	startContentAuditScheduler(cfg)
 
-	// Periodically prune expired AI generation jobs from the in-memory store.
+	// Periodically clean up expired revocations and stale premium-download reservations.
 	go func() {
 		ticker := time.NewTicker(30 * time.Minute)
 		defer ticker.Stop()
 		for range ticker.C {
-			services.GetAIJobStore().Prune()
 			_ = database.DB().Where("expires_at <= ?", time.Now()).Delete(&models.AccessTokenRevocation{}).Error
 			// Interrupted preparations are refunded; served downloads are retained.
 			_ = database.DB().Model(&models.TeacherPremiumDownload{}).Where("status = ? AND created_at < ?", "reserved", time.Now().Add(-10*time.Minute)).Update("status", "failed").Error
@@ -381,53 +359,6 @@ func main() {
 	services.CloseGeoIP()
 
 	logger.Info("Server stopped gracefully")
-}
-
-func startContentAuditScheduler(cfg *config.Config) {
-	value := strings.ToLower(strings.TrimSpace(os.Getenv("CONTENT_AUDIT_SCHEDULER")))
-	if value == "0" || value == "false" || value == "off" || value == "disabled" {
-		logger.Info("content audit scheduler disabled")
-		return
-	}
-
-	interval := 24 * time.Hour
-	if raw := strings.TrimSpace(os.Getenv("CONTENT_AUDIT_INTERVAL_HOURS")); raw != "" {
-		hours, err := strconv.Atoi(raw)
-		if err == nil && hours > 0 {
-			interval = time.Duration(hours) * time.Hour
-		} else {
-			logger.Warn("invalid CONTENT_AUDIT_INTERVAL_HOURS; using default", zap.String("value", raw))
-		}
-	}
-
-	initialDelay := 15 * time.Minute
-	if raw := strings.TrimSpace(os.Getenv("CONTENT_AUDIT_INITIAL_DELAY_MINUTES")); raw != "" {
-		minutes, err := strconv.Atoi(raw)
-		if err == nil && minutes >= 0 {
-			initialDelay = time.Duration(minutes) * time.Minute
-		} else {
-			logger.Warn("invalid CONTENT_AUDIT_INITIAL_DELAY_MINUTES; using default", zap.String("value", raw))
-		}
-	}
-
-	auditRepo := repositories.NewContentAuditRepository()
-	auditSvc := contentauditService.NewService(auditRepo, contentauditService.Options{Config: cfg})
-	auditSvc.StartScheduler(interval, initialDelay)
-	logger.Info("content audit scheduler started", zap.Duration("interval", interval), zap.Duration("initial_delay", initialDelay))
-}
-
-func ensureContentAISchema(db *gorm.DB, country string) {
-	statements := []string{
-		"ALTER TABLE content_ai_decisions MODIFY COLUMN country_code VARCHAR(20) NOT NULL DEFAULT 'jo'",
-		"ALTER TABLE content_ai_fix_previews MODIFY COLUMN country_code VARCHAR(20) NOT NULL DEFAULT 'jo'",
-		"UPDATE content_ai_decisions SET country_code = 'jo', content_id = CONCAT('jo:', SUBSTRING_INDEX(content_id, ':', -1)) WHERE country_code IN ('alhurani_jo', 'jordan', 'Jordan') OR country_code LIKE '%_jo'",
-		"UPDATE content_ai_fix_previews SET country_code = 'jo', content_id = CONCAT('jo:', SUBSTRING_INDEX(content_id, ':', -1)) WHERE country_code IN ('alhurani_jo', 'jordan', 'Jordan') OR country_code LIKE '%_jo'",
-	}
-	for _, stmt := range statements {
-		if err := db.Exec(stmt).Error; err != nil {
-			logger.Warn("content AI schema normalization skipped", zap.String("country", country), zap.Error(err))
-		}
-	}
 }
 
 func ensurePermission(name string) {

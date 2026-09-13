@@ -2,7 +2,6 @@ package repositories
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -22,7 +21,6 @@ type SitemapRepository interface {
 		Slug      string    `gorm:"column:slug"`
 		UpdatedAt time.Time `gorm:"column:updated_at"`
 	}, error)
-	GetLatestQualityDecisions(dbCode, contentType string) (map[uint]models.ContentAIDecision, error)
 	GetCorruptedContentIDs(dbCode, contentType string) (map[uint]struct{}, error)
 	GetIndexableDownloads(dbCode string) ([]struct {
 		ID        uint      `gorm:"column:id"`
@@ -90,20 +88,7 @@ func (r *sitemapRepository) GetActiveArticles(dbCode string) ([]struct {
 		WHERE a.status = 1 AND (sm.id IS NULL OR sm.robots_index = 1)`).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
-	manualNoindex, err := editorialNoindexIDs(dbCode, "article")
-	if err != nil {
-		return nil, err
-	}
-	if len(manualNoindex) == 0 {
-		return rows, nil
-	}
-	filtered := rows[:0]
-	for _, row := range rows {
-		if _, blocked := manualNoindex[row.ID]; !blocked {
-			filtered = append(filtered, row)
-		}
-	}
-	return filtered, nil
+	return rows, nil
 }
 
 func (r *sitemapRepository) GetActivePosts(dbCode string) ([]struct {
@@ -122,56 +107,9 @@ func (r *sitemapRepository) GetActivePosts(dbCode string) ([]struct {
 		WHERE p.is_active = 1 AND (sm.id IS NULL OR sm.robots_index = 1)`).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
-	manualNoindex, err := editorialNoindexIDs(dbCode, "post")
-	if err != nil {
-		return nil, err
-	}
-	if len(manualNoindex) == 0 {
-		return rows, nil
-	}
-	filtered := rows[:0]
-	for _, row := range rows {
-		if _, blocked := manualNoindex[row.ID]; !blocked {
-			filtered = append(filtered, row)
-		}
-	}
-	return filtered, nil
+	return rows, nil
 }
 
-// GetLatestQualityDecisions returns at most one saved audit decision per content ID.
-// Rows are ordered newest-first with an ID tie-breaker, then collapsed in memory
-// to avoid DB-specific window-function SQL in sitemap generation.
-func (r *sitemapRepository) GetLatestQualityDecisions(dbCode, contentType string) (map[uint]models.ContentAIDecision, error) {
-	var rows []models.ContentAIDecision
-	err := database.DB().
-		// Column is ad_sense_risk (GORM's snake_case of AdSenseRisk), not adsense_risk.
-		Select("id, content_type, content_id, country_code, decision, ad_sense_risk, score, created_at").
-		Where("content_type = ? AND country_code = ?", contentType, dbCode).
-		Order("created_at DESC, id DESC").
-		Find(&rows).Error
-	if err != nil {
-		return nil, err
-	}
-
-	latest := make(map[uint]models.ContentAIDecision, len(rows))
-	for _, row := range rows {
-		rawID := strings.TrimSpace(row.ContentID)
-		if strings.Contains(rawID, ":") {
-			parts := strings.Split(rawID, ":")
-			rawID = parts[len(parts)-1]
-		}
-		parsed, parseErr := strconv.ParseUint(rawID, 10, 64)
-		if parseErr != nil || parsed == 0 {
-			continue
-		}
-		id := uint(parsed)
-		if _, exists := latest[id]; exists {
-			continue
-		}
-		latest[id] = row
-	}
-	return latest, nil
-}
 
 // GetCorruptedContentIDs returns published content whose current source still
 // contains an unresolved replacement artifact. The SQL only prefilters rows
@@ -217,33 +155,6 @@ func (r *sitemapRepository) GetCorruptedContentIDs(dbCode, contentType string) (
 		}
 	}
 	return ids, nil
-}
-
-// editorialNoindexIDs returns content whose latest human decision is NOINDEX.
-// A later classification supersedes it without deleting history.
-func editorialNoindexIDs(dbCode, contentType string) (map[uint]struct{}, error) {
-	var rows []models.ContentEditorialDecision
-	if err := database.DB().
-		Where("country_code = ? AND content_type = ?", dbCode, contentType).
-		Order("created_at DESC, id DESC").
-		Find(&rows).Error; err != nil {
-		return nil, err
-	}
-	seen := make(map[uint]struct{}, len(rows))
-	noindex := make(map[uint]struct{})
-	for _, row := range rows {
-		if row.ContentID == 0 {
-			continue
-		}
-		if _, exists := seen[row.ContentID]; exists {
-			continue
-		}
-		seen[row.ContentID] = struct{}{}
-		if strings.EqualFold(strings.TrimSpace(row.Decision), models.EditorialDecisionNoindex) {
-			noindex[row.ContentID] = struct{}{}
-		}
-	}
-	return noindex, nil
 }
 
 func (r *sitemapRepository) GetIndexableDownloads(dbCode string) ([]struct {

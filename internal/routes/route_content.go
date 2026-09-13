@@ -35,13 +35,11 @@ func registerContentRoutes(api, public, dash fiber.Router, h *Handlers) {
 			return fmt.Sprintf("%s:%s:%s", utils.GetClientIP(c), c.Get("X-Country-Id"), c.Params("id"))
 		},
 	}), h.Articles.IncrementView)
-	public.Get("/articles/:id/ad-status", h.ContentAudit.PublicArticleQualityStatus)
 
 	// Posts
 	public.Get("/posts", h.Posts.List)
 	public.Get("/posts/download", h.Posts.DownloadFileSigned)
 	public.Get("/posts/file/:id/download-url", downloadGateM, activityM, h.Posts.GetDownloadToken)
-	public.Get("/posts/:id/ad-status", h.ContentAudit.PublicPostQualityStatus)
 	public.Get("/posts/:id", h.Posts.Show)
 	public.Post("/posts/:id/increment-view", h.Posts.IncrementView)
 
@@ -78,12 +76,6 @@ func registerContentRoutes(api, public, dash fiber.Router, h *Handlers) {
 
 	// Secure file view
 	api.Get("/secure/view", authM, middleware.RequireVerifiedEmail(), middleware.Can("manage files"), activityM, h.Files.SecureView)
-
-	// AI generation is an editorial capability. The production frontend uses
-	// /dashboard/ai/*; keep the legacy authenticated endpoints permission-gated
-	// so a normal account cannot consume AI generation resources.
-	api.Post("/ai/generate", authM, activityM, middleware.Can("manage articles"), h.AI.Generate)
-	api.Get("/ai/status/:id", authM, activityM, middleware.Can("manage articles"), h.AI.Status)
 
 	// =====================
 	// ADMIN DASHBOARD ROUTES
@@ -148,12 +140,12 @@ func registerContentRoutes(api, public, dash fiber.Router, h *Handlers) {
 	dash.Post("/secure/upload-image", middleware.Can("upload files"), h.Files.SecureUploadImage)
 	dash.Post("/secure/upload-document", middleware.Can("upload files"), h.Files.SecureUploadDocument)
 
-	// AI (dashboard)
-	dash.Post("/ai/generate", middleware.Can("manage articles"), h.AI.Generate)
-	dash.Get("/ai/status/:id", middleware.Can("manage articles"), h.AI.Status)
-	// Draft-time content assist: works on unsaved editor text, no article/post ID
-	// required — surfaces SEO suggestions while writing instead of only after
-	// publish (see CONTENT_QUALITY_GOVERNANCE_CENTER_PLAN.md §0.3).
-	dash.Post("/ai/suggest-meta-description", middleware.Can("manage articles"), h.AI.SuggestMetaDescription)
-	dash.Post("/ai/suggest-keywords", middleware.Can("manage articles"), h.AI.SuggestKeywords)
+	// AI-assisted article/post generation and drafting has been removed from the
+	// create/edit flow: manual entry only, on the user's explicit decision, after AI-generated
+	// drafts (e.g. article #2380) repeatedly shipped as thin, boilerplate content that
+	// contributed to Google AdSense rejecting the site for low-value content. The handler
+	// methods and generation pipeline (internal/services/contentaudit/grounded_generate*.go)
+	// are intentionally left in place unused rather than deleted, because they share helper
+	// functions with the unrelated content-audit AI fix pipeline (grounded_fix.go) that is
+	// NOT part of this removal — see internal/handlers/ai/handler.go.
 }

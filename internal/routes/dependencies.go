@@ -5,7 +5,6 @@ import (
 
 	"github.com/imanjo/fiber-api/internal/config"
 	"github.com/imanjo/fiber-api/internal/database"
-	"github.com/imanjo/fiber-api/internal/handlers/ai"
 	"github.com/imanjo/fiber-api/internal/handlers/analytics"
 	"github.com/imanjo/fiber-api/internal/handlers/articles"
 	"github.com/imanjo/fiber-api/internal/handlers/auth"
@@ -14,7 +13,6 @@ import (
 	chatbotHandler "github.com/imanjo/fiber-api/internal/handlers/chatbot"
 	"github.com/imanjo/fiber-api/internal/handlers/comments"
 	contactmsgHandler "github.com/imanjo/fiber-api/internal/handlers/contact_messages"
-	contentauditHandler "github.com/imanjo/fiber-api/internal/handlers/contentaudit"
 	"github.com/imanjo/fiber-api/internal/handlers/dashboard"
 	"github.com/imanjo/fiber-api/internal/handlers/emailbounce"
 	"github.com/imanjo/fiber-api/internal/handlers/emailverification"
@@ -39,7 +37,6 @@ import (
 	chatbotRepo "github.com/imanjo/fiber-api/internal/repositories/chatbot"
 	"github.com/imanjo/fiber-api/internal/services"
 	chatbotSvc "github.com/imanjo/fiber-api/internal/services/chatbot"
-	contentauditService "github.com/imanjo/fiber-api/internal/services/contentaudit"
 	searchconsoleService "github.com/imanjo/fiber-api/internal/services/searchconsole"
 	"github.com/imanjo/fiber-api/pkg/logger"
 	"go.uber.org/zap"
@@ -69,8 +66,6 @@ type Handlers struct {
 	Health              *health.Handler
 	Home                *home.Handler
 	Keywords            *keywords.Handler
-	AI                  *ai.Handler
-	ContentAudit        *contentauditHandler.Handler
 	SearchConsole       *searchconsoleHandler.Handler
 	SEO                 *seoHandler.Handler
 	EmailVerify         *emailverification.Handler
@@ -171,9 +166,6 @@ func NewDependencies() *Handlers {
 	teacherSubSvc := services.NewTeacherSubscriptionService(teacherSubRepo, aiSvc)
 	_, _ = teacherSubSvc.EnsureDefaultPlan()
 
-	contentAuditRepo := repositories.NewContentAuditRepository()
-	contentAuditSvc := contentauditService.NewServiceWithAIAndNotifications(contentAuditRepo, contentauditService.Options{}, aiSvc, notificationSvc)
-
 	// Google Search Console: absent-by-default. gscClient stays nil unless a
 	// service account key is configured, and searchconsoleService.Service
 	// tolerates a nil client (returns ErrNotConfigured on use) — see
@@ -225,10 +217,8 @@ func NewDependencies() *Handlers {
 		Health:              health.New(healthSvc),
 		Home:                home.New(homeSvc),
 		Keywords:            keywords.New(keywordSvc),
-		AI:                  ai.New(aiSvc, contentAuditSvc),
-		ContentAudit:        contentauditHandler.New(contentAuditSvc),
 		SearchConsole:       searchconsoleHandler.New(gscRepo, gscSvc),
-		SEO:                 seoHandler.New(seoSvc, aiSvc),
+		SEO:                 seoHandler.New(seoSvc),
 		EmailVerify:         emailverification.New(emailVerifySvc),
 		EmailBounce:         emailbounce.New(bounceReader),
 		TeacherSubscription: teacher_subscription.New(teacherSubSvc),

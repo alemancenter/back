@@ -1,27 +1,23 @@
 package seo
 
 import (
-	"context"
 	"errors"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/imanjo/fiber-api/internal/database"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/services"
-	"github.com/imanjo/fiber-api/internal/services/contentaudit"
 	"github.com/imanjo/fiber-api/internal/utils"
 	"gorm.io/gorm"
 )
 
 type Handler struct {
 	svc services.SEOService
-	ai  services.AIService
 }
 
-func New(svc services.SEOService, ai services.AIService) *Handler { return &Handler{svc: svc, ai: ai} }
+func New(svc services.SEOService) *Handler { return &Handler{svc: svc} }
 
 func countryID(c *fiber.Ctx) database.CountryID {
 	if id, ok := c.Locals("country_id").(database.CountryID); ok && id != 0 {
@@ -230,160 +226,8 @@ func (h *Handler) Analyze(c *fiber.Ctx) error {
 	return utils.Success(c, "نتيجة تحليل SEO", h.svc.Analyze(req))
 }
 
-type optimizeRequest struct {
-	Title        string `json:"title"`
-	Content      string `json:"content"`
-	FocusKeyword string `json:"focus_keyword"`
-	ContentType  string `json:"content_type"`
-	CountryCode  string `json:"country_code"`
-	GradeName    string `json:"grade_name"`
-	SubjectName  string `json:"subject_name"`
-	CategoryName string `json:"category_name"`
-}
-
-// Optimize fills the whole SEO metadata bundle from the current title + content,
-// tuned to the AnalyzeSEO rubric, and returns the projected analysis so the
-// editor can show the new score immediately.
-func (h *Handler) Optimize(c *fiber.Ctx) error {
-	if !canAnalyzeSEO(c) {
-		return utils.Forbidden(c)
-	}
-	var req optimizeRequest
-	if err := c.BodyParser(&req); err != nil {
-		return utils.BadRequest(c, "بيانات غير صحيحة")
-	}
-	req.Title = strings.TrimSpace(req.Title)
-	if req.Title == "" && strings.TrimSpace(req.Content) == "" {
-		return utils.BadRequest(c, "أضف عنوانًا ومحتوى أولًا")
-	}
-
-	ctx, cancel := context.WithTimeout(c.Context(), 90*time.Second)
-	defer cancel()
-	bundle, provider, aiErr, err := contentaudit.GenerateDraftSEOBundle(ctx, h.ai, contentaudit.SEOOptimizeInput{
-		Title:        req.Title,
-		ContentHTML:  req.Content,
-		FocusKeyword: req.FocusKeyword,
-		ContentType:  req.ContentType,
-		CountryCode:  firstSEOOptimizeValue(req.CountryCode, database.CountryCode(countryID(c))),
-		GradeName:    req.GradeName,
-		SubjectName:  req.SubjectName,
-		CategoryName: req.CategoryName,
-	})
-	if err != nil {
-		return utils.BadRequest(c, "تعذّر توليد تحسين SEO لهذا المحتوى حاليًا")
-	}
-
-	projected := h.svc.Analyze(services.SEOAnalysisInput{
-		Title:           bundle.SEOTitle,
-		Content:         req.Content,
-		MetaDescription: bundle.MetaDescription,
-		FocusKeyword:    bundle.FocusKeyword,
-		SchemaType:      bundle.SchemaType,
-	})
-	payload := fiber.Map{
-		"fields":   bundle,
-		"analysis": projected,
-		"score":    projected.Score,
-		"provider": provider,
-	}
-	if aiErr != "" {
-		// Surfaced to the editor so a silent fall back to the deterministic
-		// bundle is visible ("model not found", "401", timeout, …).
-		if len([]rune(aiErr)) > 300 {
-			aiErr = string([]rune(aiErr)[:300])
-		}
-		payload["ai_error"] = aiErr
-	}
-	return utils.Success(c, "تم توليد تحسين SEO", payload)
-}
-
-func firstSEOOptimizeValue(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
-}
-
-// OptimizeAndSave runs the AI SEO optimizer for one article/post and persists
-// the result to its SEO metadata in one call — the "إصلاح بالذكاء" action in the
-// content-quality drawer, which has no editor form to fill. Robots/canonical/
-// image/cornerstone settings are read from the current row and preserved; only
-// the AI-generated text fields + schema type are overwritten.
-func (h *Handler) OptimizeAndSave(c *fiber.Ctx) error {
-	contentType := c.Params("content_type")
-	if !canManageSEOContent(c, contentType) {
-		return utils.Forbidden(c)
-	}
-	id, err := paramID(c, "id")
-	if err != nil {
-		return utils.BadRequest(c, "معرف المحتوى غير صالح")
-	}
-	cid := countryID(c)
-	ctx, cancel := context.WithTimeout(c.Context(), 90*time.Second)
-	defer cancel()
-
-	title, body, err := h.svc.ContentPreview(ctx, cid, contentType, id)
-	if err != nil {
-		return handleError(c, err)
-	}
-
-	current, err := h.svc.GetMetadata(ctx, cid, contentType, id)
-	if err != nil {
-		return handleError(c, err)
-	}
-
-	bundle, provider, aiErr, err := contentaudit.GenerateDraftSEOBundle(ctx, h.ai, contentaudit.SEOOptimizeInput{
-		Title:        title,
-		ContentHTML:  body,
-		FocusKeyword: current.FocusKeyword,
-		ContentType:  contentType,
-		CountryCode:  database.CountryCode(cid),
-	})
-	if err != nil {
-		return utils.BadRequest(c, "تعذّر توليد تحسين SEO لهذا المحتوى حاليًا")
-	}
-
-	input := services.SEOMetadataInput{
-		SEOTitle:           bundle.SEOTitle,
-		MetaDescription:    bundle.MetaDescription,
-		FocusKeyword:       bundle.FocusKeyword,
-		AdditionalKeywords: bundle.AdditionalKeywords,
-		OGTitle:            bundle.OGTitle,
-		OGDescription:      bundle.OGDescription,
-		TwitterTitle:       bundle.TwitterTitle,
-		TwitterDescription: bundle.TwitterDescription,
-		SchemaType:         bundle.SchemaType,
-		SchemaJSON:         current.SchemaJSON,
-		// preserved from the current row — never silently changed by an SEO-text pass
-		CanonicalURL:    current.CanonicalURL,
-		OGImage:         current.OGImage,
-		TwitterImage:    current.TwitterImage,
-		RobotsIndex:     current.RobotsIndex,
-		RobotsFollow:    current.RobotsFollow,
-		RobotsNoArchive: current.RobotsNoArchive,
-		RobotsNoSnippet: current.RobotsNoSnippet,
-		MaxSnippet:      current.MaxSnippet,
-		MaxImagePreview: current.MaxImagePreview,
-		MaxVideoPreview: current.MaxVideoPreview,
-		Cornerstone:     current.Cornerstone,
-		ChangeNote:      "تحسين تلقائي بالذكاء من صحة المحتوى",
-	}
-	saved, err := h.svc.SaveMetadata(ctx, cid, contentType, id, input, userID(c))
-	if err != nil {
-		return handleError(c, err)
-	}
-
-	payload := fiber.Map{"metadata": saved, "score": saved.Score, "provider": provider}
-	if aiErr != "" {
-		if len([]rune(aiErr)) > 300 {
-			aiErr = string([]rune(aiErr)[:300])
-		}
-		payload["ai_error"] = aiErr
-	}
-	return utils.Success(c, "تم تحسين SEO وحفظه", payload)
-}
+// Optimize and OptimizeAndSave (AI-assisted SEO field generation) were removed along with
+// the rest of the content-audit/AI subsystem — see route_system.go's removal note.
 
 func (h *Handler) Revisions(c *fiber.Ctx) error {
 	if !canManageSEOContent(c, c.Params("content_type")) {

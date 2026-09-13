@@ -67,7 +67,6 @@ func (s *postService) scheduleSitemapRefresh(countryID database.CountryID) {
 	if s.sitemap != nil {
 		s.sitemap.ScheduleGenerate(database.CountryCode(countryID))
 	}
-	InvalidateContentHealthCache(countryID)
 }
 
 func (s *postService) GetSignedDownloadToken(countryID database.CountryID, fileID uint64) (string, error) {
@@ -221,6 +220,9 @@ func (s *postService) Create(countryID database.CountryID, countryCode string, u
 	if dupErr := s.enforceUniqueContent(countryID, 0, post.Title, post.Content); dupErr != nil {
 		return nil, contentquality.ContentQualitySignal{}, dupErr
 	}
+	if thinErr := enforceMinimumDepthForPublish(post.IsActive, post.Content); thinErr != nil {
+		return nil, contentquality.ContentQualitySignal{}, thinErr
+	}
 
 	if err := s.repo.Create(countryID, post); err != nil {
 		return nil, contentquality.ContentQualitySignal{}, MapError(err)
@@ -292,6 +294,9 @@ func (s *postService) Update(countryID database.CountryID, id uint64, req *Updat
 
 	if dupErr := s.enforceUniqueContent(countryID, id, post.Title, post.Content); dupErr != nil {
 		return nil, contentquality.ContentQualitySignal{}, dupErr
+	}
+	if thinErr := enforceMinimumDepthForPublish(post.IsActive, post.Content); thinErr != nil {
+		return nil, contentquality.ContentQualitySignal{}, thinErr
 	}
 
 	if err := s.repo.Update(countryID, post); err != nil {

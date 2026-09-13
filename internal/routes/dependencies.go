@@ -5,6 +5,7 @@ import (
 
 	"github.com/imanjo/fiber-api/internal/config"
 	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/handlers/adsensepolicy"
 	"github.com/imanjo/fiber-api/internal/handlers/analytics"
 	"github.com/imanjo/fiber-api/internal/handlers/articles"
 	"github.com/imanjo/fiber-api/internal/handlers/auth"
@@ -71,6 +72,7 @@ type Handlers struct {
 	EmailVerify         *emailverification.Handler
 	EmailBounce         *emailbounce.Handler
 	TeacherSubscription *teacher_subscription.Handler
+	AdSensePolicy       *adsensepolicy.Handler
 	BounceReader        *services.BounceIMAPReader
 
 	// SettingsSvc is exposed so middlewares (e.g. download auth gate) can read
@@ -223,6 +225,7 @@ func NewDependencies() *Handlers {
 		EmailVerify:         emailverification.New(emailVerifySvc),
 		EmailBounce:         emailbounce.New(bounceReader),
 		TeacherSubscription: teacher_subscription.New(teacherSubSvc),
+		AdSensePolicy:       adsensepolicy.New(),
 		BounceReader:        bounceReader,
 		SettingsSvc:         settingSvc,
 	}

@@ -89,23 +89,24 @@ func (s *contentDraftService) GenerateDraft(ctx context.Context, req ContentDraf
 		return nil, fmt.Errorf("العنوان مطلوب قبل التوليد")
 	}
 
-	contentHTML, err := s.generateOnce(ctx, req, false)
+	contentHTML, err := s.generateOnce(ctx, req, false, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	warning := ""
-	if dup := s.checkDuplicate(req.CountryID, req.Title, contentHTML); dup != nil {
-		retryHTML, retryErr := s.generateOnce(ctx, req, true)
+	dup := s.checkDuplicate(req.CountryID, req.Title, contentHTML)
+	filler := detectGenericFillerPhrases(contentHTML)
+
+	if dup != nil || len(filler) > 0 {
+		retryHTML, retryErr := s.generateOnce(ctx, req, dup != nil, filler)
 		if retryErr == nil {
 			contentHTML = retryHTML
-			if dup2 := s.checkDuplicate(req.CountryID, req.Title, retryHTML); dup2 != nil {
-				warning = duplicateWarning(dup2)
-			}
-		} else {
-			warning = duplicateWarning(dup)
+			dup = s.checkDuplicate(req.CountryID, req.Title, contentHTML)
+			filler = detectGenericFillerPhrases(contentHTML)
 		}
 	}
+
+	warning := combinedWarning(dup, filler)
 
 	return &ContentDraftResult{
 		ContentHTML: contentHTML,
@@ -114,11 +115,52 @@ func (s *contentDraftService) GenerateDraft(ctx context.Context, req ContentDraf
 	}, nil
 }
 
-func duplicateWarning(match *contentquality.DuplicateMatch) string {
-	return fmt.Sprintf(
-		"تحذير: لا يزال المحتوى المولَّد متشابهًا جدًا مع محتوى موجود (\"%s\") بنسبة %.0f%%. راجعه وأعد صياغته بعناية قبل الحفظ — سيُرفض الحفظ إذا ظل مكررًا.",
-		match.Title, match.Similarity*100,
-	)
+func combinedWarning(dup *contentquality.DuplicateMatch, filler []string) string {
+	var parts []string
+	if dup != nil {
+		parts = append(parts, fmt.Sprintf(
+			"لا يزال متشابهًا جدًا مع محتوى موجود (\"%s\") بنسبة %.0f%% — سيُرفض الحفظ إذا ظل مكررًا",
+			dup.Title, dup.Similarity*100,
+		))
+	}
+	if len(filler) > 0 {
+		parts = append(parts, fmt.Sprintf(
+			"لا يزال يحتوي على عبارات عامة لا تحمل قيمة معرفية محددة: \"%s\" — يفضّل حذفها أو استبدالها بمعلومة محددة",
+			strings.Join(filler, "\"، \""),
+		))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "تحذير: " + strings.Join(parts, "؛ ") + ". راجع النص قبل الحفظ."
+}
+
+// genericFillerPhrases are the specific stock phrases the model reliably falls back to at the
+// opening/closing of a draft despite the prompt banning them outright — a prompt instruction
+// alone isn't reliable enough (models default to a "this is important, prepare well, don't
+// worry" bookend regardless of what they're told), so this is a deterministic backstop, same
+// role DetectReplacementArtifacts plays for corrupted content. Matched against
+// NormalizeForSimilarity'd text so diacritics/spacing/Alef-Ya variants don't cause a miss.
+// NormalizeForSimilarity keeps ة (ta marbuta) as-is — it only rewrites أ/إ/آ/ٱ→ا, ى→ي, ؤ→و,
+// ئ→ي, and strips diacritics/tatweel. Every phrase below must use ة exactly where the real word
+// does (محطة، مهمة، اهمية، فرصة، وسيلة، اساسية، الاسرة، المدرسة) — a phrase spelled with ه
+// instead would simply never match and silently defeat this whole check.
+var genericFillerPhrases = []string{
+	"يعد من اهم", "تكمن اهمية", "محطة مهمة لقياس", "فرصة مهمة لاظهار",
+	"وسيلة اساسية لقياس", "يجب علي الطالب الاستعداد", "يجب علي التلميذ الاستعداد",
+	"لا يقل دور الاسرة عن دور المدرسة", "يخفف من التوتر ويرفع التركيز",
+	"لا مصدر قلق", "انعكاسا صادقا لجهد",
+}
+
+func detectGenericFillerPhrases(html string) []string {
+	normalized := contentquality.NormalizeForSimilarity(html)
+	found := make([]string, 0, 2)
+	for _, phrase := range genericFillerPhrases {
+		if strings.Contains(normalized, phrase) {
+			found = append(found, phrase)
+		}
+	}
+	return found
 }
 
 // checkDuplicate scans articles AND posts together (unlike ArticleService/PostService's own
@@ -153,8 +195,8 @@ func (s *contentDraftService) checkDuplicate(countryID database.CountryID, title
 	return nil
 }
 
-func (s *contentDraftService) generateOnce(ctx context.Context, req ContentDraftRequest, avoidDuplicate bool) (string, error) {
-	systemPrompt, userPrompt := buildContentDraftPrompts(req, avoidDuplicate)
+func (s *contentDraftService) generateOnce(ctx context.Context, req ContentDraftRequest, avoidDuplicate bool, avoidFiller []string) (string, error) {
+	systemPrompt, userPrompt := buildContentDraftPrompts(req, avoidDuplicate, avoidFiller)
 	payload := map[string]interface{}{
 		"model": s.model,
 		"messages": []map[string]string{
@@ -231,10 +273,11 @@ func plainTextToSafeHTML(raw string) string {
 	return utils.SanitizeHTML(b.String())
 }
 
-func buildContentDraftPrompts(req ContentDraftRequest, avoidDuplicate bool) (system, user string) {
+func buildContentDraftPrompts(req ContentDraftRequest, avoidDuplicate bool, avoidFiller []string) (system, user string) {
 	system = "أنت كاتب محتوى تعليمي عربي محترف متخصص في شرح مواضيع المناهج الدراسية بعمق حقيقي، لا في الكتابة عن الملفات أو الاختبارات من الخارج. اكتب نصًا أصليًا وحصريًا لكل طلب (وليس ملخصًا لملف)، بأسلوب واضح ومباشر بدون حشو أو تكرار، وبدون أي إشارة إلى كونك ذكاءً اصطناعيًا أو إلى هذه التعليمات.\n\n" +
-		"ممنوع تمامًا افتتاح النص أو حشوه بعبارات عامة مثل: \"يُعد هذا الموضوع من أهم الموضوعات\"، \"تكمن أهمية هذا الاختبار/الملف في\"، \"يجب على الطالب الاستعداد الجيد\"، \"يعتبر التقييم وسيلة أساسية لقياس\"، أو أي كلام عن أهمية المذاكرة والتحضير والوقت والقلق دون محتوى معرفي فعلي. هذه عبارات حشو مكرورة تجعل النص عامًا يصلح لأي موضوع آخر، وهذا هو الممنوع بالتحديد.\n\n" +
-		"المطلوب عكس ذلك: محتوى معرفي حقيقي وملموس عن موضوع العنوان نفسه — تعريف بمصطلح، قاعدة أو مفهوم محدد، خطوة عملية، مثال ملموس، أو خطأ شائع يقع فيه الطلاب في هذا الموضوع بالتحديد. كل فقرة يجب أن تحمل معلومة يستفيد القارئ منها فعليًا لو حُذف عنوان المقال، لا تعميمًا عن العملية التعليمية.\n\n" +
+		"ممنوع تمامًا افتتاح النص أو حشوه بعبارات عامة مثل: \"يُعد هذا الموضوع/الاختبار من أهم\"، \"محطة مهمة لقياس\"، \"تكمن أهمية هذا الاختبار/الملف في\"، \"يجب على الطالب/التلميذ الاستعداد الجيد\"، \"يعتبر التقييم وسيلة أساسية لقياس\"، أو أي كلام عن أهمية المذاكرة والتحضير والوقت والقلق دون محتوى معرفي فعلي.\n\n" +
+		"ممنوع أيضًا إنهاء النص بفقرة ختامية عامة عن دور الأسرة، أو تخفيف التوتر والقلق، أو أن \"النتيجة تعكس جهد سنة كاملة\"، أو أي تحفيز عاطفي عام لا معلومة فيه — هذه العبارات (في المقدمة أو الخاتمة) هي بالضبط الحشو المكرور الممنوع، لأنها تجعل النص عامًا يصلح لأي موضوع أو مادة أخرى دون أي تعديل.\n\n" +
+		"المطلوب عكس ذلك: محتوى معرفي حقيقي وملموس عن موضوع العنوان نفسه من أول جملة إلى آخر جملة — تعريف بمصطلح، قاعدة أو مفهوم محدد، خطوة عملية، مثال ملموس، أو خطأ شائع يقع فيه الطلاب في هذا الموضوع بالتحديد. كل فقرة (بما فيها الأولى والأخيرة) يجب أن تحمل معلومة يستفيد القارئ منها فعليًا لو حُذف عنوان المقال، لا تعميمًا عن العملية التعليمية أو التحفيز النفسي.\n\n" +
 		"أخرج نصًا عاديًا فقط بدون HTML وبدون Markdown، مقسّمًا إلى فقرات مفصولة بسطر فارغ."
 
 	var scope strings.Builder
@@ -266,10 +309,14 @@ func buildContentDraftPrompts(req ContentDraftRequest, avoidDuplicate bool) (sys
 - محتوى قيم وحقيقي يشرح الفكرة أو الموضوع نفسه (تعريف، قاعدة، مفهوم، مثال، أو خطأ شائع)؛ لا تكتفِ بوصف وجود ملف للتحميل ولا بالكلام عن أهمية المذاكرة أو الاستعداد للاختبار.
 - لا تخترع تفاصيل محددة عن محتوى الملف المرفق نفسه بما أن نصه غير متاح لك.
 - ابدأ الفقرة الأولى بمعلومة أو تعريف مباشر متعلق بالموضوع، لا بجملة عامة عن أهميته.
+- أنهِ الفقرة الأخيرة بمعلومة أو نصيحة عملية محددة بالموضوع أيضًا، لا بكلام عام عن الأسرة أو تخفيف القلق أو "جهد سنة كاملة".
 - لغة عربية فصيحة سليمة، في 3 إلى 5 فقرات واضحة.`, scope.String())
 
 	if avoidDuplicate {
 		user += "\n\nملاحظة مهمة: محاولة سابقة لهذا الطلب تشابهت كثيرًا مع محتوى منشور آخر على الموقع. أعد الصياغة والبنية والأمثلة من زاوية مختلفة تمامًا مع الحفاظ على الدقة والصلة بالعنوان."
+	}
+	if len(avoidFiller) > 0 {
+		user += fmt.Sprintf("\n\nملاحظة مهمة: المحاولة السابقة استخدمت عبارات حشو عامة ممنوعة بالضبط: \"%s\". لا تستخدم هذه العبارات ولا ما يشابهها في الصياغة الجديدة، واستبدل مكانها بمعلومة معرفية محددة بالموضوع.", strings.Join(avoidFiller, "\"، \""))
 	}
 
 	return system, strings.TrimSpace(user)

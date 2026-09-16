@@ -138,8 +138,15 @@ func (s *contentDraftService) checkDuplicate(countryID database.CountryID, title
 	}
 	candidate := contentquality.SimilarityDocument{Key: "draft:new", Title: title, Content: content}
 	matches := contentquality.DetectDuplicateAgainstCorpus(candidate, corpus, contentquality.DefaultSimilarityOptions())
+	// Template matches count here too, not just exact/near — a same-skeleton-different-
+	// specifics draft is exactly the AI-boilerplate pattern that got the site rejected the
+	// first time (the same explanation reused across grade levels with only the title
+	// swapped). That risk compounds every time this button is used again on a new topic,
+	// even when any single draft looks fine on its own — it only shows up by comparing
+	// against everything already generated, which is exactly what this check does.
 	for i := range matches {
-		if matches[i].Kind == contentquality.SimilarityKindExact || matches[i].Kind == contentquality.SimilarityKindNear {
+		switch matches[i].Kind {
+		case contentquality.SimilarityKindExact, contentquality.SimilarityKindNear, contentquality.SimilarityKindTemplate:
 			return &matches[i]
 		}
 	}
@@ -225,7 +232,10 @@ func plainTextToSafeHTML(raw string) string {
 }
 
 func buildContentDraftPrompts(req ContentDraftRequest, avoidDuplicate bool) (system, user string) {
-	system = "أنت كاتب محتوى تعليمي عربي محترف متخصص في شرح مواضيع المناهج الدراسية. اكتب نصًا أصليًا وحصريًا لكل طلب (وليس ملخصًا لملف)، بأسلوب واضح ومباشر بدون حشو أو تكرار، وبدون أي إشارة إلى كونك ذكاءً اصطناعيًا أو إلى هذه التعليمات. أخرج نصًا عاديًا فقط بدون HTML وبدون Markdown، مقسّمًا إلى فقرات مفصولة بسطر فارغ."
+	system = "أنت كاتب محتوى تعليمي عربي محترف متخصص في شرح مواضيع المناهج الدراسية بعمق حقيقي، لا في الكتابة عن الملفات أو الاختبارات من الخارج. اكتب نصًا أصليًا وحصريًا لكل طلب (وليس ملخصًا لملف)، بأسلوب واضح ومباشر بدون حشو أو تكرار، وبدون أي إشارة إلى كونك ذكاءً اصطناعيًا أو إلى هذه التعليمات.\n\n" +
+		"ممنوع تمامًا افتتاح النص أو حشوه بعبارات عامة مثل: \"يُعد هذا الموضوع من أهم الموضوعات\"، \"تكمن أهمية هذا الاختبار/الملف في\"، \"يجب على الطالب الاستعداد الجيد\"، \"يعتبر التقييم وسيلة أساسية لقياس\"، أو أي كلام عن أهمية المذاكرة والتحضير والوقت والقلق دون محتوى معرفي فعلي. هذه عبارات حشو مكرورة تجعل النص عامًا يصلح لأي موضوع آخر، وهذا هو الممنوع بالتحديد.\n\n" +
+		"المطلوب عكس ذلك: محتوى معرفي حقيقي وملموس عن موضوع العنوان نفسه — تعريف بمصطلح، قاعدة أو مفهوم محدد، خطوة عملية، مثال ملموس، أو خطأ شائع يقع فيه الطلاب في هذا الموضوع بالتحديد. كل فقرة يجب أن تحمل معلومة يستفيد القارئ منها فعليًا لو حُذف عنوان المقال، لا تعميمًا عن العملية التعليمية.\n\n" +
+		"أخرج نصًا عاديًا فقط بدون HTML وبدون Markdown، مقسّمًا إلى فقرات مفصولة بسطر فارغ."
 
 	var scope strings.Builder
 	fmt.Fprintf(&scope, "العنوان: %s", req.Title)
@@ -253,8 +263,9 @@ func buildContentDraftPrompts(req ContentDraftRequest, avoidDuplicate bool) (sys
 
 الشروط:
 - بحدود 300 كلمة تقريبًا (لا تقل عن 250 ولا تزيد عن 350).
-- محتوى قيم وحقيقي يشرح الفكرة أو الموضوع؛ لا تكتفِ بوصف وجود ملف للتحميل.
+- محتوى قيم وحقيقي يشرح الفكرة أو الموضوع نفسه (تعريف، قاعدة، مفهوم، مثال، أو خطأ شائع)؛ لا تكتفِ بوصف وجود ملف للتحميل ولا بالكلام عن أهمية المذاكرة أو الاستعداد للاختبار.
 - لا تخترع تفاصيل محددة عن محتوى الملف المرفق نفسه بما أن نصه غير متاح لك.
+- ابدأ الفقرة الأولى بمعلومة أو تعريف مباشر متعلق بالموضوع، لا بجملة عامة عن أهميته.
 - لغة عربية فصيحة سليمة، في 3 إلى 5 فقرات واضحة.`, scope.String())
 
 	if avoidDuplicate {

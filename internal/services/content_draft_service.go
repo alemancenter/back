@@ -80,6 +80,15 @@ func NewContentDraftService(articleRepo repositories.ArticleRepository, postRepo
 	}
 }
 
+// contentDraftMaxAttempts bounds total Together AI calls per request (one initial + up to two
+// retries) — a hard ceiling so a persistently-truncating model can't turn one click into an
+// unbounded loop; contentDraftMinWords is the floor below which a response is unusable rather
+// than just imperfect (a cut-off half-sentence, not a short-but-complete draft).
+const (
+	contentDraftMaxAttempts = 3
+	contentDraftMinWords    = 150
+)
+
 func (s *contentDraftService) GenerateDraft(ctx context.Context, req ContentDraftRequest) (*ContentDraftResult, error) {
 	if s.apiKey == "" {
 		return nil, ErrContentDraftUnavailable
@@ -89,29 +98,52 @@ func (s *contentDraftService) GenerateDraft(ctx context.Context, req ContentDraf
 		return nil, fmt.Errorf("العنوان مطلوب قبل التوليد")
 	}
 
-	contentHTML, err := s.generateOnce(ctx, req, false, nil)
-	if err != nil {
-		return nil, err
-	}
+	var (
+		contentHTML    string
+		dup            *contentquality.DuplicateMatch
+		filler         []string
+		avoidDuplicate bool
+		avoidFiller    []string
+		lastErr        error
+	)
 
-	dup := s.checkDuplicate(req.CountryID, req.Title, contentHTML)
-	filler := detectGenericFillerPhrases(contentHTML)
-
-	if dup != nil || len(filler) > 0 {
-		retryHTML, retryErr := s.generateOnce(ctx, req, dup != nil, filler)
-		if retryErr == nil {
-			contentHTML = retryHTML
-			dup = s.checkDuplicate(req.CountryID, req.Title, contentHTML)
-			filler = detectGenericFillerPhrases(contentHTML)
+	for attempt := 0; attempt < contentDraftMaxAttempts; attempt++ {
+		html, truncated, err := s.generateOnce(ctx, req, avoidDuplicate, avoidFiller)
+		if err != nil {
+			lastErr = err
+			continue
 		}
+		wordCount := contentquality.SimilarityWordCount(html)
+		if truncated || wordCount < contentDraftMinWords {
+			// Unusable — a cut-off half-sentence isn't a draft worth showing, and isn't worth
+			// checking for duplication/filler either. Try again from a clean prompt (dropping
+			// any pending correction notes, since those aren't why this attempt failed).
+			lastErr = fmt.Errorf("%w: انقطع الرد قبل اكتماله (%d كلمة فقط)", ErrContentDraftFailed, wordCount)
+			avoidDuplicate, avoidFiller = false, nil
+			continue
+		}
+
+		contentHTML = html
+		dup = s.checkDuplicate(req.CountryID, req.Title, contentHTML)
+		filler = detectGenericFillerPhrases(contentHTML)
+		lastErr = nil
+		if dup == nil && len(filler) == 0 {
+			break
+		}
+		avoidDuplicate, avoidFiller = dup != nil, filler
 	}
 
-	warning := combinedWarning(dup, filler)
+	if contentHTML == "" {
+		if lastErr != nil {
+			return nil, lastErr
+		}
+		return nil, ErrContentDraftFailed
+	}
 
 	return &ContentDraftResult{
 		ContentHTML: contentHTML,
 		WordCount:   contentquality.SimilarityWordCount(contentHTML),
-		Warning:     warning,
+		Warning:     combinedWarning(dup, filler),
 	}, nil
 }
 
@@ -195,7 +227,11 @@ func (s *contentDraftService) checkDuplicate(countryID database.CountryID, title
 	return nil
 }
 
-func (s *contentDraftService) generateOnce(ctx context.Context, req ContentDraftRequest, avoidDuplicate bool, avoidFiller []string) (string, error) {
+// generateOnce returns (html, truncated, err). truncated is true when the provider cut the
+// response off before it finished (finish_reason "length") — reported separately from err
+// because the HTTP call itself succeeded; the caller decides whether a truncated response is
+// worth retrying rather than treating it as a hard failure.
+func (s *contentDraftService) generateOnce(ctx context.Context, req ContentDraftRequest, avoidDuplicate bool, avoidFiller []string) (contentHTML string, truncated bool, err error) {
 	systemPrompt, userPrompt := buildContentDraftPrompts(req, avoidDuplicate, avoidFiller)
 	payload := map[string]interface{}{
 		"model": s.model,
@@ -203,20 +239,26 @@ func (s *contentDraftService) generateOnce(ctx context.Context, req ContentDraft
 			{"role": "system", "content": systemPrompt},
 			{"role": "user", "content": userPrompt},
 		},
-		"max_tokens":  1200,
+		// Generous headroom above the ~300-word (roughly 450-600 token) target: if the model
+		// emits any reasoning/thinking tokens before the visible answer despite
+		// reasoning.enabled=false (provider-dependent, not guaranteed to be fully honored),
+		// those count against this same budget — a tight limit here is exactly what produced
+		// the reported bug, a response cut off mid-sentence because the visible answer never
+		// got to finish before hitting max_tokens.
+		"max_tokens":  2200,
 		"temperature": 0.6,
 		"reasoning":   map[string]interface{}{"enabled": false},
 	}
 	bodyBytes, err := json.Marshal(payload)
 	if err != nil {
-		return "", MapError(err)
+		return "", false, MapError(err)
 	}
 
 	requestCtx, cancel := context.WithTimeout(ctx, 40*time.Second)
 	defer cancel()
 	httpReq, err := http.NewRequestWithContext(requestCtx, http.MethodPost, s.baseURL+"/chat/completions", bytes.NewReader(bodyBytes))
 	if err != nil {
-		return "", MapError(err)
+		return "", false, MapError(err)
 	}
 	httpReq.Header.Set("Authorization", "Bearer "+s.apiKey)
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -224,27 +266,53 @@ func (s *contentDraftService) generateOnce(ctx context.Context, req ContentDraft
 
 	resp, err := s.httpClient.Do(httpReq)
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrContentDraftFailed, err)
+		return "", false, fmt.Errorf("%w: %v", ErrContentDraftFailed, err)
 	}
 	defer resp.Body.Close()
 
 	responseBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", MapError(err)
+		return "", false, MapError(err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		apiErr := extractAPIError(responseBytes)
 		if apiErr == "" {
 			apiErr = string(responseBytes)
 		}
-		return "", fmt.Errorf("%w: together ai status %d: %s", ErrContentDraftFailed, resp.StatusCode, truncate(apiErr, 200))
+		return "", false, fmt.Errorf("%w: together ai status %d: %s", ErrContentDraftFailed, resp.StatusCode, truncate(apiErr, 200))
 	}
 
-	raw, err := parseAIRawContent(responseBytes)
+	raw, wasTruncated, err := parseContentDraftResponse(responseBytes)
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrContentDraftFailed, err)
+		return "", false, fmt.Errorf("%w: %v", ErrContentDraftFailed, err)
 	}
-	return plainTextToSafeHTML(stripThinkTags(raw)), nil
+	return plainTextToSafeHTML(stripThinkTags(raw)), wasTruncated, nil
+}
+
+// parseContentDraftResponse is a local, minimal parser (rather than reusing ai_service.go's
+// parseAIRawContent) specifically so finish_reason is available — that field is the direct,
+// authoritative truncation signal Together AI's OpenAI-compatible API reports, instead of only
+// inferring truncation indirectly from word count after the fact.
+func parseContentDraftResponse(bodyBytes []byte) (content string, truncated bool, err error) {
+	var data struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(bodyBytes, &data); err != nil {
+		return "", false, MapError(err)
+	}
+	if len(data.Choices) == 0 {
+		return "", false, errors.New("no content generated")
+	}
+	content = strings.TrimSpace(data.Choices[0].Message.Content)
+	if content == "" {
+		return "", false, errors.New("empty content generated")
+	}
+	return content, data.Choices[0].FinishReason == "length", nil
 }
 
 var thinkTagRe = regexp.MustCompile(`(?s)<think>.*?</think>`)

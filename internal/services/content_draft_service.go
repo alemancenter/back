@@ -132,20 +132,24 @@ func NewContentDraftService(articleRepo repositories.ArticleRepository, postRepo
 // around), so a slow or failing model on attempt N doesn't get retried with itself on attempt
 // N+1 — it moves on to a different provider/model instead.
 //
-// contentDraftMinWords is set at the SEO analyzer's own "good" content-length cutoff
-// (internal/services/seo_analyzer.go's content_length check needs >=450 words for full marks,
-// not just >=150) — a complete draft under this word count is discarded and retried from a
-// clean prompt rather than accepted as "shorter but fine", because no amount of good SEO
-// metadata on top of it can ever clear contentDraftSEOMinScore otherwise.
+// contentDraftMinWords is the floor below which a response is unusable rather than just
+// imperfect (a cut-off half-sentence, not a short-but-complete draft) — kept deliberately well
+// below the ~500-word prompt target (buildContentDraftPrompts) and below the analyzer's >=450
+// "good" content-length cutoff (seo_analyzer.go) on purpose: models reliably undershoot a
+// requested word count by a wide margin, and rejecting every complete draft that lands under
+// 450 words exhausted every attempt in practice and turned this into a hard failure for the
+// admin instead of a usable-but-imperfect draft. A shorter accepted draft simply scores lower
+// on the SEO content-length check, surfaced honestly via SEOWarning — that's a much better
+// outcome than "تعذر توليد المحتوى" every time.
 //
 // contentDraftSEOMaxAttempts/contentDraftSEOMinScore bound the separate SEO-metadata
 // generation pass that runs once the content itself is finalized: up to 3 attempts, each
-// re-scored with the same AnalyzeSEO the manual "تحليل الآن" button uses, targeting the 85%
-// floor the admin asked this feature to guarantee.
+// re-scored with the same AnalyzeSEO the manual "تحليل الآن" button uses, targeting (but not
+// guaranteeing — see above) the 85% floor the admin asked this feature to aim for.
 const (
 	contentDraftMinAttempts = 3
 	contentDraftMaxAttempts = 4
-	contentDraftMinWords    = 450
+	contentDraftMinWords    = 180
 
 	contentDraftSEOMaxAttempts = 3
 	contentDraftSEOMinScore    = 85
@@ -188,8 +192,16 @@ func (s *contentDraftService) GenerateDraft(ctx context.Context, req ContentDraf
 		if truncated || wordCount < contentDraftMinWords {
 			// Unusable — a cut-off half-sentence isn't a draft worth showing, and isn't worth
 			// checking for duplication/filler either. Try again from a clean prompt (dropping
-			// any pending correction notes, since those aren't why this attempt failed).
-			lastErr = fmt.Errorf("%w: انقطع الرد قبل اكتماله (%d كلمة فقط)", ErrContentDraftFailed, wordCount)
+			// any pending correction notes, since those aren't why this attempt failed). The two
+			// cases get different messages: `truncated` is the provider's own finish_reason
+			// signal (an actual mid-sentence cutoff), while landing under contentDraftMinWords
+			// with a complete response is a different, much rarer problem — conflating them
+			// previously made every short-but-legitimate draft look like a cutoff bug.
+			if truncated {
+				lastErr = fmt.Errorf("%w: انقطع الرد قبل اكتماله (%d كلمة فقط)", ErrContentDraftFailed, wordCount)
+			} else {
+				lastErr = fmt.Errorf("%w: الرد قصير جدًا وغير كافٍ (%d كلمة فقط)", ErrContentDraftFailed, wordCount)
+			}
 			avoidDuplicate, avoidFiller = false, nil
 			continue
 		}

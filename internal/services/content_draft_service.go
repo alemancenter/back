@@ -58,8 +58,19 @@ type contentDraftService struct {
 	postRepo    repositories.PostRepository
 	apiKey      string
 	baseURL     string
-	model       string
+	models      []string
 	httpClient  *http.Client
+}
+
+// defaultContentDraftModels is tried in order across retry attempts when no override is
+// configured — zai-org/GLM-5.3-Flash first (the one this feature was built and tuned against),
+// then a spread of other fast Together AI models as fallbacks so a slow or momentarily
+// unavailable primary model doesn't sink the whole request.
+var defaultContentDraftModels = []string{
+	"zai-org/GLM-5.3-Flash",
+	"Qwen/Qwen3.8-Flash",
+	"openai/gpt-oss-120b",
+	"Qwen/Qwen3.5-9B",
 }
 
 // NewContentDraftService reads the same TOGETHER_API_KEY env var the existing teacher-
@@ -69,23 +80,35 @@ type contentDraftService struct {
 func NewContentDraftService(articleRepo repositories.ArticleRepository, postRepo repositories.PostRepository) ContentDraftService {
 	apiKey := firstNonEmpty(os.Getenv("TOGETHER_API_KEY"), os.Getenv("TOGETHER_AI_API_KEY"), os.Getenv("TOGETHER_AI_KEY"))
 	baseURL := strings.TrimRight(firstNonEmpty(os.Getenv("TOGETHER_AI_BASE_URL"), defaultAIBaseURL), "/")
-	model := firstNonEmpty(os.Getenv("CONTENT_DRAFT_AI_MODEL"), "zai-org/GLM-5.3-Flash")
+	models := parseModelList(os.Getenv("CONTENT_DRAFT_AI_MODELS"))
+	if len(models) == 0 {
+		if single := strings.TrimSpace(os.Getenv("CONTENT_DRAFT_AI_MODEL")); single != "" {
+			models = []string{single}
+		} else {
+			models = defaultContentDraftModels
+		}
+	}
 	return &contentDraftService{
 		articleRepo: articleRepo,
 		postRepo:    postRepo,
 		apiKey:      strings.TrimSpace(apiKey),
 		baseURL:     baseURL,
-		model:       model,
-		httpClient:  &http.Client{Timeout: 45 * time.Second},
+		models:      models,
+		httpClient:  &http.Client{Timeout: 40 * time.Second},
 	}
 }
 
-// contentDraftMaxAttempts bounds total Together AI calls per request (one initial + up to two
-// retries) — a hard ceiling so a persistently-truncating model can't turn one click into an
-// unbounded loop; contentDraftMinWords is the floor below which a response is unusable rather
-// than just imperfect (a cut-off half-sentence, not a short-but-complete draft).
+// contentDraftMinAttempts/contentDraftMaxAttempts bound total Together AI calls per request —
+// at least 3 so the duplicate/filler retry logic still gets its retries even with a single
+// configured model, at most 4 so a longer CONTENT_DRAFT_AI_MODELS list can't turn one click into
+// an unbounded chain of 30s+ calls. Each attempt cycles to the next model in the list (wrapping
+// around), so a slow or failing model on attempt N doesn't get retried with itself on attempt
+// N+1 — it moves on to a different provider/model instead.
+// contentDraftMinWords is the floor below which a response is unusable rather than just
+// imperfect (a cut-off half-sentence, not a short-but-complete draft).
 const (
-	contentDraftMaxAttempts = 3
+	contentDraftMinAttempts = 3
+	contentDraftMaxAttempts = 4
 	contentDraftMinWords    = 150
 )
 
@@ -107,8 +130,17 @@ func (s *contentDraftService) GenerateDraft(ctx context.Context, req ContentDraf
 		lastErr        error
 	)
 
-	for attempt := 0; attempt < contentDraftMaxAttempts; attempt++ {
-		html, truncated, err := s.generateOnce(ctx, req, avoidDuplicate, avoidFiller)
+	attempts := len(s.models)
+	if attempts < contentDraftMinAttempts {
+		attempts = contentDraftMinAttempts
+	}
+	if attempts > contentDraftMaxAttempts {
+		attempts = contentDraftMaxAttempts
+	}
+
+	for attempt := 0; attempt < attempts; attempt++ {
+		model := s.models[attempt%len(s.models)]
+		html, truncated, err := s.generateOnce(ctx, model, req, avoidDuplicate, avoidFiller)
 		if err != nil {
 			lastErr = err
 			continue
@@ -231,10 +263,10 @@ func (s *contentDraftService) checkDuplicate(countryID database.CountryID, title
 // response off before it finished (finish_reason "length") — reported separately from err
 // because the HTTP call itself succeeded; the caller decides whether a truncated response is
 // worth retrying rather than treating it as a hard failure.
-func (s *contentDraftService) generateOnce(ctx context.Context, req ContentDraftRequest, avoidDuplicate bool, avoidFiller []string) (contentHTML string, truncated bool, err error) {
+func (s *contentDraftService) generateOnce(ctx context.Context, model string, req ContentDraftRequest, avoidDuplicate bool, avoidFiller []string) (contentHTML string, truncated bool, err error) {
 	systemPrompt, userPrompt := buildContentDraftPrompts(req, avoidDuplicate, avoidFiller)
 	payload := map[string]interface{}{
-		"model": s.model,
+		"model": model,
 		"messages": []map[string]string{
 			{"role": "system", "content": systemPrompt},
 			{"role": "user", "content": userPrompt},
@@ -254,7 +286,7 @@ func (s *contentDraftService) generateOnce(ctx context.Context, req ContentDraft
 		return "", false, MapError(err)
 	}
 
-	requestCtx, cancel := context.WithTimeout(ctx, 40*time.Second)
+	requestCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	httpReq, err := http.NewRequestWithContext(requestCtx, http.MethodPost, s.baseURL+"/chat/completions", bytes.NewReader(bodyBytes))
 	if err != nil {

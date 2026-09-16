@@ -506,8 +506,8 @@ func (s *articleService) SetArticleStatus(countryID database.CountryID, id uint6
 //
 // This compares against articles only (same content type) — it is O(corpus size), cheap enough
 // to run inline on every save. Cross-type (article vs. post) duplication is still caught by the
-// periodic /dashboard/content-audit/similarity admin scan, which compares both content types
-// together but is too heavy (O(n^2) over the whole site) to run on every keystroke-driven save.
+// admin's on-demand /dashboard/adsense-policy scan, which compares both content types together
+// but is too heavy (O(n^2) over the whole site) to run on every keystroke-driven save.
 func (s *articleService) enforceUniqueContent(countryID database.CountryID, excludeID uint64, title, content string) error {
 	corpusRows, err := s.repo.ListContentForDuplicateCheck(countryID, excludeID)
 	if err != nil {

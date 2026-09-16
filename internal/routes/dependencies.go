@@ -14,6 +14,7 @@ import (
 	chatbotHandler "github.com/imanjo/fiber-api/internal/handlers/chatbot"
 	"github.com/imanjo/fiber-api/internal/handlers/comments"
 	contactmsgHandler "github.com/imanjo/fiber-api/internal/handlers/contact_messages"
+	"github.com/imanjo/fiber-api/internal/handlers/contentgen"
 	"github.com/imanjo/fiber-api/internal/handlers/dashboard"
 	"github.com/imanjo/fiber-api/internal/handlers/emailbounce"
 	"github.com/imanjo/fiber-api/internal/handlers/emailverification"
@@ -73,6 +74,7 @@ type Handlers struct {
 	EmailBounce         *emailbounce.Handler
 	TeacherSubscription *teacher_subscription.Handler
 	AdSensePolicy       *adsensepolicy.Handler
+	ContentGen          *contentgen.Handler
 	BounceReader        *services.BounceIMAPReader
 
 	// SettingsSvc is exposed so middlewares (e.g. download auth gate) can read
@@ -107,6 +109,7 @@ func NewDependencies() *Handlers {
 	commentSvc := services.NewCommentService(commentRepo)
 	postRepo := repositories.NewPostRepository()
 	postSvc := services.NewPostService(postRepo, fileSvc, cacheSvc, sitemapSvc)
+	contentDraftSvc := services.NewContentDraftService(articleRepo, postRepo)
 
 	gradeRepo := repositories.NewGradeRepository()
 	gradeSvc := services.NewGradeService(gradeRepo, cacheSvc)
@@ -226,6 +229,7 @@ func NewDependencies() *Handlers {
 		EmailBounce:         emailbounce.New(bounceReader),
 		TeacherSubscription: teacher_subscription.New(teacherSubSvc),
 		AdSensePolicy:       adsensepolicy.New(),
+		ContentGen:          contentgen.New(contentDraftSvc),
 		BounceReader:        bounceReader,
 		SettingsSvc:         settingSvc,
 	}

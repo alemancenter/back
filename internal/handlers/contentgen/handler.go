@@ -1,13 +1,16 @@
 // Package contentgen is a narrowly-scoped AI writing assistant for article/post creation and
 // editing — reintroduced at the site owner's explicit request after the previous, much broader
 // AI subsystem was removed for shipping thin/duplicate content that got the site rejected by
-// AdSense. This one is deliberately constrained: one direct generation call (no multi-round
-// "chase a quality score" pipeline), always scoped to the exact title + grade/subject/semester
-// (articles) or category (posts) the admin has already selected, a ~300-word target, an
-// attachment's filename only (never its content — parsing DOCX/PDF text was deleted along with
-// the old subsystem), and a same-project duplicate-content check before the draft is ever shown.
-// It only ever fills the editor with an editable draft; saving/publishing stays a fully manual,
-// separate step exactly like typing the content by hand.
+// AdSense. This one is deliberately constrained: always scoped to the exact title +
+// grade/subject/semester (articles) or category (posts) the admin has already selected, a
+// ~500-word target, an attachment's filename only (never its content — parsing DOCX/PDF text
+// was deleted along with the old subsystem), and a same-project duplicate-content check before
+// the draft is ever shown. A second, separate pass then suggests SEO metadata (seo_title,
+// meta_description, focus_keyword, etc.) scoped to that same title and finished content, scored
+// against the same AnalyzeSEO the manual "تحليل الآن" button uses and retried until it clears an
+// 85% floor or attempts run out (services.ContentDraftService.generateSEODraft). It only ever
+// fills the editor and the SEO panel with an editable draft; saving/publishing stays a fully
+// manual, separate step exactly like typing the content by hand.
 package contentgen
 
 import (

@@ -253,8 +253,8 @@ func main() {
 		UnescapePath:            true,
 		BodyLimit:               100 * 1024 * 1024, // 100MB
 		ReadTimeout:             30 * time.Second,
-		WriteTimeout:            120 * time.Second, // AI generation can take up to 90s
-		IdleTimeout:             120 * time.Second,
+		WriteTimeout:            240 * time.Second, // content-gen draft+SEO retries can take up to ~200s worst case
+		IdleTimeout:             240 * time.Second,
 		ReadBufferSize:          8192,
 		WriteBufferSize:         8192,
 		CompressedFileSuffix:    ".fiber.gz",

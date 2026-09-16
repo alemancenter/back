@@ -42,6 +42,33 @@ type ContentDraftResult struct {
 	// after one retry — the admin sees this immediately instead of only finding out at save
 	// time, when ArticleService/PostService's own enforceUniqueContent gate would block it.
 	Warning string `json:"warning,omitempty"`
+	// SEO carries AI-suggested metadata for the ImanSEO panel, tied specifically to this
+	// title and this generated content (never invented independently) — nil only when every
+	// SEO-generation attempt failed outright; ContentHTML above is still perfectly usable on
+	// its own in that case.
+	SEO *ContentDraftSEO `json:"seo,omitempty"`
+	// SEOWarning is set when the best-scoring SEO attempt still fell short of
+	// contentDraftSEOMinScore after exhausting retries, so the admin knows to double-check the
+	// SEO panel manually rather than assume it already clears the bar.
+	SEOWarning string `json:"seo_warning,omitempty"`
+}
+
+// ContentDraftSEO mirrors the subset of the seo_metadata fields (internal/models.SEOMetadata)
+// that AI can meaningfully suggest from just a title and finished content — robots directives,
+// canonical URL, and schema JSON-LD stay manual editorial decisions and aren't included here.
+type ContentDraftSEO struct {
+	SEOTitle           string `json:"seo_title"`
+	MetaDescription    string `json:"meta_description"`
+	FocusKeyword       string `json:"focus_keyword"`
+	AdditionalKeywords string `json:"additional_keywords"`
+	OGTitle            string `json:"og_title"`
+	OGDescription      string `json:"og_description"`
+	TwitterTitle       string `json:"twitter_title"`
+	TwitterDescription string `json:"twitter_description"`
+	SchemaType         string `json:"schema_type"`
+	// Score is the same AnalyzeSEO (internal/services/seo_analyzer.go) result the manual
+	// "تحليل الآن" button in ImanSeoPanel produces — not a separate, looser AI self-rating.
+	Score int `json:"score"`
 }
 
 var (
@@ -104,12 +131,24 @@ func NewContentDraftService(articleRepo repositories.ArticleRepository, postRepo
 // an unbounded chain of 30s+ calls. Each attempt cycles to the next model in the list (wrapping
 // around), so a slow or failing model on attempt N doesn't get retried with itself on attempt
 // N+1 — it moves on to a different provider/model instead.
-// contentDraftMinWords is the floor below which a response is unusable rather than just
-// imperfect (a cut-off half-sentence, not a short-but-complete draft).
+//
+// contentDraftMinWords is set at the SEO analyzer's own "good" content-length cutoff
+// (internal/services/seo_analyzer.go's content_length check needs >=450 words for full marks,
+// not just >=150) — a complete draft under this word count is discarded and retried from a
+// clean prompt rather than accepted as "shorter but fine", because no amount of good SEO
+// metadata on top of it can ever clear contentDraftSEOMinScore otherwise.
+//
+// contentDraftSEOMaxAttempts/contentDraftSEOMinScore bound the separate SEO-metadata
+// generation pass that runs once the content itself is finalized: up to 3 attempts, each
+// re-scored with the same AnalyzeSEO the manual "تحليل الآن" button uses, targeting the 85%
+// floor the admin asked this feature to guarantee.
 const (
 	contentDraftMinAttempts = 3
 	contentDraftMaxAttempts = 4
-	contentDraftMinWords    = 150
+	contentDraftMinWords    = 450
+
+	contentDraftSEOMaxAttempts = 3
+	contentDraftSEOMinScore    = 85
 )
 
 func (s *contentDraftService) GenerateDraft(ctx context.Context, req ContentDraftRequest) (*ContentDraftResult, error) {
@@ -172,11 +211,16 @@ func (s *contentDraftService) GenerateDraft(ctx context.Context, req ContentDraf
 		return nil, ErrContentDraftFailed
 	}
 
-	return &ContentDraftResult{
+	result := &ContentDraftResult{
 		ContentHTML: contentHTML,
 		WordCount:   contentquality.SimilarityWordCount(contentHTML),
 		Warning:     combinedWarning(dup, filler),
-	}, nil
+	}
+	if seo, seoWarning := s.generateSEODraft(ctx, req, contentHTML); seo != nil {
+		result.SEO = seo
+		result.SEOWarning = seoWarning
+	}
+	return result, nil
 }
 
 func combinedWarning(dup *contentquality.DuplicateMatch, filler []string) string {
@@ -318,7 +362,8 @@ func (s *contentDraftService) generateOnce(ctx context.Context, model string, re
 	if err != nil {
 		return "", false, fmt.Errorf("%w: %v", ErrContentDraftFailed, err)
 	}
-	return plainTextToSafeHTML(stripThinkTags(raw)), wasTruncated, nil
+	withHeading := insertSEOHeading(stripThinkTags(raw), req.Title)
+	return plainTextToSafeHTML(withHeading), wasTruncated, nil
 }
 
 // parseContentDraftResponse is a local, minimal parser (rather than reusing ai_service.go's
@@ -353,17 +398,42 @@ func stripThinkTags(raw string) string {
 	return strings.TrimSpace(thinkTagRe.ReplaceAllString(raw, ""))
 }
 
+// insertSEOHeading inserts one deterministic H2 subheading before the second paragraph (the
+// rule/example section, per buildContentDraftPrompts' 5-part structure) — done in code, not
+// asked of the model, so the SEO analyzer's headings check (internal/services/seo_analyzer.go)
+// always finds one regardless of whether the model honors yet another formatting instruction on
+// top of everything else it's already asked to follow. plainTextToSafeHTML below renders the
+// "## " marker this produces as an actual <h2>.
+func insertSEOHeading(raw, title string) string {
+	paragraphs := regexp.MustCompile(`\n\s*\n`).Split(strings.TrimSpace(raw), -1)
+	if len(paragraphs) < 2 {
+		return raw
+	}
+	heading := "## شرح " + strings.TrimSpace(title)
+	out := make([]string, 0, len(paragraphs)+1)
+	out = append(out, paragraphs[0], heading)
+	out = append(out, paragraphs[1:]...)
+	return strings.Join(out, "\n\n")
+}
+
 // plainTextToSafeHTML converts the model's plain-text response (paragraphs separated by a blank
-// line — the prompt explicitly asks for this, never HTML/Markdown) into safe paragraph markup.
-// The text is HTML-escaped before wrapping so nothing the model emits can inject markup, and the
-// result still goes through utils.SanitizeHTML (the same bluemonday policy every manually-typed
-// save is sanitized with) as defense-in-depth.
+// line — the prompt explicitly asks for this, never HTML/Markdown) into safe markup: a paragraph
+// starting with "## " (only ever produced by insertSEOHeading above) becomes an <h2>, everything
+// else becomes a <p>. Text is HTML-escaped before wrapping so nothing the model emits can inject
+// markup, and the result still goes through utils.SanitizeHTML (the same bluemonday policy every
+// manually-typed save is sanitized with) as defense-in-depth.
 func plainTextToSafeHTML(raw string) string {
 	paragraphs := regexp.MustCompile(`\n\s*\n`).Split(strings.TrimSpace(raw), -1)
 	var b strings.Builder
 	for _, p := range paragraphs {
 		p = strings.TrimSpace(p)
 		if p == "" {
+			continue
+		}
+		if heading, ok := strings.CutPrefix(p, "## "); ok {
+			b.WriteString("<h2>")
+			b.WriteString(html.EscapeString(strings.TrimSpace(heading)))
+			b.WriteString("</h2>")
 			continue
 		}
 		b.WriteString("<p>")
@@ -406,7 +476,7 @@ func buildContentDraftPrompts(req ContentDraftRequest, avoidDuplicate bool, avoi
 %s
 
 الشروط:
-- بحدود 300 كلمة تقريبًا (لا تقل عن 250 ولا تزيد عن 350).
+- بحدود 500 كلمة تقريبًا (لا تقل عن 450 ولا تزيد عن 600) — هذا الطول ضروري لعمق الشرح الحقيقي وليس لملء المساحة، فوسّع كل نقطة بمعلومة أو مثال إضافي حقيقي بدل إعادة صياغة الجملة نفسها.
 - اتبع هذه البنية بالترتيب: (1) فقرة تعريف أو حقيقة مباشرة عن الموضوع، (2) فقرة تشرح قاعدة أو مفهومًا أساسيًا واحدًا بدقة، (3) فقرة تعرض مثالًا ملموسًا من صميم الموضوع نفسه — زوج خطأ شائع ✗ مقابل الصواب ✓ إن كان الموضوع يحتمل ذلك (قاعدة نحوية أو رياضية أو علمية)، أو مثالًا تطبيقيًا مباشرًا إن كان الموضوع خبريًا أو تنظيميًا لا يحتمل صيغة الخطأ والصواب، (4) فقرة عن استراتيجية عملية محددة (خطوة دراسة أو طريقة حل أو تحقق)، (5) فقرة ختامية بنصيحة عملية مرتبطة بقاعدة أو مهارة من الموضوع نفسه.
 - محتوى قيم وحقيقي يشرح الفكرة أو الموضوع نفسه؛ لا تكتفِ بوصف وجود ملف للتحميل ولا بالكلام عن أهمية المذاكرة أو الاستعداد للاختبار.
 - لا تخترع تفاصيل محددة عن محتوى الملف المرفق نفسه بما أن نصه غير متاح لك.
@@ -422,4 +492,212 @@ func buildContentDraftPrompts(req ContentDraftRequest, avoidDuplicate bool, avoi
 	}
 
 	return system, strings.TrimSpace(user)
+}
+
+// generateSEODraft asks the model for SEO metadata scoped to exactly this title and this
+// finished content (never a separate, invented topic), then scores the combination with the
+// same AnalyzeSEO (seo_analyzer.go) the manual "تحليل الآن" button in ImanSeoPanel uses — so
+// what this returns is held to the identical bar an admin would see, not a separate, looser
+// self-rating. Each retry feeds back exactly which checks failed so the next attempt targets
+// the real gap instead of guessing again from scratch. Returns (nil, "") only if every attempt
+// failed outright (API errors) — the caller still has a perfectly usable ContentHTML in that
+// case, so this never blocks the overall draft.
+func (s *contentDraftService) generateSEODraft(ctx context.Context, req ContentDraftRequest, contentHTML string) (*ContentDraftSEO, string) {
+	schemaType := "Article"
+	if req.ContentType == "post" {
+		schemaType = "BlogPosting"
+	}
+
+	// The same first-350-characters window AnalyzeSEO's keyword_intro check reads (see
+	// seo_analyzer.go) — handing the model that exact excerpt and asking it to pick a focus
+	// keyword that already appears in it verbatim all but guarantees that check passes.
+	introExcerpt := seoPlainText(contentHTML)
+	if rs := []rune(introExcerpt); len(rs) > 350 {
+		introExcerpt = string(rs[:350])
+	}
+
+	var (
+		best      *ContentDraftSEO
+		bestScore = -1
+		feedback  string
+	)
+
+	for attempt := 0; attempt < contentDraftSEOMaxAttempts; attempt++ {
+		model := s.models[attempt%len(s.models)]
+		seo, truncated, err := s.generateSEOOnce(ctx, model, req, introExcerpt, feedback)
+		if err != nil || truncated || seo == nil {
+			continue
+		}
+		seo.SchemaType = schemaType
+		analysis := AnalyzeSEO(SEOAnalysisInput{
+			Title:           seo.SEOTitle,
+			Content:         contentHTML,
+			MetaDescription: seo.MetaDescription,
+			FocusKeyword:    seo.FocusKeyword,
+			SchemaType:      schemaType,
+		})
+		seo.Score = analysis.Score
+		if analysis.Score > bestScore {
+			best, bestScore = seo, analysis.Score
+		}
+		if analysis.Score >= contentDraftSEOMinScore {
+			return seo, ""
+		}
+		feedback = seoAnalysisFeedback(analysis)
+	}
+
+	if best == nil {
+		return nil, ""
+	}
+	return best, fmt.Sprintf(
+		"تحذير: أفضل تحليل SEO تم الوصول إليه %d%% (الهدف %d%%) — راجع حقول SEO يدويًا قبل النشر.",
+		bestScore, contentDraftSEOMinScore,
+	)
+}
+
+// seoAnalysisFeedback turns every non-"good" AnalyzeSEO check into a short Arabic correction
+// note fed back into the next SEO-generation attempt's prompt.
+func seoAnalysisFeedback(analysis SEOAnalysisResult) string {
+	parts := make([]string, 0, len(analysis.Checks))
+	for _, check := range analysis.Checks {
+		if check.Status == "good" {
+			continue
+		}
+		if check.Recommendation != "" {
+			parts = append(parts, check.Message+" — "+check.Recommendation)
+		} else {
+			parts = append(parts, check.Message)
+		}
+	}
+	return strings.Join(parts, "؛ ")
+}
+
+// generateSEOOnce makes one Together AI call asking strictly for a JSON object of SEO fields
+// (small output, low truncation risk compared to the ~500-word content call) and fills in any
+// og_*/twitter_* fields the model left blank from seo_title/meta_description — those are
+// legitimate mirrors, not invented content.
+func (s *contentDraftService) generateSEOOnce(ctx context.Context, model string, req ContentDraftRequest, introExcerpt, feedback string) (*ContentDraftSEO, bool, error) {
+	systemPrompt, userPrompt := buildSEODraftPrompts(req, introExcerpt, feedback)
+	payload := map[string]interface{}{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "system", "content": systemPrompt},
+			{"role": "user", "content": userPrompt},
+		},
+		"max_tokens":      700,
+		"temperature":     0.4,
+		"reasoning":       map[string]interface{}{"enabled": false},
+		"response_format": map[string]interface{}{"type": "json_object"},
+	}
+	bodyBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, false, MapError(err)
+	}
+
+	requestCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	httpReq, err := http.NewRequestWithContext(requestCtx, http.MethodPost, s.baseURL+"/chat/completions", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, false, MapError(err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+s.apiKey)
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "application/json")
+
+	resp, err := s.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, false, fmt.Errorf("%w: %v", ErrContentDraftFailed, err)
+	}
+	defer resp.Body.Close()
+
+	responseBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, false, MapError(err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, false, fmt.Errorf("%w: together ai status %d", ErrContentDraftFailed, resp.StatusCode)
+	}
+
+	raw, wasTruncated, err := parseContentDraftResponse(responseBytes)
+	if err != nil {
+		return nil, false, fmt.Errorf("%w: %v", ErrContentDraftFailed, err)
+	}
+	if wasTruncated {
+		return nil, true, nil
+	}
+
+	var parsed struct {
+		SEOTitle           string `json:"seo_title"`
+		MetaDescription    string `json:"meta_description"`
+		FocusKeyword       string `json:"focus_keyword"`
+		AdditionalKeywords string `json:"additional_keywords"`
+		OGTitle            string `json:"og_title"`
+		OGDescription      string `json:"og_description"`
+		TwitterTitle       string `json:"twitter_title"`
+		TwitterDescription string `json:"twitter_description"`
+	}
+	clean := cleanJSONPayload(stripThinkTags(raw))
+	if err := json.Unmarshal([]byte(clean), &parsed); err != nil {
+		return nil, false, fmt.Errorf("%w: %v", ErrContentDraftFailed, err)
+	}
+
+	seo := &ContentDraftSEO{
+		SEOTitle:           strings.TrimSpace(parsed.SEOTitle),
+		MetaDescription:    strings.TrimSpace(parsed.MetaDescription),
+		FocusKeyword:       strings.TrimSpace(parsed.FocusKeyword),
+		AdditionalKeywords: strings.TrimSpace(parsed.AdditionalKeywords),
+		OGTitle:            strings.TrimSpace(parsed.OGTitle),
+		OGDescription:      strings.TrimSpace(parsed.OGDescription),
+		TwitterTitle:       strings.TrimSpace(parsed.TwitterTitle),
+		TwitterDescription: strings.TrimSpace(parsed.TwitterDescription),
+	}
+	if seo.MetaDescription == "" || seo.FocusKeyword == "" {
+		return nil, false, fmt.Errorf("%w: استجابة SEO ناقصة الحقول", ErrContentDraftFailed)
+	}
+	if seo.SEOTitle == "" {
+		seo.SEOTitle = req.Title
+	}
+	if seo.OGTitle == "" {
+		seo.OGTitle = seo.SEOTitle
+	}
+	if seo.OGDescription == "" {
+		seo.OGDescription = seo.MetaDescription
+	}
+	if seo.TwitterTitle == "" {
+		seo.TwitterTitle = seo.SEOTitle
+	}
+	if seo.TwitterDescription == "" {
+		seo.TwitterDescription = seo.MetaDescription
+	}
+	return seo, false, nil
+}
+
+func buildSEODraftPrompts(req ContentDraftRequest, introExcerpt, feedback string) (system, user string) {
+	system = "أنت متخصص SEO عربي محترف. مهمتك اقتراح بيانات SEO لعنصر تعليمي واحد بالاعتماد فقط على عنوانه ومقدمة محتواه الفعلي المعطى لك — لا تخترع موضوعًا مختلفًا ولا تنقل بيانات تصلح لأي صفحة أخرى. أعد الرد بصيغة JSON صالحة فقط دون أي تنسيق Markdown، وبلا أي شرح خارج كائن JSON نفسه."
+
+	user = fmt.Sprintf(`العنوان: %s
+مقدمة المحتوى الفعلي (أول ~350 حرفًا منه، هذا كل ما تحتاجه لاختيار العبارة المفتاحية): %s
+
+أعد كائن JSON بهذه المفاتيح بالضبط:
+{
+  "seo_title": "عنوان SEO بين 35 و65 حرفًا، طبيعي ومقروء، يحتوي حرفيًا على العبارة المفتاحية التي تختارها",
+  "meta_description": "وصف تعريفي بين 110 و165 حرفًا، يحتوي حرفيًا على نفس العبارة المفتاحية مرة واحدة، ويلخص فائدة المحتوى فعليًا لا وصفًا عامًا",
+  "focus_keyword": "عبارة من 2 إلى 4 كلمات تظهر حرفيًا داخل نص المقدمة أعلاه — اخترها من النص نفسه، لا عبارة غير موجودة فيه",
+  "additional_keywords": "3 إلى 6 كلمات أو عبارات مرتبطة بالموضوع، مفصولة بفواصل",
+  "og_title": "نفس عنوان SEO أو صياغة مقاربة له لمشاركة السوشيال ميديا",
+  "og_description": "نفس الوصف التعريفي أو صياغة مقاربة له",
+  "twitter_title": "نفس عنوان SEO أو صياغة مقاربة",
+  "twitter_description": "نفس الوصف التعريفي أو صياغة مقاربة"
+}
+
+شروط صارمة:
+- العبارة المفتاحية focus_keyword يجب أن تظهر حرفيًا في seo_title وفي meta_description وفي نص المقدمة المعطى أعلاه.
+- لا تكرر العبارة المفتاحية أكثر من مرة واحدة داخل seo_title وأكثر من مرة واحدة داخل meta_description.
+- لا تخترع تفاصيل غير موجودة في العنوان أو في نص المقدمة.
+- أعد فقط كائن JSON صالح دون أي نص قبله أو بعده ودون تنسيق Markdown.`, req.Title, introExcerpt)
+
+	if feedback != "" {
+		user += fmt.Sprintf("\n\nملاحظة من تحليل SEO لمحاولة سابقة، صحّح هذه النقاط بالتحديد قبل أي شيء آخر: %s", feedback)
+	}
+	return system, user
 }

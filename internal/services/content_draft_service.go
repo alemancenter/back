@@ -212,7 +212,7 @@ func (s *contentDraftService) GenerateDraft(ctx context.Context, req ContentDraf
 
 		contentHTML = html
 		dup = s.checkDuplicate(req.CountryID, req.Title, contentHTML)
-		filler = detectGenericFillerPhrases(contentHTML)
+		filler = contentquality.DetectGenericFillerPhrases(contentHTML)
 		lastErr = nil
 		if dup == nil && len(filler) == 0 {
 			break
@@ -257,34 +257,6 @@ func combinedWarning(dup *contentquality.DuplicateMatch, filler []string) string
 		return ""
 	}
 	return "تحذير: " + strings.Join(parts, "؛ ") + ". راجع النص قبل الحفظ."
-}
-
-// genericFillerPhrases are the specific stock phrases the model reliably falls back to at the
-// opening/closing of a draft despite the prompt banning them outright — a prompt instruction
-// alone isn't reliable enough (models default to a "this is important, prepare well, don't
-// worry" bookend regardless of what they're told), so this is a deterministic backstop, same
-// role DetectReplacementArtifacts plays for corrupted content. Matched against
-// NormalizeForSimilarity'd text so diacritics/spacing/Alef-Ya variants don't cause a miss.
-// NormalizeForSimilarity keeps ة (ta marbuta) as-is — it only rewrites أ/إ/آ/ٱ→ا, ى→ي, ؤ→و,
-// ئ→ي, and strips diacritics/tatweel. Every phrase below must use ة exactly where the real word
-// does (محطة، مهمة، اهمية، فرصة، وسيلة، اساسية، الاسرة، المدرسة) — a phrase spelled with ه
-// instead would simply never match and silently defeat this whole check.
-var genericFillerPhrases = []string{
-	"يعد من اهم", "تكمن اهمية", "محطة مهمة لقياس", "فرصة مهمة لاظهار",
-	"وسيلة اساسية لقياس", "يجب علي الطالب الاستعداد", "يجب علي التلميذ الاستعداد",
-	"لا يقل دور الاسرة عن دور المدرسة", "يخفف من التوتر ويرفع التركيز",
-	"لا مصدر قلق", "انعكاسا صادقا لجهد",
-}
-
-func detectGenericFillerPhrases(html string) []string {
-	normalized := contentquality.NormalizeForSimilarity(html)
-	found := make([]string, 0, 2)
-	for _, phrase := range genericFillerPhrases {
-		if strings.Contains(normalized, phrase) {
-			found = append(found, phrase)
-		}
-	}
-	return found
 }
 
 // checkDuplicate scans articles AND posts together (unlike ArticleService/PostService's own

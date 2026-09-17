@@ -15,6 +15,14 @@ const (
 	SimilarityKindExact    = "exact"
 	SimilarityKindNear     = "near"
 	SimilarityKindTemplate = "template"
+	// SimilarityKindTitleOnly is a pair/cluster whose titles normalize to the exact same text
+	// but whose CONTENT does not match at all (e.g. two different worksheets that legitimately
+	// share the same structured catalog title phrase for different subjects/grades). Google
+	// AdSense's duplicate-content policy is about page CONTENT, not titles, so this is
+	// deliberately kept out of the exact/near/template severity ladder — it must never carry
+	// the same "merge/delete/redirect" recommendation those do, or a reviewer could act on it as
+	// if it were a real content duplicate when the two pages are actually unique and fine.
+	SimilarityKindTitleOnly = "title_only"
 )
 
 type SimilarityDocument struct {
@@ -249,8 +257,17 @@ func DetectSimilarity(documents []SimilarityDocument, options SimilarityOptions)
 		if right.ShingleCount < sharedShingles {
 			sharedShingles = right.ShingleCount
 		}
+		// A CONTENT hash match is a genuine content duplicate regardless of title — that is
+		// exactly what AdSense's duplicate-content policy cares about, so it stays the
+		// top-severity "exact" kind. A pair that matched ONLY on title (content hashes differ,
+		// or one side has no content at all) is not a content-duplication risk and must not be
+		// reported at the same severity — see SimilarityKindTitleOnly.
+		kind := SimilarityKindTitleOnly
+		if reasons["content"] {
+			kind = SimilarityKindExact
+		}
 		pairs = append(pairs, SimilarityPair{
-			LeftKey: left.Key, RightKey: right.Key, Kind: SimilarityKindExact,
+			LeftKey: left.Key, RightKey: right.Key, Kind: kind,
 			Similarity: 1, Containment: 1, RareSimilarity: 1,
 			SharedShingles: sharedShingles, Fingerprint: left.ContentHash, MatchedOn: on,
 		})
@@ -553,10 +570,12 @@ func isArabicMark(r rune) bool {
 func similarityKindPriority(kind string) int {
 	switch kind {
 	case SimilarityKindExact:
-		return 3
+		return 4
 	case SimilarityKindNear:
-		return 2
+		return 3
 	case SimilarityKindTemplate:
+		return 2
+	case SimilarityKindTitleOnly:
 		return 1
 	default:
 		return 0
@@ -615,11 +634,15 @@ func clusterSimilarityPairs(pairs []SimilarityPair) []SimilarityCluster {
 		}
 		sort.Strings(members)
 		clusterPairs := pairsByRoot[root]
-		kind := SimilarityKindTemplate
+		// Starts empty (not defaulted to any specific kind) so a cluster made up entirely of
+		// the lowest-priority pair kind — SimilarityKindTitleOnly — is still correctly labeled
+		// as that kind instead of silently floating up to whatever kind used to be the assumed
+		// floor.
+		kind := ""
 		maxSimilarity := 0.0
 		minSimilarity := 1.0
 		for _, pair := range clusterPairs {
-			if similarityKindPriority(pair.Kind) > similarityKindPriority(kind) {
+			if kind == "" || similarityKindPriority(pair.Kind) > similarityKindPriority(kind) {
 				kind = pair.Kind
 			}
 			if pair.Similarity > maxSimilarity {

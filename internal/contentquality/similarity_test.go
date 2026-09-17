@@ -181,10 +181,14 @@ func TestDetectSimilarityExactMatchIgnoresMinWords(t *testing.T) {
 	}
 }
 
-// An identical title with otherwise-unrelated content must also be flagged exact — a strong
-// duplicate-content signal by itself (the same "لغة عربية الصف العاشر" style template titles
-// that originally drove the AdSense rejection), independent of the content-text comparison.
-func TestDetectSimilarityExactTitleMatch(t *testing.T) {
+// TestDetectSimilarityTitleOnlyMatchIsNotExact locks in the fix for a real false-positive: two
+// documents sharing the exact same title but with entirely unrelated content (e.g. two catalog
+// worksheets that legitimately reuse the same structured title phrase for different subjects)
+// must NOT be reported as SimilarityKindExact — that is the top-severity kind that tells a
+// reviewer to consider merging/deleting/redirecting one of the pages, which would be actively
+// wrong here since the pages are unique and not an AdSense duplicate-content risk at all. This
+// scenario was previously misclassified as exact purely from the title hash matching.
+func TestDetectSimilarityTitleOnlyMatchIsNotExact(t *testing.T) {
 	report := DetectSimilarity([]SimilarityDocument{
 		{Key: "article:1", Title: "نفس العنوان تمامًا", Content: strings.Join(series("الف", 70), " ")},
 		{Key: "article:2", Title: "نفس العنوان تمامًا", Content: strings.Join(series("باء", 70), " ")},
@@ -192,14 +196,45 @@ func TestDetectSimilarityExactTitleMatch(t *testing.T) {
 	var titleMatch *SimilarityPair
 	for i := range report.Pairs {
 		if report.Pairs[i].Kind == SimilarityKindExact {
+			t.Fatalf("a title-only match must never be reported as SimilarityKindExact, got %+v", report.Pairs[i])
+		}
+		if report.Pairs[i].Kind == SimilarityKindTitleOnly {
 			titleMatch = &report.Pairs[i]
 		}
 	}
 	if titleMatch == nil {
-		t.Fatalf("expected an exact pair from matching titles, got %+v", report.Pairs)
+		t.Fatalf("expected a title_only pair from matching titles with unrelated content, got %+v", report.Pairs)
 	}
 	if len(titleMatch.MatchedOn) != 1 || titleMatch.MatchedOn[0] != "title" {
 		t.Fatalf("expected MatchedOn=[title], got %+v", titleMatch.MatchedOn)
+	}
+
+	clusters := clusterSimilarityPairs(report.Pairs)
+	if len(clusters) != 1 || clusters[0].Kind != SimilarityKindTitleOnly {
+		t.Fatalf("expected the cluster itself to also be kind=title_only, got %+v", clusters)
+	}
+}
+
+// TestDetectSimilarityContentMatchStaysExactEvenWithDifferentTitle is the flip side: when the
+// CONTENT itself matches exactly, that is a genuine AdSense duplicate-content risk regardless of
+// title wording, so it must stay SimilarityKindExact.
+func TestDetectSimilarityContentMatchStaysExactEvenWithDifferentTitle(t *testing.T) {
+	sharedContent := strings.Join(series("جيم", 70), " ")
+	report := DetectSimilarity([]SimilarityDocument{
+		{Key: "article:1", Title: "عنوان أول مختلف تمامًا", Content: sharedContent},
+		{Key: "article:2", Title: "عنوان ثانٍ مختلف كليًا", Content: sharedContent},
+	}, DefaultSimilarityOptions())
+	var contentMatch *SimilarityPair
+	for i := range report.Pairs {
+		if report.Pairs[i].Kind == SimilarityKindExact {
+			contentMatch = &report.Pairs[i]
+		}
+	}
+	if contentMatch == nil {
+		t.Fatalf("expected an exact pair from matching content, got %+v", report.Pairs)
+	}
+	if len(contentMatch.MatchedOn) != 1 || contentMatch.MatchedOn[0] != "content" {
+		t.Fatalf("expected MatchedOn=[content], got %+v", contentMatch.MatchedOn)
 	}
 }
 

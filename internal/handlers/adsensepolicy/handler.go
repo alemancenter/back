@@ -1,10 +1,15 @@
 // Package adsensepolicy is a small, deliberately deterministic (no AI, no external calls)
 // dashboard tool for spotting content that risks an AdSense content-policy rejection —
-// duplicate/near-duplicate content, thin/weak content, and corrupted content — across articles
-// and posts. It reuses internal/contentquality's existing, already-tested engines:
-// DetectSimilarity (the same shingling/Jaccard engine ArticleService/PostService already gate
-// new saves against, run here as the full O(n^2) cross-corpus scan that save-time gate
-// deliberately skips), EvaluateDiagnostics (the reviewer-facing thin-content signal), and
+// duplicate/near-duplicate content, thin/weak content, generic AI-boilerplate content, and
+// corrupted content — across articles and posts. It reuses internal/contentquality's existing,
+// already-tested engines: DetectSimilarity (the same shingling/Jaccard engine ArticleService/
+// PostService already gate new saves against, run here as the full O(n^2) cross-corpus scan that
+// save-time gate deliberately skips — its exact/near/template severity ladder deliberately
+// excludes SimilarityKindTitleOnly, a same-title-different-content match, since that is not a
+// content-duplication risk and must never carry the same merge/delete/redirect recommendation),
+// EvaluateDiagnostics (the reviewer-facing thin-content signal), DetectGenericFillerPhrases (the
+// exact generic-padding phrases that got the site rejected by AdSense before — catches content
+// that clears every word-count threshold yet is still mostly low-value filler), and
 // DetectReplacementArtifacts (catches unresolved "${1}"-style template placeholders that have
 // previously leaked into published content). Human-reviewed only: this never edits,
 // unpublishes, or redirects anything by itself.
@@ -14,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -85,9 +91,13 @@ type ScanSummary struct {
 	ExactClusters    int `json:"exact_clusters"`
 	NearClusters     int `json:"near_clusters"`
 	TemplateClusters int `json:"template_clusters"`
-	AffectedItems    int `json:"affected_items"`
-	WeakContentItems int `json:"weak_content_items"`
-	PolicyIssueItems int `json:"policy_issue_items"`
+	// TitleOnlyClusters counts clusters whose ONLY match is an identical title with different
+	// content — not an AdSense content-duplication risk, counted separately so it never
+	// inflates ExactClusters (see contentquality.SimilarityKindTitleOnly).
+	TitleOnlyClusters int `json:"title_only_clusters"`
+	AffectedItems     int `json:"affected_items"`
+	WeakContentItems  int `json:"weak_content_items"`
+	PolicyIssueItems  int `json:"policy_issue_items"`
 }
 
 // ScanResult is the full payload of one completed scan — cached in Redis so the dashboard page
@@ -277,9 +287,14 @@ func buildClusters(clusters []contentquality.SimilarityCluster, memberMap map[st
 }
 
 // findWeakContent runs EvaluateDiagnostics (word count, title length, meta description length,
-// attachments, publish state) over every item and returns the ones with at least one thin-
-// content signal. Only published items are reported — an unfinished draft being short is not a
-// policy risk since nothing has shipped yet.
+// attachments, publish state) over every item, ALSO checks for the same generic AI-filler
+// boilerplate phrases the content-draft/fix AI is instructed to never produce
+// (contentquality.DetectGenericFillerPhrases), and returns the ones with at least one signal.
+// The filler-phrase check matters on its own: a published item can clear every word-count
+// threshold and still be mostly generic padding with no real subject-matter value — exactly the
+// "thin/low-value content" failure mode that got the site rejected by AdSense before, and one a
+// word-count check alone cannot see. Only published items are reported — an unfinished draft
+// being short or padded is not a policy risk since nothing has shipped yet.
 func findWeakContent(rows map[string]contentRow, members map[string]Member) []WeakContentItem {
 	items := make([]WeakContentItem, 0)
 	for key, row := range rows {
@@ -292,10 +307,17 @@ func findWeakContent(rows map[string]contentRow, members map[string]Member) []We
 		}
 		plainText := contentquality.NormalizeForSimilarity(row.Content)
 		diag := contentquality.EvaluateDiagnostics(row.Title, plainText, row.MetaDescription, row.FilesCount, row.Published)
-		if len(diag.Signals) == 0 {
+		signals := diag.Signals
+		if filler := contentquality.DetectGenericFillerPhrases(plainText); len(filler) > 0 {
+			signals = append(signals, fmt.Sprintf(
+				"إشارة تحريرية: يحتوي على عبارات حشو عامة نمطية للذكاء الاصطناعي لا تحمل قيمة معرفية محددة (\"%s\") — قد يُعدّ محتوى منخفض القيمة وفق سياسة AdSense حتى لو كان طويلاً.",
+				strings.Join(filler, "\"، \""),
+			))
+		}
+		if len(signals) == 0 {
 			continue
 		}
-		items = append(items, WeakContentItem{Member: member, WordCount: diag.WordCount, Signals: diag.Signals})
+		items = append(items, WeakContentItem{Member: member, WordCount: diag.WordCount, Signals: signals})
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].WordCount < items[j].WordCount })
 	return items
@@ -344,6 +366,8 @@ func summarize(clusters []Cluster, report contentquality.SimilarityReport, weakI
 			summary.NearClusters++
 		case contentquality.SimilarityKindTemplate:
 			summary.TemplateClusters++
+		case contentquality.SimilarityKindTitleOnly:
+			summary.TitleOnlyClusters++
 		}
 		for _, member := range cluster.Members {
 			affected[member.Key] = struct{}{}
@@ -356,11 +380,13 @@ func summarize(clusters []Cluster, report contentquality.SimilarityReport, weakI
 func kindLabel(kind string) string {
 	switch kind {
 	case contentquality.SimilarityKindExact:
-		return "تطابق كامل"
+		return "تطابق كامل في المحتوى"
 	case contentquality.SimilarityKindNear:
 		return "تكرار محتوى (تشابه عالٍ)"
 	case contentquality.SimilarityKindTemplate:
 		return "تشابه قالبي"
+	case contentquality.SimilarityKindTitleOnly:
+		return "تطابق العنوان فقط (المحتوى مختلف)"
 	default:
 		return kind
 	}
@@ -369,11 +395,13 @@ func kindLabel(kind string) string {
 func recommendation(kind string) string {
 	switch kind {
 	case contentquality.SimilarityKindExact:
-		return "تطابق نصي كامل (بالمحتوى أو العنوان) بعد التطبيع. راجع الصفحات يدويًا قبل أي دمج أو حذف أو إعادة توجيه."
+		return "تطابق نصي كامل في المحتوى بعد التطبيع (قد يتطابق العنوان أيضًا). راجع الصفحات يدويًا قبل أي دمج أو حذف أو إعادة توجيه — هذا هو التكرار الذي تستهدفه سياسة AdSense لجودة المحتوى."
 	case contentquality.SimilarityKindNear:
 		return "تشابه مرتفع جدًا في المحتوى. راجع الهدف والمرفقات ثم وحّد الصفحات أو أعد كتابة أحدهما."
 	case contentquality.SimilarityKindTemplate:
 		return "بنية قالبية متشابهة مع اختلافات محدودة. أعد كتابة المحتوى ليحمل قيمة فريدة قبل النشر."
+	case contentquality.SimilarityKindTitleOnly:
+		return "العنوانان متطابقان تمامًا لكن المحتوى مختلف تمامًا بينهما — هذا ليس تكرار محتوى ولا يخالف سياسة AdSense بحد ذاته، فلا داعٍ للدمج أو الحذف. يُستحسن فقط تمييز أحد العنوانين لتفادي التباس القارئ ومحركات البحث."
 	default:
 		return "مراجعة بشرية مطلوبة قبل أي قرار تحرير."
 	}
@@ -382,10 +410,12 @@ func recommendation(kind string) string {
 func kindPriority(kind string) int {
 	switch kind {
 	case contentquality.SimilarityKindExact:
-		return 3
+		return 4
 	case contentquality.SimilarityKindNear:
-		return 2
+		return 3
 	case contentquality.SimilarityKindTemplate:
+		return 2
+	case contentquality.SimilarityKindTitleOnly:
 		return 1
 	default:
 		return 0

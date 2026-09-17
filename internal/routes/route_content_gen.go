@@ -9,4 +9,5 @@ import (
 func registerContentGenRoutes(dash fiber.Router, h *Handlers) {
 	gen := dash.Group("/content-gen", middleware.CanAny("manage articles", "manage posts"))
 	gen.Post("/draft", h.ContentGen.GenerateDraft)
+	gen.Post("/fix", h.ContentGen.FixContent)
 }

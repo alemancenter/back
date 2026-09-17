@@ -91,3 +91,55 @@ func (h *Handler) GenerateDraft(c *fiber.Ctx) error {
 
 	return utils.Success(c, "success", result)
 }
+
+type fixRequest struct {
+	ContentType string `json:"content_type"`
+	ID          uint64 `json:"id"`
+}
+
+// FixContent fixes one already-published article/post's currently-detected AdSense
+// content-policy problem(s) — the same ones surfaced by the /dashboard/adsense-policy scan
+// (thin/medium content, near-duplicate content, corrupted template artifacts, a too-short
+// title, or a missing/short meta description) — and returns an editable draft for the admin to
+// review inside the normal edit page. Never saves anything itself.
+// @Summary Fix an article/post's detected AdSense content-policy problem with AI
+// @Tags Content Generation
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Security FrontendKeyAuth
+// @Param X-Country-Id header string false "Country ID"
+// @Success 200 {object} utils.APIResponse
+// @Failure 400 {object} utils.APIResponse
+// @Failure 503 {object} utils.APIResponse
+// @Router /dashboard/content-gen/fix [post]
+func (h *Handler) FixContent(c *fiber.Ctx) error {
+	var req fixRequest
+	if err := c.BodyParser(&req); err != nil {
+		return utils.BadRequest(c, "بيانات غير صحيحة")
+	}
+
+	req.ContentType = strings.ToLower(strings.TrimSpace(req.ContentType))
+	if req.ContentType != "article" && req.ContentType != "post" {
+		return utils.BadRequest(c, "نوع المحتوى غير صحيح")
+	}
+	if req.ID == 0 {
+		return utils.BadRequest(c, "معرف العنصر مطلوب")
+	}
+
+	countryID, _ := c.Locals("country_id").(database.CountryID)
+	if countryID == 0 {
+		countryID = database.CountryJordan
+	}
+
+	result, err := h.svc.FixPolicyContent(c.Context(), services.PolicyFixRequest{
+		ContentType: req.ContentType,
+		ID:          req.ID,
+		CountryID:   countryID,
+	})
+	if err != nil {
+		return utils.BadRequest(c, err.Error())
+	}
+
+	return utils.Success(c, "success", result)
+}

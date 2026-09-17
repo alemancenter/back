@@ -78,6 +78,10 @@ var (
 
 type ContentDraftService interface {
 	GenerateDraft(ctx context.Context, req ContentDraftRequest) (*ContentDraftResult, error)
+	// FixPolicyContent is defined in policy_fix_service.go — it fixes one already-published
+	// article/post's currently-detected AdSense content-policy problem(s) rather than writing a
+	// fresh draft from a title.
+	FixPolicyContent(ctx context.Context, req PolicyFixRequest) (*PolicyFixResult, error)
 }
 
 type contentDraftService struct {

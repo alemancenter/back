@@ -140,6 +140,28 @@ func SimilarityWordCount(value string) int {
 	return len(strings.Fields(normalized))
 }
 
+// JaccardSimilarity measures how much two texts overlap using the same word-shingle
+// technique as DetectSimilarity, independent of the corpus-wide rare-shingle machinery
+// (which needs many documents to know what's "common"). This is for a direct A-vs-B
+// comparison — e.g. "did an AI rewrite actually change anything" — where there is no
+// corpus to compare against. Returns 0 when either text is too short to shingle at the
+// given size, and 1.0 for identical normalized text.
+func JaccardSimilarity(a, b string, shingleSize int) float64 {
+	if shingleSize < 2 {
+		shingleSize = DefaultSimilarityOptions().ShingleSize
+	}
+	wordsA := strings.Fields(NormalizeForSimilarity(a))
+	wordsB := strings.Fields(NormalizeForSimilarity(b))
+	shinglesA := makeShingleSet(wordsA, shingleSize)
+	shinglesB := makeShingleSet(wordsB, shingleSize)
+	if len(shinglesA) == 0 || len(shinglesB) == 0 {
+		return 0
+	}
+	intersection := setIntersectionSize(shinglesA, shinglesB)
+	union := len(shinglesA) + len(shinglesB) - intersection
+	return safeRatio(intersection, union)
+}
+
 func DetectSimilarity(documents []SimilarityDocument, options SimilarityOptions) SimilarityReport {
 	opts := normalizeSimilarityOptions(options)
 	prepared := make([]preparedSimilarityDocument, 0, len(documents))

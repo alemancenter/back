@@ -14,11 +14,15 @@ import "strings"
 // value, which is exactly the AdSense "thin/low-value content" failure mode this phrase list was
 // built to catch. Matched against NormalizeForSimilarity'd text so diacritics/spacing/Alef-Ya
 // variants don't cause a miss. NormalizeForSimilarity keeps ة (ta marbuta) as-is — it only
-// rewrites أ/إ/آ/ٱ→ا, ى→ي, ؤ→و, ئ→ي, and strips diacritics/tatweel. Every phrase below must use ة
-// exactly where the real word does (محطة، مهمة، اهمية، فرصة، وسيلة، اساسية، الاسرة، المدرسة) —
-// a phrase spelled with ه instead would simply never match and silently defeat this whole check.
+// rewrites أ/إ/آ/ٱ→ا, ى→ي, ؤ→و, ئ→ي, and strips diacritics/tatweel; it does NOT strip Arabic
+// possessive suffixes (ه/ها/هم/...), so a phrase ending in a word that commonly takes one
+// ("تكمن اهمية" almost always shows up inflected as "تكمن أهميته"/"تكمن أهميتها" in real text, not
+// the bare noun) must be trimmed to a stem short enough to match every inflected form — "تكمن
+// اهمي" catches "تكمن اهمية" and "تكمن اهميته/اهميتها" alike. Every phrase below must use ة
+// exactly where the real word does (محطة، مهمة، فرصة، وسيلة، اساسية، الاسرة، المدرسة) — a phrase
+// spelled with ه instead would simply never match and silently defeat this whole check.
 var GenericFillerPhrases = []string{
-	"يعد من اهم", "تكمن اهمية", "محطة مهمة لقياس", "فرصة مهمة لاظهار",
+	"يعد من اهم", "تكمن اهمي", "محطة مهمة لقياس", "فرصة مهمة لاظهار",
 	"وسيلة اساسية لقياس", "يجب علي الطالب الاستعداد", "يجب علي التلميذ الاستعداد",
 	"لا يقل دور الاسرة عن دور المدرسة", "يخفف من التوتر ويرفع التركيز",
 	"لا مصدر قلق", "انعكاسا صادقا لجهد",

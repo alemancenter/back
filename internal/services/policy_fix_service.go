@@ -10,6 +10,12 @@
 // flagged, not on every content fix — see FixPolicyContent), and — like GenerateDraft — never
 // writes to the database itself: the result is always a reviewable draft the admin applies from
 // inside the normal article/post edit page before clicking the ordinary Save button.
+//
+// fixContentWithRetries also runs a direct self-similarity check (contentquality.
+// JaccardSimilarity against the original content) on every attempt — none of the other checks
+// (word count, duplicate-against-corpus, filler phrases, artifacts) catch a model that just
+// echoes the original text back almost verbatim, which happens because the prompt explicitly
+// tells it to preserve correct existing information and it sometimes takes that too literally.
 package services
 
 import (
@@ -360,11 +366,13 @@ func (s *contentDraftService) fixContentWithRetries(ctx context.Context, req Pol
 		lastErr     error
 		avoidDup    bool
 		avoidFiller []string
+		avoidBarely bool
+		bestBarely  bool
 	)
 
 	for attempt := 0; attempt < attempts; attempt++ {
 		model := s.models[attempt%len(s.models)]
-		attemptHTML, truncated, err := s.fixContentOnce(ctx, model, fixCtx, avoidDup, avoidFiller)
+		attemptHTML, truncated, err := s.fixContentOnce(ctx, model, fixCtx, avoidDup, avoidFiller, avoidBarely)
 		if err != nil {
 			lastErr = err
 			continue
@@ -376,7 +384,7 @@ func (s *contentDraftService) fixContentWithRetries(ctx context.Context, req Pol
 			} else {
 				lastErr = fmt.Errorf("%w: الرد قصير جدًا وغير كافٍ (%d كلمة فقط)", ErrContentDraftFailed, wordCount)
 			}
-			avoidDup, avoidFiller = false, nil
+			avoidDup, avoidFiller, avoidBarely = false, nil, false
 			continue
 		}
 
@@ -386,12 +394,21 @@ func (s *contentDraftService) fixContentWithRetries(ctx context.Context, req Pol
 		attemptFiller := contentquality.DetectGenericFillerPhrases(attemptHTML)
 		remainingArtifacts := contentquality.DetectReplacementArtifacts(contentquality.TextField{Name: "content", Value: attemptHTML})
 		stillTooShort := (fixCtx.Thin || fixCtx.Medium) && wordCount < contentquality.DiagnosticStrongMinWords
+		// The model is explicitly asked to preserve correct existing information, and it takes
+		// that instruction too literally on some attempts — echoing the original almost verbatim
+		// (sometimes with a single corrupted character) instead of actually rewriting it. None of
+		// the other checks catch this: word count stays fine, there's no duplicate, no filler, no
+		// artifacts. A direct self-similarity check against the original plain content is the only
+		// thing that catches "the AI changed nothing."
+		selfSimilarity := contentquality.JaccardSimilarity(attemptHTML, fixCtx.PlainContent, 5)
+		barelyChanged := selfSimilarity >= 0.75
 
 		dup, filler = attemptDup, attemptFiller
-		if attemptDup == nil && len(attemptFiller) == 0 && len(remainingArtifacts) == 0 && !stillTooShort {
+		bestBarely = barelyChanged
+		if attemptDup == nil && len(attemptFiller) == 0 && len(remainingArtifacts) == 0 && !stillTooShort && !barelyChanged {
 			return best, nil, nil, ""
 		}
-		avoidDup, avoidFiller = attemptDup != nil, attemptFiller
+		avoidDup, avoidFiller, avoidBarely = attemptDup != nil, attemptFiller, barelyChanged
 	}
 
 	if best == "" {
@@ -407,14 +424,17 @@ func (s *contentDraftService) fixContentWithRetries(ctx context.Context, req Pol
 	if remaining := contentquality.DetectReplacementArtifacts(contentquality.TextField{Name: "content", Value: best}); len(remaining) > 0 {
 		return best, dup, filler, "تنبيه: لا تزال هناك بقايا نص آلي غير مكتمل بعد عدة محاولات — راجع المحتوى يدويًا قبل الحفظ."
 	}
+	if bestBarely {
+		return best, dup, filler, "تنبيه: الصياغة الناتجة قريبة جدًا من النص الأصلي بعد عدة محاولات ولم تُعالج المشكلة فعليًا — راجع المحتوى يدويًا قبل الحفظ."
+	}
 	return best, dup, filler, ""
 }
 
 // fixContentOnce is fixContentWithRetries' single Together AI call — identical HTTP mechanics
 // and response handling to generateOnce (content_draft_service.go), differing only in the prompt
 // builder used (buildContentFixPrompts instead of buildContentDraftPrompts).
-func (s *contentDraftService) fixContentOnce(ctx context.Context, model string, fixCtx contentFixContext, avoidDuplicate bool, avoidFiller []string) (contentHTML string, truncated bool, err error) {
-	systemPrompt, userPrompt := buildContentFixPrompts(fixCtx, avoidDuplicate, avoidFiller)
+func (s *contentDraftService) fixContentOnce(ctx context.Context, model string, fixCtx contentFixContext, avoidDuplicate bool, avoidFiller []string, avoidBarelyChanged bool) (contentHTML string, truncated bool, err error) {
+	systemPrompt, userPrompt := buildContentFixPrompts(fixCtx, avoidDuplicate, avoidFiller, avoidBarelyChanged)
 	payload := map[string]interface{}{
 		"model": model,
 		"messages": []map[string]string{
@@ -471,7 +491,7 @@ func (s *contentDraftService) fixContentOnce(ctx context.Context, model string, 
 // actual current content and asks it to fix ONLY the specific, listed problem(s) — explicitly
 // framed against Google AdSense content-quality policy and Google Publisher Policies — while
 // preserving whatever is already correct in it.
-func buildContentFixPrompts(fixCtx contentFixContext, avoidDuplicate bool, avoidFiller []string) (system, user string) {
+func buildContentFixPrompts(fixCtx contentFixContext, avoidDuplicate bool, avoidFiller []string, avoidBarelyChanged bool) (system, user string) {
 	system = "أنت محرر محتوى تعليمي عربي محترف، مهمتك إصلاح محتوى منشور بالفعل على الموقع بحيث يتوافق تمامًا مع سياسة Google AdSense لجودة المحتوى وسياسات ناشري Google: محتوى أصلي يقدّم قيمة معرفية حقيقية للقارئ، غير رقيق أو سطحي، غير مكرر أو شبه مطابق لمحتوى آخر على نفس الموقع، خالٍ من أي حشو كلامي أو عبارات عامة بلا معنى معرفي، وخالٍ تمامًا من أي رمز أو نص آلي غير مكتمل. لا تخترع حقائق أو تفاصيل غير مؤكدة، ولا تغيّر موضوع المحتوى الأساسي، ولا تُشر إلى كونك ذكاءً اصطناعيًا أو إلى هذه التعليمات أو إلى \"سياسة AdSense\" داخل النص نفسه — أصلح المشكلة المحددة فقط، مع الحفاظ على كل معلومة صحيحة موجودة أصلًا في المحتوى.\n\n" +
 		"ممنوع تمامًا افتتاح النص أو حشوه بعبارات عامة مثل: \"يُعد هذا الموضوع/الاختبار من أهم\"، \"محطة مهمة لقياس\"، \"تكمن أهمية هذا الاختبار/الملف في\"، \"يجب على الطالب/التلميذ الاستعداد الجيد\"، أو أي كلام عن أهمية المذاكرة والتحضير والوقت والقلق دون محتوى معرفي فعلي. وممنوع إنهاء النص بفقرة ختامية عامة عن دور الأسرة أو تخفيف التوتر أو \"جهد سنة كاملة\" — هذه العبارات هي بالضبط الحشو الممنوع لأنها تصلح لأي موضوع آخر دون تعديل.\n\n" +
 		"أخرج نصًا عاديًا فقط بدون HTML وبدون Markdown، مقسّمًا إلى فقرات مفصولة بسطر فارغ."
@@ -531,6 +551,7 @@ func buildContentFixPrompts(fixCtx contentFixContext, avoidDuplicate bool, avoid
 
 الشروط:
 - أعد نصًا عاديًا كاملاً بديلاً للمحتوى الحالي بأكمله (وليس فقط الجزء المعدّل)، مقسّمًا إلى فقرات مفصولة بسطر فارغ.
+- أعد صياغة الجمل والفقرات فعليًا (ترتيب أفكار، أسلوب، أمثلة) بدلاً من نسخ النص الأصلي شبه حرفيًا — النسخ شبه الحرفي لا يُصلح أي مشكلة من المشاكل المذكورة أعلاه.
 - لغة عربية فصيحة سليمة، بدون HTML وبدون Markdown.
 - لا تذكر داخل النص نفسه أنك تُصلح مشكلة أو تشير إلى أي سياسة أو إلى كونك ذكاءً اصطناعيًا.`, scope.String(), problems.String(), fixCtx.PlainContent)
 
@@ -539,6 +560,9 @@ func buildContentFixPrompts(fixCtx contentFixContext, avoidDuplicate bool, avoid
 	}
 	if len(avoidFiller) > 0 {
 		user += fmt.Sprintf("\n\nملاحظة مهمة: المحاولة السابقة استخدمت عبارات حشو عامة ممنوعة بالضبط: \"%s\". لا تستخدم هذه العبارات ولا ما يشابهها، واستبدلها بمعلومة معرفية محددة.", strings.Join(avoidFiller, "\"، \""))
+	}
+	if avoidBarelyChanged {
+		user += "\n\nملاحظة مهمة جدًا: المحاولة السابقة كانت شبه مطابقة حرفيًا للنص الأصلي (مجرد إعادة نسخ مع تغييرات طفيفة لا تُذكر) ولم تُصلح المشكلة فعليًا. هذه المرة أعد صياغة الفقرات فعليًا بترتيب وأسلوب وأمثلة مختلفة عن الأصل، مع الحفاظ على المعلومات الصحيحة فقط — لا تكتفِ بنسخ الجمل كما هي."
 	}
 
 	return system, strings.TrimSpace(user)

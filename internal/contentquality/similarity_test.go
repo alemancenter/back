@@ -238,6 +238,29 @@ func TestDetectSimilarityContentMatchStaysExactEvenWithDifferentTitle(t *testing
 	}
 }
 
+// Regression test for the reported "AI fix" bug: a model returned the original text back
+// almost verbatim, differing only by one corrupted character inserted into a single word
+// ("مخرجات" -> "مخرجاتش"). JaccardSimilarity is what policy_fix_service.go's "barely changed"
+// gate relies on to catch exactly this — word count, duplicate-against-corpus, filler-phrase and
+// artifact checks all stay clean on a near-verbatim echo, so none of them would have caught it.
+func TestJaccardSimilarityCatchesNearVerbatimEcho(t *testing.T) {
+	original := strings.Join(series("جملة", 80), " ") + " مخرجات التعلم واضحة"
+	echoed := strings.Join(series("جملة", 80), " ") + " مخرجاتش التعلم واضحة"
+	got := JaccardSimilarity(original, echoed, 5)
+	if got < 0.9 {
+		t.Fatalf("expected a near-verbatim echo to score very high similarity, got %v", got)
+	}
+}
+
+func TestJaccardSimilarityIsLowForGenuinelyDifferentText(t *testing.T) {
+	a := strings.Join(series("الفريد", 80), " ")
+	b := strings.Join(series("مختلف", 80), " ")
+	got := JaccardSimilarity(a, b, 5)
+	if got > 0.05 {
+		t.Fatalf("expected genuinely different text to score near-zero similarity, got %v", got)
+	}
+}
+
 func series(prefix string, count int) []string {
 	items := make([]string, count)
 	for i := range items {

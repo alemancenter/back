@@ -19,6 +19,19 @@ func TestDetectGenericFillerPhrases_CatchesReportedSample(t *testing.T) {
 	}
 }
 
+// Regression test for a real miss found while investigating the "AI fix does nothing" report:
+// the actual article text read "وتكمن أهميته في تحويل التقويم..." — the possessive-suffixed form
+// ("أهميته"/"أهميتها"), not the bare noun "أهمية" the phrase list used to require verbatim.
+// NormalizeForSimilarity does not strip possessive suffixes, so the phrase must be a short enough
+// stem ("تكمن اهمي") to match both forms.
+func TestDetectGenericFillerPhrases_CatchesPossessiveSuffixedForm(t *testing.T) {
+	sample := "وتكمن أهميته في تحويل التقويم من مجرد رصد درجات إلى أداة تطوير مستمر لأداء الطالب."
+	found := DetectGenericFillerPhrases(sample)
+	if len(found) == 0 {
+		t.Fatal("expected the possessive-suffixed form \"تكمن أهميته\" to be caught by the filler-phrase stem")
+	}
+}
+
 func TestDetectGenericFillerPhrases_ClearOnConcreteContent(t *testing.T) {
 	sample := `تتكون الأزمنة الأساسية في اللغة الإنجليزية للصف السادس من المضارع البسيط والماضي البسيط والمستقبل بـ will. يُستخدم المضارع البسيط للحقائق والعادات، مثل: She reads books every day. أما الماضي البسيط فيضاف له -ed في الأفعال المنتظمة، مثل: She played football yesterday.
 

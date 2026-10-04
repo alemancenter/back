@@ -67,16 +67,16 @@ type PolicyFixResult struct {
 // scan that surfaced the warning.
 var ErrPolicyFixNothingToFix = errors.New("لم يتم رصد أي مشكلة قابلة للإصلاح بالذكاء الاصطناعي حاليًا لهذا العنصر — قد يكون قد عُدّل منذ آخر فحص، جرّب إعادة الفحص")
 
-// policyFixMinAttempts/policyFixMaxAttempts bound fixContentWithRetries' Together AI calls — a
-// deliberately smaller ceiling than GenerateDraft's contentDraftMinAttempts/MaxAttempts (3-4).
-// A "fix" starts from the item's real existing content rather than a blank title, so a usable
-// result on the first or second attempt is the common case; capping at 3 (worst case ~90s
-// instead of ~120s) meaningfully cuts the wait for the by-far most common trigger (thin/medium
-// content) without materially hurting quality — an admin unhappy with the result can always
-// click "إصلاح بالذكاء الاصطناعي" again.
+// policyFixMinAttempts/policyFixMaxAttempts bound fixContentWithRetries' Together AI calls. A
+// "fix" starts from the item's real existing content rather than a blank title, so a usable
+// result on the first or second attempt is the common case for thin/medium content — but a
+// persistent near-duplicate against another live item (the hardest case: the model has to
+// genuinely restructure around a sibling's excerpt, not just pad length) needed more than 3
+// tries in practice to reliably clear JaccardSimilarity, so this is 4 rather than 3. Worst case
+// ~120s instead of ~90s — the human-review/fix.ts BFF proxy's timeout budget accounts for this.
 const (
 	policyFixMinAttempts = 2
-	policyFixMaxAttempts = 3
+	policyFixMaxAttempts = 4
 )
 
 // FixPolicyContent re-checks one article/post against the exact same diagnostics the
@@ -557,7 +557,13 @@ func buildContentFixPrompts(fixCtx contentFixContext, avoidDuplicate bool, avoid
 - لا تذكر داخل النص نفسه أنك تُصلح مشكلة أو تشير إلى أي سياسة أو إلى كونك ذكاءً اصطناعيًا.`, scope.String(), problems.String(), fixCtx.PlainContent)
 
 	if avoidDuplicate {
-		user += "\n\nملاحظة مهمة: المحاولة السابقة لا تزال متشابهة جدًا مع محتوى آخر على الموقع. أعد الصياغة والبنية من زاوية مختلفة تمامًا هذه المرة."
+		// A generic "try a different angle" note wasn't enough on its own for content whose
+		// underlying topic is inherently narrow (e.g. two exam-listing pages for different
+		// subjects/grades that share the same thin structure) — the model kept landing on a
+		// differently-worded version of the same generic skeleton. Pushing for concrete,
+		// subject-specific substance (tied to GradeLevel/SubjectName/SemesterName already in
+		// scope above) gives it something real to diverge on instead of just re-wording.
+		user += "\n\nملاحظة مهمة جدًا: المحاولة السابقة لا تزال متشابهة جدًا مع محتوى آخر على الموقع رغم إعادة الصياغة. السبب الأرجح أنك أعدت صياغة نفس الهيكل العام بكلمات مختلفة فقط. هذه المرة غيّر الهيكل نفسه: ابدأ بزاوية مختلفة تمامًا (مثلاً: معلومة أو قاعدة محددة في هذه المادة بالذات بدلاً من مقدمة عامة عن الاختبار)، واستبدل أي مثال أو نقطة عامة بمعلومة أو مهارة أو مفهوم حقيقي يخص هذه المادة وهذا الصف وهذا الفصل تحديدًا (لا يصلح لمادة أو صف آخر بنفس الصياغة) — هذا النوع من التفاصيل الملموسة هو ما يجعل النص فريدًا فعليًا، لا إعادة ترتيب الجمل."
 	}
 	if len(avoidFiller) > 0 {
 		user += fmt.Sprintf("\n\nملاحظة مهمة: المحاولة السابقة استخدمت عبارات حشو عامة ممنوعة بالضبط: \"%s\". لا تستخدم هذه العبارات ولا ما يشابهها، واستبدلها بمعلومة معرفية محددة.", strings.Join(avoidFiller, "\"، \""))

@@ -112,6 +112,15 @@ type SEOLinkSuggestion struct {
 	Reason      string  `json:"reason"`
 }
 
+// SEOBackfillResult is the summary returned by BackfillMetadata — how many of the
+// never-configured articles/posts it found got a baseline score, versus failed outright
+// (e.g. the row disappeared between listing and processing).
+type SEOBackfillResult struct {
+	Total   int `json:"total"`
+	Updated int `json:"updated"`
+	Failed  int `json:"failed"`
+}
+
 type SEOOverview struct {
 	TotalContent  int64               `json:"total_content"`
 	Configured    int64               `json:"configured"`
@@ -127,6 +136,11 @@ type SEOService interface {
 	GetEffective(context.Context, database.CountryID, string, uint) (*EffectiveSEO, error)
 	GetMetadata(context.Context, database.CountryID, string, uint) (*models.SEOMetadata, error)
 	SaveMetadata(context.Context, database.CountryID, string, uint, SEOMetadataInput, uint) (*models.SEOMetadata, error)
+	// BackfillMetadata seeds a baseline ImanSEO score for every article/post that has never
+	// been saved since this feature shipped, without requiring an admin to open and re-save
+	// each one by hand — see its own doc comment in seo_service.go for why this exists and
+	// what it deliberately skips compared to a normal SaveMetadata call.
+	BackfillMetadata(context.Context, database.CountryID, uint) (*SEOBackfillResult, error)
 	ListContent(context.Context, database.CountryID, string, string, int, int) ([]repositories.SEOContent, int64, error)
 	Overview(context.Context, database.CountryID) (*SEOOverview, error)
 	ListRevisions(context.Context, database.CountryID, string, uint, int) ([]models.SEORevision, error)
@@ -332,6 +346,52 @@ func (s *seoService) SaveMetadata(ctx context.Context, countryID database.Countr
 		go s.submitIndexNowBackground(countryID, contentType, contentID)
 	}
 	return item, nil
+}
+
+// BackfillMetadata computes and stores a baseline ImanSEO score for every article/post that
+// has never been saved since this feature shipped. Normally this never comes up: every normal
+// edit-and-save already triggers it automatically (api/dashboard/articles/save.ts's combined
+// save PUTs an SEO payload — even an untouched one — right after saving the article/post, which
+// SaveMetadata turns into a real score). But content nobody has opened and re-saved since this
+// feature existed has no seo_metadata row at all, which the editor shows as a bare 0/100 the
+// admin would otherwise have to fix by opening, clicking "تحليل الآن", and clicking "حفظ" on
+// every single one — exactly the manual, one-by-one tedium this exists to avoid.
+//
+// Deliberately leaner than SaveMetadata: no revision snapshot (there's no prior admin-made
+// edit worth recording a history entry for), no sitemap-regen scheduling, and no IndexNow
+// resubmission (both exist to react to an actual content change — looping this over hundreds
+// of already-live, unchanged pages would just be noise, and IndexNow in particular is a
+// rate-limited external API that shouldn't be hit for a backend-only score computation).
+func (s *seoService) BackfillMetadata(ctx context.Context, countryID database.CountryID, userID uint) (*SEOBackfillResult, error) {
+	targets, err := s.repo.ListContentMissingMetadata(ctx, countryID)
+	if err != nil {
+		return nil, err
+	}
+	settings, _ := s.settings.GetPublic(ctx, countryID)
+	result := &SEOBackfillResult{Total: len(targets)}
+	for _, target := range targets {
+		if err := s.backfillOne(ctx, countryID, target.ContentType, target.ContentID, settings, userID); err != nil {
+			result.Failed++
+			continue
+		}
+		result.Updated++
+	}
+	return result, nil
+}
+
+func (s *seoService) backfillOne(ctx context.Context, countryID database.CountryID, contentType string, contentID uint, settings map[string]string, userID uint) error {
+	content, err := s.repo.GetContent(ctx, countryID, contentType, contentID)
+	if err != nil {
+		return err
+	}
+	item := defaultSEOMetadata(database.CountryCode(countryID), contentType, contentID)
+	item.CreatedBy = optionalSEOUser(userID)
+	item.UpdatedBy = optionalSEOUser(userID)
+	fields := resolveSEOFields(countryID, contentType, contentID, content, item, settings)
+	analysis := AnalyzeSEO(seoAnalysisInput(content, item, fields))
+	encoded, _ := json.Marshal(analysis)
+	item.Score, item.AnalysisJSON = analysis.Score, string(encoded)
+	return s.repo.SaveMetadata(ctx, countryID, item)
 }
 
 func validateSEOMetadataInput(input *SEOMetadataInput) error {

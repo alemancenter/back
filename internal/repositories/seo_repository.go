@@ -42,6 +42,7 @@ type SEORepository interface {
 	GetRevision(context.Context, database.CountryID, uint, uint) (*models.SEORevision, error)
 	GetContent(context.Context, database.CountryID, string, uint) (*SEOContent, error)
 	ListContent(context.Context, database.CountryID, string, string, int, int) ([]SEOContent, int64, error)
+	ListContentMissingMetadata(context.Context, database.CountryID) ([]SEOContent, error)
 	MetadataStats(context.Context, database.CountryID) (map[string]int64, error)
 
 	CreateRedirect(context.Context, database.CountryID, *models.SEORedirect) error
@@ -204,6 +205,37 @@ func (r *seoRepository) listOneContentType(db *gorm.DB, contentType, search stri
 	err := base.Select("'post' content_type, p.id content_id, p.title, '' content, COALESCE(p.meta_description, '') description, COALESCE(p.keywords, '') keywords, COALESCE(p.image, '') image_url, p.author_id, p.is_active published, p.created_at published_at, p.updated_at, sm.id seo_metadata_id, COALESCE(sm.score, 0) seo_score, sm.robots_index, COALESCE(sm.focus_keyword, '') focus_keyword, COALESCE(sm.meta_description, '') seo_meta_description").
 		Joins("LEFT JOIN seo_metadata sm ON sm.content_type = 'post' AND sm.content_id = p.id").Order("p.updated_at DESC").Limit(limit).Offset(offset).Scan(&rows).Error
 	return rows, total, err
+}
+
+// ListContentMissingMetadata returns every article and post that has never had an
+// seo_metadata row saved — unpaginated (unlike ListContent, built for the dashboard's own
+// listing UI) since the caller (seoService.BackfillMetadata) needs the complete set in one
+// pass to seed a baseline ImanSEO score for all of them at once.
+func (r *seoRepository) ListContentMissingMetadata(ctx context.Context, countryID database.CountryID) ([]SEOContent, error) {
+	db := seoDB(countryID).WithContext(ctx)
+	var rows []SEOContent
+
+	var articleRows []SEOContent
+	if err := db.Table("articles a").
+		Select("'article' content_type, a.id content_id").
+		Joins("LEFT JOIN seo_metadata sm ON sm.content_type = 'article' AND sm.content_id = a.id").
+		Where("sm.id IS NULL").
+		Scan(&articleRows).Error; err != nil {
+		return nil, err
+	}
+	rows = append(rows, articleRows...)
+
+	var postRows []SEOContent
+	if err := db.Table("posts p").
+		Select("'post' content_type, p.id content_id").
+		Joins("LEFT JOIN seo_metadata sm ON sm.content_type = 'post' AND sm.content_id = p.id").
+		Where("sm.id IS NULL").
+		Scan(&postRows).Error; err != nil {
+		return nil, err
+	}
+	rows = append(rows, postRows...)
+
+	return rows, nil
 }
 
 func (r *seoRepository) MetadataStats(ctx context.Context, countryID database.CountryID) (map[string]int64, error) {

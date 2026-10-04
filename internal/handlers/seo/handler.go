@@ -172,6 +172,25 @@ func (h *Handler) Overview(c *fiber.Ctx) error {
 	return utils.Success(c, "ملخص ImanSEO", item)
 }
 
+// Backfill seeds a baseline ImanSEO score for every article/post that has never been saved
+// since this feature shipped, so an admin doesn't have to open and re-save each one by hand
+// just to make its score stop reading 0/100. See SEOService.BackfillMetadata.
+// @Summary Backfill ImanSEO metadata for content that has never been saved with it
+// @Tags SEO
+// @Produce json
+// @Security BearerAuth
+// @Security FrontendKeyAuth
+// @Param X-Country-Id header string false "Country ID"
+// @Success 200 {object} utils.APIResponse
+// @Router /dashboard/seo/backfill [post]
+func (h *Handler) Backfill(c *fiber.Ctx) error {
+	result, err := h.svc.BackfillMetadata(c.Context(), countryID(c), userID(c))
+	if err != nil {
+		return handleError(c, err)
+	}
+	return utils.Success(c, "success", result)
+}
+
 func (h *Handler) Content(c *fiber.Ctx) error {
 	pag := utils.GetPagination(c)
 	rows, total, err := h.svc.ListContent(c.Context(), countryID(c), c.Query("type", "all"), c.Query("q"), pag.PerPage, pag.Offset)

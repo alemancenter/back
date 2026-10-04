@@ -105,6 +105,11 @@ func registerSystemRoutes(api, public, dash fiber.Router, h *Handlers) {
 	dashSEOEditor.Get("/metadata/:content_type/:id/revisions", h.SEO.Revisions)
 	dashSEOEditor.Post("/metadata/:content_type/:id/revisions/:revision_id/restore", h.SEO.RestoreRevision)
 	dashSEOEditor.Get("/links/:content_type/:id", h.SEO.LinkSuggestions)
+	// Bulk, not per-content, but gated the same way as the adsense-policy/human-review tools
+	// it's meant to sit alongside in the dashboard — "manage seo" OR either content permission
+	// — rather than the stricter manage-seo-only gate the rest of this file's platform-wide
+	// controls use below.
+	dashSEOEditor.Post("/backfill", middleware.CanAny("manage seo", "manage articles", "manage posts"), h.SEO.Backfill)
 
 	dashSEO := dash.Group("/seo", middleware.Can("manage seo"))
 	dashSEO.Get("/overview", h.SEO.Overview)

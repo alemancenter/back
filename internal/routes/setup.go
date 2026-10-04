@@ -96,6 +96,7 @@ func Setup(app *fiber.App) *Handlers {
 	registerTeacherSubscriptionRoutes(api, dash, deps)
 	registerAdSensePolicyRoutes(dash, deps)
 	registerContentGenRoutes(dash, deps)
+	registerHumanReviewRoutes(dash, deps)
 
 	return deps
 }

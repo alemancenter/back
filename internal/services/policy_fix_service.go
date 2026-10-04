@@ -370,8 +370,9 @@ func (s *contentDraftService) fixContentWithRetries(ctx context.Context, req Pol
 		bestBarely  bool
 	)
 
+	modelStart := randomModelStart(len(s.models))
 	for attempt := 0; attempt < attempts; attempt++ {
-		model := s.models[attempt%len(s.models)]
+		model := s.models[(modelStart+attempt)%len(s.models)]
 		attemptHTML, truncated, err := s.fixContentOnce(ctx, model, fixCtx, avoidDup, avoidFiller, avoidBarely)
 		if err != nil {
 			lastErr = err

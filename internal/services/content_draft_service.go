@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
 	"regexp"
@@ -93,15 +94,33 @@ type contentDraftService struct {
 	httpClient  *http.Client
 }
 
-// defaultContentDraftModels is tried in order across retry attempts when no override is
-// configured — zai-org/GLM-5.3-Flash first (the one this feature was built and tuned against),
-// then a spread of other fast Together AI models as fallbacks so a slow or momentarily
-// unavailable primary model doesn't sink the whole request.
+// defaultContentDraftModels is the fallback pool used when no override is configured. Kept
+// deliberately large (eight models, spanning several different providers behind Together AI)
+// so a single model hitting capacity — a provider-side "503 Service unavailable", not a bug on
+// our end — never has to sink every attempt: randomModelStart below picks a different starting
+// point in this list on every call, so repeated requests spread load across the whole pool
+// instead of always hammering the same first few entries in the same order.
 var defaultContentDraftModels = []string{
 	"zai-org/GLM-5.3-Flash",
+	"deepseek-ai/DeepSeek-V4.1-Flash",
 	"Qwen/Qwen3.8-Flash",
 	"openai/gpt-oss-120b",
 	"Qwen/Qwen3.5-9B",
+	"deepseek-ai/DeepSeek-V4-Flash-0731",
+	"arize-ai/qwen-2-1.5b-instruct",
+	"together/Tev1-4B-experimental",
+}
+
+// randomModelStart picks a random starting index into a model list of size n, so the attempt
+// loops below (which always advance from their starting point via (start+attempt)%n) don't
+// deterministically try the same leading subset of defaultContentDraftModels on every single
+// call — see defaultContentDraftModels' own comment for why that matters now that the pool is
+// larger than any one request's attempt budget.
+func randomModelStart(n int) int {
+	if n <= 1 {
+		return 0
+	}
+	return rand.Intn(n)
 }
 
 // NewContentDraftService reads the same TOGETHER_API_KEY env var the existing teacher-
@@ -185,8 +204,9 @@ func (s *contentDraftService) GenerateDraft(ctx context.Context, req ContentDraf
 		attempts = contentDraftMaxAttempts
 	}
 
+	modelStart := randomModelStart(len(s.models))
 	for attempt := 0; attempt < attempts; attempt++ {
-		model := s.models[attempt%len(s.models)]
+		model := s.models[(modelStart+attempt)%len(s.models)]
 		html, truncated, err := s.generateOnce(ctx, model, req, avoidDuplicate, avoidFiller)
 		if err != nil {
 			lastErr = err
@@ -510,8 +530,9 @@ func (s *contentDraftService) generateSEODraft(ctx context.Context, req ContentD
 		feedback  string
 	)
 
+	modelStart := randomModelStart(len(s.models))
 	for attempt := 0; attempt < contentDraftSEOMaxAttempts; attempt++ {
-		model := s.models[attempt%len(s.models)]
+		model := s.models[(modelStart+attempt)%len(s.models)]
 		seo, truncated, err := s.generateSEOOnce(ctx, model, req, introExcerpt, feedback)
 		if err != nil || truncated || seo == nil {
 			continue

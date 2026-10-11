@@ -24,13 +24,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/imanjo/fiber-api/internal/contentquality"
 	"github.com/imanjo/fiber-api/internal/database"
+	"github.com/imanjo/fiber-api/internal/utils"
 )
 
 // PolicyFixRequest identifies exactly one already-published article or post to fix. Unlike
@@ -207,7 +210,8 @@ func (s *contentDraftService) FixPolicyContent(ctx context.Context, req PolicyFi
 	// content-only fix can still do that with one click from the SEO panel's own "تحليل الآن".
 	if needsTitleFix || needsMetaFix {
 		seoReq := ContentDraftRequest{ContentType: req.ContentType, Title: title}
-		if seo, seoWarning := s.generateSEODraft(ctx, seoReq, finalContentHTML); seo != nil {
+		seo, seoWarning := s.generateSEODraft(ctx, seoReq, finalContentHTML)
+		if seo != nil {
 			seoScore = seo.Score
 			// generateSEOOnce falls back to the original title verbatim when the model's
 			// response omits seo_title — only credit "العنوان قصير" as addressed when a
@@ -220,6 +224,29 @@ func (s *contentDraftService) FixPolicyContent(ctx context.Context, req PolicyFi
 				issues = append(issues, "الوصف التعريفي قصير أو مفقود")
 				finalMeta = seo.MetaDescription
 			}
+
+			// A title/meta rewrite alone often can't reach the target score because the gap is
+			// actually in the CONTENT — no subheadings, no internal links — which this pass
+			// never touches. Both of those are safe, deterministic structural edits (not a
+			// rewrite of the article's own wording), so try closing them here and re-score
+			// before falling back to a diagnostic-only warning. See augmentContentForSEO.
+			if seoScore < contentDraftSEOMinScore {
+				if augmented, note, changed := s.augmentContentForSEO(req.CountryID, excludeArticleID, excludePostID, finalContentHTML, finalTitle); changed {
+					finalContentHTML = augmented
+					issues = append(issues, note)
+					analysis := AnalyzeSEO(SEOAnalysisInput{
+						Title: seo.SEOTitle, Content: finalContentHTML, MetaDescription: seo.MetaDescription,
+						FocusKeyword: seo.FocusKeyword, SchemaType: seo.SchemaType,
+					})
+					seoScore = analysis.Score
+					if seoScore >= contentDraftSEOMinScore {
+						seoWarning = ""
+					} else {
+						seoWarning = seoScoreGapWarning(seoScore, analysis)
+					}
+				}
+			}
+
 			if seoWarning != "" {
 				warnings = append(warnings, seoWarning)
 			}
@@ -573,4 +600,127 @@ func buildContentFixPrompts(fixCtx contentFixContext, avoidDuplicate bool, avoid
 	}
 
 	return system, strings.TrimSpace(user)
+}
+
+// relatedLinkMinSimilarity is the floor below which two items are treated as unrelated rather
+// than a natural "read more" pairing — low enough to allow genuinely related-but-different
+// topics, high enough to skip linking to something essentially random. The ceiling is
+// contentquality's own TemplateThreshold (not a separate magic number): anything at or above
+// that is the same "too similar to be a distinct, separately-useful page" zone findDuplicateMatch
+// already treats as a problem, not a recommendation.
+const relatedLinkMinSimilarity = 0.10
+
+type relatedLinkCandidate struct {
+	Title string
+	URL   string
+}
+
+// findRelatedLink looks for an existing, different article/post similar enough in vocabulary to
+// be a natural internal link target without being a near-duplicate of the content being fixed.
+// Reuses the exact same corpus-loading calls findDuplicateMatch already makes (just scored
+// differently: here by closeness INSIDE a band, not by a single "is this too similar" cutoff).
+// Returns ok=false — never a forced, barely-relevant link — when nothing clears the relevance
+// floor.
+func (s *contentDraftService) findRelatedLink(countryID database.CountryID, excludeArticleID, excludePostID uint64, content string) (relatedLinkCandidate, bool) {
+	plain := contentquality.NormalizeForSimilarity(content)
+	maxSimilarity := contentquality.DefaultSimilarityOptions().TemplateThreshold
+
+	type scored struct {
+		contentType, title string
+		id                 uint64
+		score              float64
+	}
+	var best scored
+
+	consider := func(contentType string, id uint64, title, candidateContent string) {
+		score := contentquality.JaccardSimilarity(plain, contentquality.NormalizeForSimilarity(candidateContent), 5)
+		if score < relatedLinkMinSimilarity || score >= maxSimilarity {
+			return
+		}
+		if score > best.score {
+			best = scored{contentType: contentType, id: id, title: title, score: score}
+		}
+	}
+
+	if rows, err := s.articleRepo.ListContentForDuplicateCheck(countryID, excludeArticleID); err == nil {
+		for _, row := range rows {
+			consider("article", row.ID, row.Title, row.Content)
+		}
+	}
+	if rows, err := s.postRepo.ListContentForDuplicateCheck(countryID, excludePostID); err == nil {
+		for _, row := range rows {
+			consider("post", row.ID, row.Title, row.Content)
+		}
+	}
+
+	if best.title == "" {
+		return relatedLinkCandidate{}, false
+	}
+	countryCode := string(database.CountryCode(countryID))
+	url := fmt.Sprintf("/%s/posts/%d", countryCode, best.id)
+	if best.contentType == "article" {
+		url = fmt.Sprintf("/%s/lesson/articles/%d", countryCode, best.id)
+	}
+	return relatedLinkCandidate{Title: best.title, URL: url}, true
+}
+
+// htmlParagraphRe finds complete <p>...</p> blocks in already-rendered HTML content.
+var htmlParagraphRe = regexp.MustCompile(`(?is)<p\b[^>]*>.*?</p>`)
+
+// insertHeadingIntoHTML inserts one deterministic <h2> before the middle paragraph of
+// already-rendered HTML content. Unlike insertSEOHeading (content_draft_service.go), which
+// works on the plain-text draft before its first-ever HTML conversion, this edits an existing
+// published item's markup directly — used only when a title/meta-only fix needs the headings
+// check closed without rewriting the article's own wording. No-op below two paragraphs, the
+// same guard insertSEOHeading uses.
+func insertHeadingIntoHTML(contentHTML, title string) string {
+	matches := htmlParagraphRe.FindAllStringIndex(contentHTML, -1)
+	if len(matches) < 2 {
+		return contentHTML
+	}
+	insertAt := matches[len(matches)/2][0]
+	heading := "<h2>" + html.EscapeString("شرح "+strings.TrimSpace(title)) + "</h2>"
+	return contentHTML[:insertAt] + heading + contentHTML[insertAt:]
+}
+
+// appendRelatedLinkHTML adds one short, clearly-labeled "read more" paragraph linking to an
+// already-published, genuinely related item (see findRelatedLink) — never a sentence invented
+// mid-content, so there's no risk of breaking the article's own flow or wording.
+func appendRelatedLinkHTML(contentHTML string, candidate relatedLinkCandidate) string {
+	link := fmt.Sprintf(`<p>للمزيد من التفاصيل ذات الصلة، يمكنك الاطلاع على: <a href="%s">%s</a>.</p>`, html.EscapeString(candidate.URL), html.EscapeString(candidate.Title))
+	return contentHTML + link
+}
+
+// augmentContentForSEO is the one safe, deterministic content edit FixPolicyContent is willing
+// to make without another AI call, tried only after the title/meta-only SEO pass still falls
+// short of contentDraftSEOMinScore: inserting a subheading and/or one internal link to a
+// genuinely related item, when either is missing. Both are zero-or-full-credit AnalyzeSEO
+// checks (headings worth 8 points, internal_links worth 7 — see seo_analyzer.go) that can be
+// closed structurally without touching the article's actual wording, unlike every other
+// still-open check (content length, external links, a share image, readability), which would
+// need a real rewrite this fast metadata-only fix deliberately doesn't attempt. Returns
+// changed=false (and the original HTML) when there's nothing it could safely add — both already
+// present, or no related item clears findRelatedLink's relevance bar.
+func (s *contentDraftService) augmentContentForSEO(countryID database.CountryID, excludeArticleID, excludePostID uint64, contentHTML, title string) (augmented string, note string, changed bool) {
+	augmented = contentHTML
+	var notes []string
+
+	if len(seoHeadingPattern.FindAllStringSubmatch(augmented, -1)) == 0 {
+		if withHeading := insertHeadingIntoHTML(augmented, title); withHeading != augmented {
+			augmented = withHeading
+			notes = append(notes, "أُضيف عنوان فرعي تلقائيًا لتحسين بنية المحتوى")
+		}
+	}
+
+	if internalLinks, _ := countSEOLinks(augmented); internalLinks == 0 {
+		if candidate, ok := s.findRelatedLink(countryID, excludeArticleID, excludePostID, augmented); ok {
+			augmented = appendRelatedLinkHTML(augmented, candidate)
+			notes = append(notes, fmt.Sprintf("أُضيف رابط داخلي تلقائيًا إلى \"%s\"", candidate.Title))
+		}
+	}
+
+	if len(notes) == 0 {
+		return contentHTML, "", false
+	}
+	return utils.SanitizeHTML(augmented), strings.Join(notes, "، ") + ".", true
 }

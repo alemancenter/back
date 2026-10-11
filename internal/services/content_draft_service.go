@@ -525,9 +525,10 @@ func (s *contentDraftService) generateSEODraft(ctx context.Context, req ContentD
 	}
 
 	var (
-		best      *ContentDraftSEO
-		bestScore = -1
-		feedback  string
+		best         *ContentDraftSEO
+		bestScore    = -1
+		bestAnalysis SEOAnalysisResult
+		feedback     string
 	)
 
 	modelStart := randomModelStart(len(s.models))
@@ -547,7 +548,7 @@ func (s *contentDraftService) generateSEODraft(ctx context.Context, req ContentD
 		})
 		seo.Score = analysis.Score
 		if analysis.Score > bestScore {
-			best, bestScore = seo, analysis.Score
+			best, bestScore, bestAnalysis = seo, analysis.Score, analysis
 		}
 		if analysis.Score >= contentDraftSEOMinScore {
 			return seo, ""
@@ -558,10 +559,7 @@ func (s *contentDraftService) generateSEODraft(ctx context.Context, req ContentD
 	if best == nil {
 		return nil, ""
 	}
-	return best, fmt.Sprintf(
-		"تحذير: أفضل تحليل SEO تم الوصول إليه %d%% (الهدف %d%%) — راجع حقول SEO يدويًا قبل النشر.",
-		bestScore, contentDraftSEOMinScore,
-	)
+	return best, seoScoreGapWarning(bestScore, bestAnalysis)
 }
 
 // seoAnalysisFeedback turns every non-"good" AnalyzeSEO check into a short Arabic correction
@@ -579,6 +577,52 @@ func seoAnalysisFeedback(analysis SEOAnalysisResult) string {
 		}
 	}
 	return strings.Join(parts, "؛ ")
+}
+
+// seoContentLevelChecks are the AnalyzeSEO checks (seo_analyzer.go) that score the CONTENT
+// itself — word count, headings, internal/external links, image alt text, a shareable image —
+// rather than the title/meta-description/keyword fields generateSEODraft actually writes. A
+// title/meta rewrite structurally cannot move these: fixing them means editing the article/post
+// body, which is a separate concern (see FixPolicyContent's content-fix pass) this SEO-only pass
+// deliberately never touches.
+var seoContentLevelChecks = map[string]bool{
+	"content_length": true, "headings": true, "internal_links": true,
+	"external_links": true, "image_alts": true, "share_image": true, "readability": true,
+}
+
+// seoScoreGapWarning explains, in the same terms AnalyzeSEO already reports, exactly why the
+// best SEO-metadata attempt still fell short of contentDraftSEOMinScore — a bare "74% reached,
+// target 85%" reads as the AI simply not trying hard enough after 3 attempts, when the real
+// reason is usually that most of the missing points belong to checks this pass can't touch at
+// all (no internal links, no subheadings, thin content). Splitting the gap into "needs a
+// content-level fix" vs. "still short on title/meta/keyword despite retries" turns that into an
+// actionable list instead of a dead end.
+func seoScoreGapWarning(bestScore int, analysis SEOAnalysisResult) string {
+	var contentLevel, metadataLevel []string
+	for _, check := range analysis.Checks {
+		if check.Status == "good" {
+			continue
+		}
+		note := check.Message
+		if check.Recommendation != "" {
+			note += " — " + check.Recommendation
+		}
+		if seoContentLevelChecks[check.Code] {
+			contentLevel = append(contentLevel, note)
+		} else {
+			metadataLevel = append(metadataLevel, note)
+		}
+	}
+
+	message := fmt.Sprintf("تحذير: أفضل تحليل SEO تم الوصول إليه %d%% (الهدف %d%%).", bestScore, contentDraftSEOMinScore)
+	if len(contentLevel) > 0 {
+		message += " جزء من الفارق مرتبط بالمحتوى نفسه لا بالعنوان أو الوصف التعريفي، وهذا الإصلاح لا يعدّل المحتوى فلن يُغلق هذا الجزء مهما أعدت المحاولة: " + strings.Join(contentLevel, "؛ ") + "."
+	}
+	if len(metadataLevel) > 0 {
+		message += " وما زال ضمن العنوان/الوصف/العبارة المفتاحية ناقصًا: " + strings.Join(metadataLevel, "؛ ") + "."
+	}
+	message += " راجع حقول SEO يدويًا قبل النشر."
+	return message
 }
 
 // generateSEOOnce makes one Together AI call asking strictly for a JSON object of SEO fields

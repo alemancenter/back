@@ -16,6 +16,8 @@ type ContactMessageRepository interface {
 	Get(id uint) (*models.ContactMessage, error)
 	MarkAsRead(id uint) error
 	Delete(id uint) error
+	BulkMarkAsRead(ids []uint) error
+	BulkDelete(ids []uint) error
 }
 
 type contactMessageRepository struct{}
@@ -129,4 +131,24 @@ func (r *contactMessageRepository) Delete(id uint) error {
 		return err
 	}
 	return database.DB().Delete(&models.ContactMessage{}, id).Error
+}
+
+func (r *contactMessageRepository) BulkMarkAsRead(ids []uint) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if err := ensureContactMessageSchema(); err != nil {
+		return err
+	}
+	return database.DB().Model(&models.ContactMessage{}).Where("id IN ?", ids).Update("read", true).Error
+}
+
+func (r *contactMessageRepository) BulkDelete(ids []uint) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if err := ensureContactMessageSchema(); err != nil {
+		return err
+	}
+	return database.DB().Where("id IN ?", ids).Delete(&models.ContactMessage{}).Error
 }

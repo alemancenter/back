@@ -3,10 +3,10 @@ package contact_messages
 import (
 	"strconv"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/imanjo/fiber-api/internal/models"
 	"github.com/imanjo/fiber-api/internal/services"
 	"github.com/imanjo/fiber-api/internal/utils"
-	"github.com/gofiber/fiber/v2"
 )
 
 type Handler struct {
@@ -96,4 +96,55 @@ func (h *Handler) Delete(c *fiber.Ctx) error {
 		return utils.InternalError(c)
 	}
 	return utils.Success(c, "تم حذف الرسالة", nil)
+}
+
+// bulkMaxIDs bounds one bulk request — generous relative to the dashboard list's own 20-per-page
+// size (selecting "all" never exceeds that in the current UI), just a sanity ceiling against a
+// malformed or tampered request rather than a real expected usage limit.
+const bulkMaxIDs = 500
+
+type bulkIDsRequest struct {
+	IDs []uint `json:"ids"`
+}
+
+func (h *Handler) parseBulkIDs(c *fiber.Ctx) ([]uint, error) {
+	var req bulkIDsRequest
+	if err := c.BodyParser(&req); err != nil {
+		return nil, err
+	}
+	if len(req.IDs) == 0 {
+		return nil, fiber.NewError(fiber.StatusBadRequest, "يرجى تحديد رسالة واحدة على الأقل")
+	}
+	if len(req.IDs) > bulkMaxIDs {
+		return nil, fiber.NewError(fiber.StatusBadRequest, "عدد الرسائل المحددة كبير جدًا")
+	}
+	return req.IDs, nil
+}
+
+func (h *Handler) BulkMarkAsRead(c *fiber.Ctx) error {
+	if !h.requirePermission(c) {
+		return utils.Forbidden(c)
+	}
+	ids, err := h.parseBulkIDs(c)
+	if err != nil {
+		return utils.BadRequest(c, err.Error())
+	}
+	if err := h.svc.BulkMarkAsRead(ids); err != nil {
+		return utils.InternalError(c)
+	}
+	return utils.Success(c, "تم تعليم الرسائل المحددة كمقروءة", nil)
+}
+
+func (h *Handler) BulkDelete(c *fiber.Ctx) error {
+	if !h.requirePermission(c) {
+		return utils.Forbidden(c)
+	}
+	ids, err := h.parseBulkIDs(c)
+	if err != nil {
+		return utils.BadRequest(c, err.Error())
+	}
+	if err := h.svc.BulkDelete(ids); err != nil {
+		return utils.InternalError(c)
+	}
+	return utils.Success(c, "تم حذف الرسائل المحددة", nil)
 }

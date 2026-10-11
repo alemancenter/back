@@ -12,6 +12,8 @@ type ContactMessageService interface {
 	Get(id uint) (*models.ContactMessage, error)
 	MarkAsRead(id uint) error
 	Delete(id uint) error
+	BulkMarkAsRead(ids []uint) error
+	BulkDelete(ids []uint) error
 }
 
 type contactMessageService struct {
@@ -44,4 +46,12 @@ func (s *contactMessageService) MarkAsRead(id uint) error {
 
 func (s *contactMessageService) Delete(id uint) error {
 	return s.repo.Delete(id)
+}
+
+func (s *contactMessageService) BulkMarkAsRead(ids []uint) error {
+	return s.repo.BulkMarkAsRead(ids)
+}
+
+func (s *contactMessageService) BulkDelete(ids []uint) error {
+	return s.repo.BulkDelete(ids)
 }

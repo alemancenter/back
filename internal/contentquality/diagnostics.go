@@ -6,11 +6,17 @@ const (
 	// The values below power reviewer-facing diagnostics. The same minimums are
 	// also consumed by ApplyAdReadinessRequirements as a one-way ads safety guard;
 	// they never grant eligibility and never change search indexing.
-	DiagnosticTitleMinChars      = 20
-	DiagnosticReviewMinWords     = 120
-	DiagnosticShortFileMaxWords  = 180
-	DiagnosticStrongMinWords     = 300
-	DiagnosticMetaMinChars       = 80
+	DiagnosticTitleMinChars     = 20
+	DiagnosticReviewMinWords    = 120
+	DiagnosticShortFileMaxWords = 180
+	// DiagnosticStrongMinWords is the "this is already good, no reinforcement needed" floor —
+	// at or above this, EvaluateDiagnostics stops emitting the "متوسط الطول وقد يحتاج تعزيزًا"
+	// signal and BuildQualitySignal reports QualityLengthAdequate instead of
+	// QualityLengthNeedsEnrichment. Lowered from 300 to 250 at the site owner's explicit
+	// judgment call: 250+ words of real content is strong enough on its own and shouldn't keep
+	// surfacing as something to fix.
+	DiagnosticStrongMinWords = 250
+	DiagnosticMetaMinChars   = 80
 )
 
 // Diagnostics contains reviewer-facing signals only. It deliberately has no

@@ -1,8 +1,8 @@
 package routes
 
 import (
-	"github.com/imanjo/fiber-api/internal/middleware"
 	"github.com/gofiber/fiber/v2"
+	"github.com/imanjo/fiber-api/internal/middleware"
 )
 
 // registerCommunicationRoutes handles user and admin communication modules:
@@ -51,6 +51,8 @@ func registerCommunicationRoutes(public, dash fiber.Router, h *Handlers) {
 	dashContactMessages := dash.Group("/contact-messages", middleware.Can("manage settings"))
 	dashContactMessages.Get("", h.ContactMessages.List)
 	dashContactMessages.Get("/stats", h.ContactMessages.Stats)
+	dashContactMessages.Post("/bulk/read", h.ContactMessages.BulkMarkAsRead)
+	dashContactMessages.Post("/bulk/delete", h.ContactMessages.BulkDelete)
 	dashContactMessages.Get("/:id", h.ContactMessages.Get)
 	dashContactMessages.Post("/:id/read", h.ContactMessages.MarkAsRead)
 	dashContactMessages.Delete("/:id", h.ContactMessages.Delete)
